@@ -53,19 +53,15 @@ const todosSlice = createSlice({
 			}
 		},
 		toggleTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
+			let todo: Todo | undefined;
 			if (action.payload.level === TodoLevel.user) {
-				const todo = todos.userTodos.find((t) => t.id === action.payload.id);
-				if (todo) {
-					todo.completed = !todo.completed;
-					todo.completionDate = new Date().toISOString();
-				}
+				todo = todos.userTodos.find((todo) => todo.id === action.payload.id);
 			} else if (action.payload.level === TodoLevel.workspace) {
-				const todo = todos.workspaceTodos.find((t) => t.id === action.payload.id);
-				if (todo) {
-					todo.completed = !todo.completed;
-					todo.completionDate = new Date().toISOString();
-				}
+				todo = todos.workspaceTodos.find((todo) => todo.id === action.payload.id);
 			}
+			if (!todo) return;
+			todo.completed = !todo.completed;
+			todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
 		},
 		editTodo: (
 			todos: FullData,
