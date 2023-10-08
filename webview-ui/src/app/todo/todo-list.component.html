@@ -1,0 +1,38 @@
+<section>
+	<ul>
+		<ng-container *ngFor="let todo of todos">
+			<li>
+				<div class="row">
+					<text-area
+						*ngIf="componentState[todo.id]?.isEditable"
+						id="text-area-{{ todo.id }}"
+						class="todo-text"
+						[(value)]="todo.text"
+					>
+					</text-area>
+					<p
+						*ngIf="!componentState[todo.id]?.isEditable"
+						class="todo-text"
+						[class.complete]="todo.completed"
+						(click)="toggleCompleted(todo.id)"
+					>
+						{{ todo.text }}
+					</p>
+					<vscode-button
+						(click)="componentState[todo.id]?.isEditable ? saveEdit(todo.id) : toggleEdit(todo.id)"
+						[innerText]="componentState[todo.id]?.isEditable ? 'Ok' : 'Edit'"
+					></vscode-button>
+					<vscode-button *ngIf="componentState[todo.id]?.isEditable" (click)="cancelEdit(todo.id)"
+						>Cancel</vscode-button
+					>
+					<vscode-button *ngIf="!componentState[todo.id]?.isEditable" (click)="delete(todo.id)"
+						>Delete</vscode-button
+					>
+				</div>
+				<div class="row">
+					<todo-label [todo]="todo"></todo-label>
+				</div>
+			</li>
+		</ng-container>
+	</ul>
+</section>

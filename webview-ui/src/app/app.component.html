@@ -1,0 +1,25 @@
+<main>
+	<vscode-panels activeid="tab-2">
+		<vscode-panel-tab (click)="selectTab(TodoLevel.user)" id="tab-1">
+			User
+			<vscode-badge appearance="secondary">1</vscode-badge>
+			<span title="Overdue" style="color: red">2</span>
+		</vscode-panel-tab>
+		<vscode-panel-tab (click)="selectTab(TodoLevel.workspace)" id="tab-2">
+			Workspace
+			<vscode-badge appearance="secondary">5</vscode-badge>
+		</vscode-panel-tab>
+		<vscode-panel-view id="view-1">
+			<todo-list [level]="TodoLevel.user"></todo-list>
+		</vscode-panel-view>
+		<vscode-panel-view id="view-2">
+			<todo-list [level]="TodoLevel.workspace"></todo-list>
+		</vscode-panel-view>
+	</vscode-panels>
+
+	<vscode-divider role="separator"></vscode-divider>
+	<div class="row-container">
+		<text-area [placeholder]="'Add new todo'" [(value)]="newTodoText"></text-area>
+		<vscode-button (click)="addTodo()">Add</vscode-button>
+	</div>
+</main>

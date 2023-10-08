@@ -1,0 +1,14 @@
+<small>
+	<ng-container *ngIf="todo?.creationDate">
+		<strong>Created:</strong>
+		<!-- {{ creationDate | date: "EEE" }}
+		{{ creationDate | date: "mediumDate" }}
+		{{ creationDate | date: "shortTime" }} -->
+	</ng-container>
+	<ng-container *ngIf="todo?.completed && todo?.completionDate">
+		<strong>Completed: </strong>
+		<!-- {{ parseDateString(todo!.completionDate!) | date: "EEE" }}
+		{{ parseDateString(todo!.completionDate!) | date: "mediumDate" }}
+		{{ parseDateString(todo!.completionDate!) | date: "shortTime" }} -->
+	</ng-container>
+</small>
