@@ -8,16 +8,16 @@ export function activate(context: ExtensionContext) {
 	store.dispatch(
 		storeActions.loadData({
 			data: {
-				workspaceTodos: context.workspaceState.get("TodoData") as Todo[],
-				userTodos: context.globalState.get("TodoData") as Todo[],
+				workspaceTodos: context.workspaceState.get("TodoData") ?? [],
+				userTodos: context.globalState.get("TodoData") ?? [],
 			} as FullData,
 		})
 	);
 
 	console.log("Initial data:");
 	console.log({
-		workspaceTodos: context.workspaceState.get("TodoData") as Todo[],
-		userTodos: context.globalState.get("TodoData") as Todo[],
+		workspaceTodos: context.workspaceState.get("TodoData") ?? [],
+		userTodos: context.globalState.get("TodoData") ?? [],
 	} as FullData);
 	console.log("Store data:");
 	console.log(store.getState());
