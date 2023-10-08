@@ -1,8 +1,7 @@
-import { commands, ExtensionContext, workspace } from "vscode";
+import { commands, ExtensionContext } from "vscode";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { createStatusBarItem } from "./statusBarItem";
-import createStore, { storeActions, persist, Todo } from "./todo/store";
-import { FullData } from "./todo/store";
+import createStore, { storeActions, persist, Todo, FullData } from "./todo/store";
 
 export function activate(context: ExtensionContext) {
 	const store = createStore();

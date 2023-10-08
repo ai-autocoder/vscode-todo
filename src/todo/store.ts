@@ -1,12 +1,6 @@
-import {
-	AnyAction,
-	configureStore,
-	createSlice,
-	PayloadAction,
-	ThunkMiddleware,
-} from "@reduxjs/toolkit";
+import { configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
-import { ExtensionContext, workspace } from "vscode";
+import { ExtensionContext } from "vscode";
 
 const nextId = {
 	userTodos: 0,
