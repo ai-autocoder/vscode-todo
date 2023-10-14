@@ -2,11 +2,6 @@ import { configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
 import { ExtensionContext } from "vscode";
 
-const nextId = {
-	userTodos: 0,
-	workspaceTodos: 0,
-};
-
 export interface Todo {
 	id: number;
 	text: string;
@@ -36,21 +31,24 @@ const todosSlice = createSlice({
 			return action.payload.data;
 		},
 		addTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; text: string }>) => {
-			if (action.payload.level === TodoLevel.user) {
-				todos.userTodos.push({
-					id: nextId.userTodos++,
-					text: action.payload.text,
-					completed: false,
-					creationDate: new Date().toISOString(),
-				});
-			} else if (action.payload.level === TodoLevel.workspace) {
-				todos.workspaceTodos.push({
-					id: nextId.workspaceTodos++,
-					text: action.payload.text,
-					completed: false,
-					creationDate: new Date().toISOString(),
-				});
+			let todoArr: Todo[] | undefined;
+			switch (action.payload.level) {
+				case TodoLevel.user:
+					todoArr = todos.userTodos;
+					break;
+				case TodoLevel.workspace:
+					todoArr = todos.workspaceTodos;
+					break;
+				default:
+					return;
 			}
+
+			todoArr.push({
+				id: generateUniqueId(todoArr),
+				text: action.payload.text,
+				completed: false,
+				creationDate: new Date().toISOString(),
+			});
 		},
 		toggleTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
 			let todo: Todo | undefined;
@@ -107,4 +105,18 @@ export const storeActions = todosSlice.actions;
 export function persist(store: ToolkitStore, context: ExtensionContext): void {
 	context.globalState.update("TodoData", store.getState().userTodos);
 	context.workspaceState.update("TodoData", store.getState().workspaceTodos);
+}
+
+/**
+ * Generates a unique ID that does not exist in the given array of todos.
+ *
+ * @param {Todo[]} todos - The array of todos to check for existing IDs.
+ * @return {number} The generated unique ID.
+ */
+function generateUniqueId(todos: Todo[]): number {
+	let newId: number;
+	do {
+		newId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+	} while (todos.some((todo) => todo.id === newId));
+	return newId;
 }
