@@ -31,19 +31,9 @@ const todosSlice = createSlice({
 			return action.payload.data;
 		},
 		addTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; text: string }>) => {
-			let todoArr: Todo[] | undefined;
-			switch (action.payload.level) {
-				case TodoLevel.user:
-					todoArr = todos.userTodos;
-					break;
-				case TodoLevel.workspace:
-					todoArr = todos.workspaceTodos;
-					break;
-				default:
-					return;
-			}
+			const todoArr = getTodoArr(todos, action.payload.level);
 
-			todoArr.push({
+			todoArr?.push({
 				id: generateUniqueId(todoArr),
 				text: action.payload.text,
 				completed: false,
@@ -51,13 +41,10 @@ const todosSlice = createSlice({
 			});
 		},
 		toggleTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
-			let todo: Todo | undefined;
-			if (action.payload.level === TodoLevel.user) {
-				todo = todos.userTodos.find((todo) => todo.id === action.payload.id);
-			} else if (action.payload.level === TodoLevel.workspace) {
-				todo = todos.workspaceTodos.find((todo) => todo.id === action.payload.id);
-			}
+			const todoArr = getTodoArr(todos, action.payload.level);
+			const todo = todoArr?.find((todo) => todo.id === action.payload.id);
 			if (!todo) return;
+
 			todo.completed = !todo.completed;
 			todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
 		},
@@ -65,30 +52,18 @@ const todosSlice = createSlice({
 			todos: FullData,
 			action: PayloadAction<{ level: TodoLevel; id: number; newText: string }>
 		) => {
-			if (action.payload.level === TodoLevel.user) {
-				const todo = todos.userTodos.find((t) => t.id === action.payload.id);
-				if (todo) {
-					todo.text = action.payload.newText;
-				}
-			} else if (action.payload.level === TodoLevel.workspace) {
-				const todo = todos.workspaceTodos.find((t) => t.id === action.payload.id);
-				if (todo) {
-					todo.text = action.payload.newText;
-				}
-			}
+			const todoArr = getTodoArr(todos, action.payload.level);
+			const todo = todoArr?.find((todo) => todo.id === action.payload.id);
+			if (!todo) return;
+
+			todo.text = action.payload.newText;
 		},
 		deleteTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
-			if (action.payload.level === TodoLevel.user) {
-				const index = todos.userTodos.findIndex((t) => t.id === action.payload.id);
-				if (index !== -1) {
-					todos.userTodos.splice(index, 1);
-				}
-			} else if (action.payload.level === TodoLevel.workspace) {
-				const index = todos.workspaceTodos.findIndex((t) => t.id === action.payload.id);
-				if (index !== -1) {
-					todos.workspaceTodos.splice(index, 1);
-				}
-			}
+			const todoArr = getTodoArr(todos, action.payload.level);
+			const index = todoArr?.findIndex((todo) => todo.id === action.payload.id);
+			if (index === undefined || index === -1) return;
+
+			todoArr?.splice(index, 1);
 		},
 	},
 });
@@ -119,4 +94,22 @@ function generateUniqueId(todos: Todo[]): number {
 		newId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 	} while (todos.some((todo) => todo.id === newId));
 	return newId;
+}
+/**
+ * Retrieves the todo array based on the specified level.
+ *
+ * @param {FullData} todos - The full data containing all the todos.
+ * @param {TodoLevel} level - The level of the todos to retrieve.
+ * @return {Todo[] | undefined} The corresponding todo array based on the level.
+ */
+function getTodoArr(todos: FullData, level: TodoLevel): Todo[] | undefined {
+	switch (level) {
+		case TodoLevel.user:
+			return todos.userTodos;
+		case TodoLevel.workspace:
+			return todos.workspaceTodos;
+		default:
+			console.log(`Invalid TodoLevel: ${level}`);
+			return;
+	}
 }
