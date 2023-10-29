@@ -9,6 +9,7 @@
 			Workspace
 			<vscode-badge appearance="secondary">5</vscode-badge>
 		</vscode-panel-tab>
+
 		<vscode-panel-view id="view-1">
 			<todo-list [level]="TodoLevel.user"></todo-list>
 		</vscode-panel-view>
@@ -18,8 +19,6 @@
 	</vscode-panels>
 
 	<vscode-divider role="separator"></vscode-divider>
-	<div class="row-container">
-		<text-area [placeholder]="'Add new todo'" [(value)]="newTodoText"></text-area>
-		<vscode-button (click)="addTodo()">Add</vscode-button>
-	</div>
+
+	<new-todo [level]="level"></new-todo>
 </main>

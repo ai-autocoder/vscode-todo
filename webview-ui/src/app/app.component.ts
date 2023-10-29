@@ -10,9 +10,7 @@ import {
 	vsCodePanels,
 	vsCodeBadge,
 } from "@vscode/webview-ui-toolkit";
-import { TodoService } from "./todo/todo.service";
-import { vscode } from "./utilities/vscode";
-import { Todo, TodoLevel } from "../../../src/todo/store";
+import { TodoLevel } from "../../../src/todo/store";
 
 // In order to use the Webview UI Toolkit web components they
 // must be registered with the browser (i.e. webview) using the
@@ -51,23 +49,8 @@ provideVSCodeDesignSystem().register(
 	styleUrls: ["./app.component.css"],
 })
 export class AppComponent {
-	newTodoText: string = "";
 	level: TodoLevel = TodoLevel.workspace;
 	TodoLevel: typeof TodoLevel = TodoLevel;
-
-	constructor(private todoService: TodoService) {}
-
-	addTodo() {
-		console.log("addTodo: " + this.newTodoText);
-		if (this.newTodoText === "") return;
-		this.todoService.addTodo({ text: this.newTodoText, level: this.level });
-		this.newTodoText = "";
-	}
-
-	onTextInserted(value: string) {
-		console.log(value);
-		this.newTodoText = value;
-	}
 
 	selectTab(tab: TodoLevel) {
 		this.level = tab;

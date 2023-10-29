@@ -7,8 +7,10 @@ import { Component, EventEmitter, Input, Output } from "@angular/core";
 			(input)="onInput($event)"
 			[placeholder]="placeholder"
 			[value]="text"
+			[resize]="'vertical'"
 		></vscode-text-area>
 	`,
+	styles: ["vscode-text-area{width: inherit}"],
 })
 export class TextArea {
 	text: string = "";

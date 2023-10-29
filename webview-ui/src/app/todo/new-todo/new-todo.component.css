@@ -1,0 +1,10 @@
+.new-todo-container {
+	display: flex;
+	align-items: flex-start;
+	min-height: 100px;
+	width: 100%;
+}
+
+text-area {
+	width: 100%;
+}

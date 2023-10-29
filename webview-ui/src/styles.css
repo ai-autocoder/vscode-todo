@@ -1,48 +1,40 @@
-*{
+* {
 	box-sizing: border-box;
 }
-main {
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: flex-start;
-	height: 100%;
-	font-size: var(--vscode-editor-font-size);
- }
- 
- li{
-	 list-style: none;
-	 display: grid;
- }
- 
- .todo-text{
-	 flex-grow: 1;
-	 margin-right: 10px;
- }
- p.todo-text{
-	 padding: 1rem;
-	 max-width: 70ch;
- 
- }
- p.todo-text:hover{
-	 background-color: hsla(0, 0%, 50%, 0.5);
- }
- 
- p.todo-text.complete{
-	 text-decoration: line-through;
- }
- 
- small{
-	 display: block;
- }
- 
- .row{
-	 display: block;
-	 align-items: center;
- }
- .row:hover{
+
+
+li {
+	list-style: none;
+	display: grid;
+}
+
+.todo-text {
+	flex-grow: 1;
+	margin-right: 10px;
+}
+p.todo-text {
+	padding: 1rem;
+	max-width: 70ch;
+}
+p.todo-text:hover {
+	background-color: hsla(0, 0%, 50%, 0.5);
+}
+
+p.todo-text.complete {
+	text-decoration: line-through;
+}
+
+small {
+	display: block;
+}
+
+.row {
+	display: block;
+	align-items: center;
+}
+.row:hover {
 	background-color: var(--vscode-list-hoverBackground);
- }
- vscode-button{
-	 margin-left: 10px;
- }
+}
+vscode-button {
+	margin-left: 10px;
+}
