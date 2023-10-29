@@ -1,0 +1,52 @@
+ul {
+	padding: 0;
+}
+
+li {
+	list-style: none;
+}
+
+.todo-container {
+	display: flex;
+	padding: 0 0.25rem;
+	gap: 0.5rem;
+	&:hover {
+		background-color: var(--vscode-list-hoverBackground);
+	}
+
+	.checkbox {
+		// padding: 0.25rem;
+	}
+
+	.content {
+		width: 100%;
+		padding: 0.25rem;
+
+		.body {
+			padding-bottom: 0.25rem;
+			p.todo-text {
+				margin: 0;
+				padding: 0;
+			}
+			p.todo-text.complete {
+				text-decoration: line-through;
+			}
+			text-area {
+				width: 100%;
+			}
+		}
+
+		.footer {
+			display: flex;
+			gap: 0.8rem;
+			padding-top: 0.25rem;
+
+			vscode-button {
+				margin-right: 1rem;
+			}
+			.labels {
+				display: block;
+			}
+		}
+	}
+}

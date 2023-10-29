@@ -2,39 +2,12 @@
 	box-sizing: border-box;
 }
 
-
-li {
-	list-style: none;
-	display: grid;
+html,
+body {
+	height: 100%;
 }
 
-.todo-text {
-	flex-grow: 1;
-	margin-right: 10px;
-}
-p.todo-text {
-	padding: 1rem;
+main {
 	max-width: 70ch;
-}
-p.todo-text:hover {
-	background-color: hsla(0, 0%, 50%, 0.5);
-}
-
-p.todo-text.complete {
-	text-decoration: line-through;
-}
-
-small {
-	display: block;
-}
-
-.row {
-	display: block;
-	align-items: center;
-}
-.row:hover {
-	background-color: var(--vscode-list-hoverBackground);
-}
-vscode-button {
-	margin-left: 10px;
+	margin: 0 auto;
 }

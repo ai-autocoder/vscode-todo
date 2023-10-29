@@ -1,3 +1,5 @@
 small {
 	font-variant: small-caps;
+	display: flex;
+	flex-direction: column;
 }

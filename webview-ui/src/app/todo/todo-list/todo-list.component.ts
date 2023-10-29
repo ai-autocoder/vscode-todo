@@ -5,7 +5,7 @@ import { TodoService } from "../todo.service";
 @Component({
 	selector: "todo-list",
 	templateUrl: "./todo-list.component.html",
-	styleUrls: ["./todo-list.component.css"],
+	styleUrls: ["./todo-list.component.scss"],
 })
 export class TodoList {
 	@Input()
@@ -13,11 +13,14 @@ export class TodoList {
 	todos: Todo[] = [];
 	userTodos: Todo[] = [];
 	workspaceTodos: Todo[] = [];
+	isChecked: boolean = false;
+
 	//Store temporary UI state
 	componentState: {
 		[id: number]: {
 			isEditable?: boolean;
 			previousText?: string;
+			footerActive?: boolean;
 		};
 	} = {};
 
@@ -38,6 +41,15 @@ export class TodoList {
 		}
 		this.componentState[id].previousText = this.todos.find((todo) => todo.id === id)?.text;
 		this.componentState[id].isEditable = !this.componentState[id].isEditable;
+	}
+
+	toggleFooter(id: number) {
+		if (this.componentState[id] === undefined) {
+			this.componentState[id] = {};
+		}
+		if (!this.componentState[id].isEditable) {
+			this.componentState[id].footerActive = !this.componentState[id].footerActive;
+		}
 	}
 
 	saveEdit(id: number) {
