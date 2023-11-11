@@ -12,6 +12,14 @@ todo-list {
 	width: 100%;
 	height: 100%;
 }
+vscode-panel-tab {
+	&[aria-selected="true"] {
+		color: var(--vscode-settings-headerForeground);
+	}
+}
+vscode-panel-view {
+	border-top: 1px solid var(--vscode-settings-headerBorder);
+}
 
 new-todo {
 	display: flex;
