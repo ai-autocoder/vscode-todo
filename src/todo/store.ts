@@ -65,6 +65,16 @@ const todosSlice = createSlice({
 
 			todoArr?.splice(index, 1);
 		},
+		reorderTodo: (
+			todos: FullData,
+			action: PayloadAction<{ level: TodoLevel; reorderedTodos: Todo[] }>
+		) => {
+			if (action.payload.level === TodoLevel.user) {
+				todos.userTodos = action.payload.reorderedTodos;
+			} else if (action.payload.level === TodoLevel.workspace) {
+				todos.workspaceTodos = action.payload.reorderedTodos;
+			}
+		},
 	},
 });
 

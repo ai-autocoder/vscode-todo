@@ -1,7 +1,7 @@
 <section>
-	<ul>
+	<ul cdkDropList (cdkDropListDropped)="onDrop($event)">
 		<ng-container *ngFor="let todo of todos">
-			<li>
+			<li #dragItem cdkDrag>
 				<div class="todo-container">
 					<div class="checkbox">
 						<vscode-checkbox
@@ -27,9 +27,7 @@
 							</p>
 						</div>
 						<div class="footer" *ngIf="componentState[todo.id]?.footerActive">
-							<div>
-								// Starred
-							</div>
+							<div>// Starred</div>
 							<div class="buttons">
 								<vscode-button
 									(click)="componentState[todo.id]?.isEditable ? saveEdit(todo.id) : toggleEdit(todo.id)"

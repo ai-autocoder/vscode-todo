@@ -6,10 +6,11 @@ import { TodoLabel } from "./shared/todo-label.component";
 import { TodoList } from "./todo/todo-list/todo-list.component";
 import { TextArea } from "./shared/text-area.component";
 import { NewTodoComponent } from "./todo/new-todo/new-todo.component";
+import { DragDropModule } from "@angular/cdk/drag-drop";
 
 @NgModule({
 	declarations: [AppComponent, TodoLabel, TodoList, TextArea, NewTodoComponent],
-	imports: [BrowserModule, FormsModule],
+	imports: [BrowserModule, FormsModule, DragDropModule],
 	providers: [],
 	bootstrap: [AppComponent],
 	schemas: [CUSTOM_ELEMENTS_SCHEMA],

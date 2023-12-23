@@ -9,10 +9,9 @@ import {
 } from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { storeActions } from "../todo/store";
+import { storeActions, FullData } from "../todo/store";
 import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
 import { Message, MessageActions, MESSAGE } from "./message";
-import { FullData } from "../todo/store";
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -204,6 +203,11 @@ export class HelloWorldPanel {
 					case MessageActions.editTodo: {
 						const { payload } = message as Message<MessageActions.editTodo>;
 						this.store.dispatch(storeActions.editTodo(payload));
+						break;
+					}
+					case MessageActions.reorderTodo: {
+						const { payload } = message as Message<MessageActions.reorderTodo>;
+						this.store.dispatch(storeActions.reorderTodo(payload));
 						break;
 					}
 					default:

@@ -1,9 +1,35 @@
 ul {
 	padding: 0;
+
+	li {
+		list-style: none;
+		cursor: grab;
+	}
 }
 
-li {
-	list-style: none;
+// Styles when dragging starts
+.cdk-drop-list {
+	&.cdk-drop-list-dragging {
+		cursor: grabbing; // Cursor style when dragging
+
+		li {
+			cursor: grabbing;
+		}
+
+		.cdk-drag {
+			/* Animate items as they're being sorted. */
+			transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+		}
+	}
+}
+
+/* Animate an item that has been dropped. */
+.cdk-drag-animating {
+	transition: transform 300ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.cdk-drag-placeholder {
+	opacity: 0;
 }
 
 .todo-container {

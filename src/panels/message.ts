@@ -12,6 +12,8 @@ export interface Message<T extends MessageActions> {
 		? Parameters<typeof storeActions.editTodo>[0]
 		: T extends MessageActions.setData
 		? FullData
+		: T extends MessageActions.reorderTodo
+		? Parameters<typeof storeActions.reorderTodo>[0]
 		: never;
 }
 
@@ -20,7 +22,7 @@ export const enum MessageActions {
 	editTodo = "editTodo",
 	toggleTodo = "toggleTodo",
 	deleteTodo = "deleteTodo",
-	getData = "getData",
+	reorderTodo = "reorderTodo",
 	setData = "setData",
 }
 
@@ -48,6 +50,12 @@ export const MESSAGE = {
 		payload: Parameters<typeof storeActions.deleteTodo>[0]
 	): Message<MessageActions.deleteTodo> => ({
 		type: MessageActions.deleteTodo,
+		payload,
+	}),
+	reorderTodo: (
+		payload: Parameters<typeof storeActions.reorderTodo>[0]
+	): Message<MessageActions.reorderTodo> => ({
+		type: MessageActions.reorderTodo,
 		payload,
 	}),
 	// Message creators from extension to UI

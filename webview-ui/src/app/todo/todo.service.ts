@@ -48,4 +48,8 @@ export class TodoService {
 	editTodo(payload: Parameters<typeof storeActions.editTodo>[0]) {
 		vscode.postMessage(MESSAGE.editTodo(payload));
 	}
+
+	reorderTodos(payload: Parameters<typeof storeActions.reorderTodo>[0]) {
+		vscode.postMessage(MESSAGE.reorderTodo(payload));
+	}
 }

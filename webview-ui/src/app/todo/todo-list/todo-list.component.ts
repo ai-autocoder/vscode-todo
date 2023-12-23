@@ -1,6 +1,7 @@
 import { Component, Input } from "@angular/core";
 import { Todo, TodoLevel } from "../../../../../src/todo/store";
 import { TodoService } from "../todo.service";
+import { CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
 
 @Component({
 	selector: "todo-list",
@@ -71,5 +72,15 @@ export class TodoList {
 
 	delete(id: number) {
 		this.todoService.removeTodo({ id, level: this.level });
+	}
+
+	onDrop(event: CdkDragDrop<Todo[]>) {
+		// Move item within the array and update the order
+		moveItemInArray(this.todos, event.previousIndex, event.currentIndex);
+
+		this.todoService.reorderTodos({
+			level: this.level,
+			reorderedTodos: this.todos,
+		});
 	}
 }
