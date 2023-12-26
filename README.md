@@ -1,37 +1,32 @@
-# Hello World (Angular)
+# VSCode Tasks Extension
 
-This is an implementation of the default [Hello World](https://github.com/microsoft/vscode-webview-ui-toolkit-samples/tree/main/default/hello-world) sample extension that demonstrates how to set up and use a [Angular](https://angular.io/) + [Webview UI Toolkit](https://github.com/microsoft/vscode-webview-ui-toolkit) webview extension.
+## Introduction
 
-![A screenshot of the sample extension.](./assets/hello-world.png)
+**VSCode Tasks** is a to-do list manager for Visual Studio Code. It allows you to create to-dos linked to either the workspace or your user profile, providing quick and easy access from the VSCode status bar. This extension simplifies task management directly within your coding environment, helping you stay organized and focused.
 
-## Documentation
+## Features
 
-For a deeper dive into how this sample works, read the guides below.
+- Workspace and Global To-dos: Create to-dos linked to either the current workspace or your user account for global access.
+- Easy Access from Status Bar: Quickly access your to-dos from the VSCode status bar, where the number of outstanding tasks is also displayed.
+- Edit and Manage To-dos: Click on a to-do to view its creation and completion dates/times or to edit or delete it.
+- Drag and Drop Functionality: Easily reorder your to-do list with a simple drag and drop action.
 
-- [Extension structure](./docs/extension-structure.md)
-- [Extension commands](./docs/extension-commands.md)
-- [Extension development cycle](./docs/extension-development-cycle.md)
+## Installation
 
-## Run The Sample
+This extension is available in the VSCode Marketplace. You can install it directly from there.
 
-```bash
-# Copy sample extension locally
-npx degit microsoft/vscode-webview-ui-toolkit-samples/frameworks/hello-world-angular hello-world
+## Usage
 
-# Navigate into sample directory
-cd hello-world
+After installation, you'll find a new button in your status bar indicating the number of outstanding to-dos. Clicking this button opens the to-do list interface.
 
-# Install dependencies for both the extension and webview UI source code
-npm run install:all
+## Contribution
 
-# Build webview UI source code
-npm run build:webview
+I welcome contributions to the VSCode Tasks extension. Feel free to submit pull requests, report issues, or suggest new features through the project's GitHub repository.
 
-# Open sample in VS Code
-code .
-```
+## License
 
-Once the sample is open inside VS Code you can run the extension by doing the following:
+This project is licensed under the MIT License.
 
-1. Press `F5` to open a new Extension Development Host window
-2. Inside the host window, open the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P` on Mac) and type `Hello World (Angular): Show`
+## Contact
+
+For questions, feedback, or issue reporting, please reach out through our GitHub repository.
