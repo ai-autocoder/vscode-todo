@@ -10,7 +10,18 @@ import { Component, EventEmitter, Input, Output } from "@angular/core";
 			[resize]="'vertical'"
 		></vscode-text-area>
 	`,
-	styles: ["vscode-text-area{width: inherit}"],
+	styles: [
+		`
+			vscode-text-area {
+				width: inherit;
+			}
+		`,
+		`
+			vscode-text-area::part(control) {
+				font-size: var(--vscode-editor-font-size);
+			}
+		`,
+	],
 })
 export class TextArea {
 	text: string = "";

@@ -9,3 +9,7 @@
 text-area {
 	width: 100%;
 }
+
+vscode-button::part(content) {
+	font-size: var(--vscode-editor-font-size);
+}

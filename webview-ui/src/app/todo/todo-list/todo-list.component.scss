@@ -51,6 +51,7 @@ ul {
 		.body {
 			padding-bottom: 0.25rem;
 			p.todo-text {
+				font-size: var(--vscode-editor-font-size);
 				margin: 0;
 				padding: 0;
 			}

@@ -4,7 +4,6 @@ main {
 	justify-content: center;
 	align-items: flex-start;
 	height: 100%;
-	font-size: var(--vscode-editor-font-size);
 }
 
 vscode-panels,
