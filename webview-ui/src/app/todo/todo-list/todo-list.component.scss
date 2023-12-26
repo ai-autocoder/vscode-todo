@@ -40,10 +40,6 @@ ul {
 		background-color: var(--vscode-list-hoverBackground);
 	}
 
-	.checkbox {
-		// padding: 0.25rem;
-	}
-
 	.content {
 		width: 100%;
 		padding: 0.25rem;
@@ -65,6 +61,7 @@ ul {
 
 		.footer {
 			display: flex;
+			justify-content: space-between;
 			gap: 0.8rem;
 			padding-top: 0.25rem;
 
