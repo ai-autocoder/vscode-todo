@@ -2,6 +2,7 @@
 	"name": "vscode-tasks",
 	"displayName": "VS Code Tasks",
 	"description": "Save tasks linked to workspaces or globally, access from the status bar.",
+	"icon": "icon.png",
 	"version": "0.0.1",
 	"engines": {
 		"vscode": "^1.75.0"
