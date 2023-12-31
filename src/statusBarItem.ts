@@ -27,8 +27,8 @@ export function createStatusBarItem(context: vscode.ExtensionContext) {
 export function updateStatusBarItem({ workspace, user }: TodoCount) {
 	if (!_statusBarItem) return;
 
-	_statusBarItem.text = `Todo ${workspace} W / ${user} U`;
+	_statusBarItem.text = `Todo ${user} / ${workspace}`;
 	_statusBarItem.tooltip = new vscode.MarkdownString(
-		`Open Todos\n- Workspace: ${workspace}\n- User: ${user}`
+		`Open Todos\n- User: ${user}\n- Workspace: ${workspace}`
 	);
 }
