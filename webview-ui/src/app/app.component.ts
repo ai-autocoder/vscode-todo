@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, OnInit } from "@angular/core";
 import {
 	provideVSCodeDesignSystem,
 	vsCodeButton,
@@ -11,6 +11,8 @@ import {
 	vsCodeBadge,
 } from "@vscode/webview-ui-toolkit";
 import { TodoLevel } from "../../../src/todo/store";
+import { TodoCount } from "../../../src/todo/todoUtils";
+import { TodoService } from "./todo/todo.service";
 
 // In order to use the Webview UI Toolkit web components they
 // must be registered with the browser (i.e. webview) using the
@@ -48,9 +50,17 @@ provideVSCodeDesignSystem().register(
 	templateUrl: "./app.component.html",
 	styleUrls: ["./app.component.css"],
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
 	level: TodoLevel = TodoLevel.workspace;
 	TodoLevel: typeof TodoLevel = TodoLevel;
+	todoCount!: TodoCount;
+
+	constructor(private todoService: TodoService) {}
+
+	ngOnInit(): void {
+		// Get data
+		this.todoCount = this.todoService.todoCount;
+	}
 
 	selectTab(tab: TodoLevel) {
 		this.level = tab;

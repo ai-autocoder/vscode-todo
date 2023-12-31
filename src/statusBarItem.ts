@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { FullData } from "./todo/store";
+import { TodoCount } from "./todo/todoUtils";
 
 let _statusBarItem: vscode.StatusBarItem | undefined;
 
@@ -20,29 +20,15 @@ export function createStatusBarItem(context: vscode.ExtensionContext) {
 }
 
 /**
- * Updates the status bar item with the current number of todos in the workspace and for the user.
+ * Updates the status bar item with the current number of todos.
  *
- * @param {string} workspaceTodos - The number of todos in the workspace.
- * @param {string} userTodos - The number of todos for the user.
+ * @param {Object} todoCount - An object containing the number of todos.
  */
-export function updateStatusBarItem(state: FullData) {
+export function updateStatusBarItem({ workspace, user }: TodoCount) {
 	if (!_statusBarItem) return;
 
-	const { workspace, user } = getNumberOfTodos(state);
 	_statusBarItem.text = `Todo ${workspace} W / ${user} U`;
 	_statusBarItem.tooltip = new vscode.MarkdownString(
 		`Open Todos\n- Workspace: ${workspace}\n- User: ${user}`
 	);
-}
-
-/**
- * Calculate the number of incomplete todos in the given state.
- *
- * @param {FullData} state - The state containing the todos.
- * @return {{workspace: number, user: number}} - An object containing the number of todos in the workspace and for the user.
- */
-function getNumberOfTodos(state: FullData) {
-	const workspace = state.workspaceTodos?.filter((todo) => !todo.completed).length ?? 0;
-	const user = state.userTodos?.filter((todo) => !todo.completed).length ?? 0;
-	return { workspace, user };
 }

@@ -2,6 +2,7 @@ import { Injectable } from "@angular/core";
 import { Todo, storeActions, TodoLevel } from "../../../../src/todo/store";
 import { MESSAGE, Message, MessageActions } from "../../../../src/panels/message";
 import { vscode } from "../utilities/vscode";
+import { TodoCount } from "../../../../src/todo/todoUtils";
 
 @Injectable({
 	providedIn: "root",
@@ -9,6 +10,7 @@ import { vscode } from "../utilities/vscode";
 export class TodoService {
 	private _userTodos: Todo[] = [];
 	private _workspaceTodos: Todo[] = [];
+	private _todoCount: TodoCount = { user: 0, workspace: 0 };
 
 	constructor() {
 		window.addEventListener("message", ({ data }: { data: Message<MessageActions> }) => {
@@ -21,6 +23,9 @@ export class TodoService {
 
 				if (payload.userTodos.length) this._userTodos.push(...payload.userTodos);
 				if (payload.workspaceTodos.length) this._workspaceTodos.push(...payload.workspaceTodos);
+			} else if (data.type === MessageActions.setTodoCount) {
+				const { payload } = data as Message<MessageActions.setTodoCount>;
+				Object.assign(this._todoCount, payload);
 			}
 		});
 	}
@@ -31,6 +36,10 @@ export class TodoService {
 
 	get workspaceTodos(): Todo[] {
 		return this._workspaceTodos;
+	}
+
+	get todoCount(): TodoCount {
+		return this._todoCount;
 	}
 
 	addTodo(payload: Parameters<typeof storeActions.addTodo>[0]) {

@@ -1,4 +1,5 @@
 import { FullData, storeActions } from "../todo/store";
+import { TodoCount } from "../todo/todoUtils";
 
 export interface Message<T extends MessageActions> {
 	type: T;
@@ -12,6 +13,8 @@ export interface Message<T extends MessageActions> {
 		? Parameters<typeof storeActions.editTodo>[0]
 		: T extends MessageActions.setData
 		? FullData
+		: T extends MessageActions.setTodoCount
+		? TodoCount
 		: T extends MessageActions.reorderTodo
 		? Parameters<typeof storeActions.reorderTodo>[0]
 		: never;
@@ -24,6 +27,7 @@ export const enum MessageActions {
 	deleteTodo = "deleteTodo",
 	reorderTodo = "reorderTodo",
 	setData = "setData",
+	setTodoCount = "setTodoCount",
 }
 
 // Message creators from Webview to Extension
@@ -61,6 +65,10 @@ export const MESSAGE = {
 	// Message creators from extension to UI
 	setData: (payload: FullData): Message<MessageActions.setData> => ({
 		type: MessageActions.setData,
+		payload,
+	}),
+	setTodoCount: (payload: TodoCount): Message<MessageActions.setTodoCount> => ({
+		type: MessageActions.setTodoCount,
 		payload,
 	}),
 };

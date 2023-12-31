@@ -9,9 +9,10 @@ import {
 } from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { storeActions, FullData } from "../todo/store";
+import { storeActions } from "../todo/store";
 import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
 import { Message, MessageActions, MESSAGE } from "./message";
+import { TodoCount, getNumberOfTodos } from "../todo/todoUtils";
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -26,8 +27,8 @@ export class HelloWorldPanel {
 	public static currentPanel: HelloWorldPanel | undefined;
 	private readonly _panel: WebviewPanel;
 	private _disposables: Disposable[] = [];
-	private context: ExtensionContext;
-	private store: ToolkitStore;
+	private _store: ToolkitStore;
+	private _todoCount: TodoCount = { user: 0, workspace: 0 };
 
 	/**
 	 * The HelloWorldPanel class private constructor (called only from the render method).
@@ -37,8 +38,7 @@ export class HelloWorldPanel {
 	 */
 	private constructor(panel: WebviewPanel, context: ExtensionContext, store: ToolkitStore) {
 		this._panel = panel;
-		this.context = context;
-		this.store = store;
+		this._store = store;
 		const extensionUri = context.extensionUri;
 
 		// Set an event listener to listen for when the panel is disposed (i.e. when the user closes
@@ -49,21 +49,21 @@ export class HelloWorldPanel {
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
 
 		// Set an event listener to listen for messages passed from the webview context
-		this._setWebviewMessageListener(this._panel.webview, context);
-
+		this._setWebviewMessageListener(this._panel.webview);
 		this._panel.onDidChangeViewState(
 			() => {
 				if (this._panel.visible) {
 					// Send data to the webview
-					this.update(store.getState());
+					this.updateWebview();
 				}
 			},
 			null,
 			this._disposables
 		);
 
+		this._todoCount = getNumberOfTodos(store.getState());
 		// Send data to the webview
-		this.update(store.getState());
+		this.updateWebview();
 	}
 
 	/**
@@ -108,10 +108,32 @@ export class HelloWorldPanel {
 	}
 
 	/**
-	 * Sends the updated data to the webview.
+	 * Updates the webview with the current state and optionally with a new todo count.
+	 * This method retrieves the current state from the store and sends it to the webview.
+	 * If the `todoCount` parameter is provided, it updates the todo count in the webview;
+	 * otherwise, it uses the currently stored todo count.
+	 * This method is designed to be called both from the constructor to set the initial state
+	 * and from the store's subscribe callback to reflect state changes.
+	 *
+	 * @param {TodoCount} [todoCount] - An optional parameter representing the new todo count.
+	 *                                  If provided, this count will be used to update the webview.
+	 *                                  If omitted, the current stored todo count is used.
 	 */
-	update(state: FullData) {
-		this._panel.webview.postMessage(MESSAGE.setData(state));
+	updateWebview(todoCount?: TodoCount) {
+		const state = this._store.getState();
+		if (todoCount) {
+			this._todoCount = todoCount;
+		}
+
+		this.update(MESSAGE.setData(state));
+		this.update(MESSAGE.setTodoCount(this._todoCount));
+	}
+
+	/**
+	 * Sends data to the webview.
+	 */
+	private update(message: Message<MessageActions>) {
+		this._panel.webview.postMessage(message);
 	}
 
 	/**
@@ -175,39 +197,38 @@ export class HelloWorldPanel {
 	}
 
 	/**
-	 * Sets up an event listener to listen for messages passed from the webview context and
-	 * executes code based on the message that is recieved.
+	 * Sets up an event listener to listen for messages passed from the webview and
+	 * executes code based on the message that is received.
 	 *
 	 * @param webview A reference to the extension webview
-	 * @param context A reference to the extension context
 	 */
-	private _setWebviewMessageListener(webview: Webview, context: ExtensionContext) {
+	private _setWebviewMessageListener(webview: Webview) {
 		webview.onDidReceiveMessage(
 			(message: Message<MessageActions>) => {
 				switch (message.type) {
 					case MessageActions.addTodo: {
 						const { payload } = message as Message<MessageActions.addTodo>;
-						this.store.dispatch(storeActions.addTodo(payload));
+						this._store.dispatch(storeActions.addTodo(payload));
 						break;
 					}
 					case MessageActions.deleteTodo: {
 						const { payload } = message as Message<MessageActions.deleteTodo>;
-						this.store.dispatch(storeActions.deleteTodo(payload));
+						this._store.dispatch(storeActions.deleteTodo(payload));
 						break;
 					}
 					case MessageActions.toggleTodo: {
 						const { payload } = message as Message<MessageActions.toggleTodo>;
-						this.store.dispatch(storeActions.toggleTodo(payload));
+						this._store.dispatch(storeActions.toggleTodo(payload));
 						break;
 					}
 					case MessageActions.editTodo: {
 						const { payload } = message as Message<MessageActions.editTodo>;
-						this.store.dispatch(storeActions.editTodo(payload));
+						this._store.dispatch(storeActions.editTodo(payload));
 						break;
 					}
 					case MessageActions.reorderTodo: {
 						const { payload } = message as Message<MessageActions.reorderTodo>;
-						this.store.dispatch(storeActions.reorderTodo(payload));
+						this._store.dispatch(storeActions.reorderTodo(payload));
 						break;
 					}
 					default:

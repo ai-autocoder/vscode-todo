@@ -2,12 +2,11 @@
 	<vscode-panels activeid="tab-2">
 		<vscode-panel-tab (click)="selectTab(TodoLevel.user)" id="tab-1">
 			User
-			<vscode-badge appearance="secondary">1</vscode-badge>
-			<span title="Overdue" style="color: red">2</span>
+			<vscode-badge appearance="secondary">{{todoCount.user}}</vscode-badge>
 		</vscode-panel-tab>
 		<vscode-panel-tab (click)="selectTab(TodoLevel.workspace)" id="tab-2">
 			Workspace
-			<vscode-badge appearance="secondary">5</vscode-badge>
+			<vscode-badge appearance="secondary">{{todoCount.workspace}}</vscode-badge>
 		</vscode-panel-tab>
 
 		<vscode-panel-view id="view-1">
