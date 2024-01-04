@@ -1,7 +1,7 @@
 import { Component, Input } from "@angular/core";
 import { Todo, TodoLevel } from "../../../../../src/todo/store";
 import { TodoService } from "../todo.service";
-import { CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
+import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
 
 @Component({
 	selector: "todo-list",
@@ -15,6 +15,7 @@ export class TodoList {
 	userTodos: Todo[] = [];
 	workspaceTodos: Todo[] = [];
 	isChecked: boolean = false;
+	todoCount = 0;
 
 	//Store temporary UI state
 	componentState: {
@@ -83,4 +84,18 @@ export class TodoList {
 			reorderedTodos: this.todos,
 		});
 	}
+
+	/**
+	 * Predicate function that only allows sorting items
+	 * within their respective completed or incomplete
+	 * categories, without intermixing.
+	 */
+	sortPredicate = (index: number, item: CdkDrag<Todo>): boolean => {
+		if (this.level === TodoLevel.user) {
+			this.todoCount = this.todoService.todoCount.user;
+		} else {
+			this.todoCount = this.todoService.todoCount.workspace;
+		}
+		return item.data.completed ? index > this.todoCount - 1 : index < this.todoCount;
+	};
 }
