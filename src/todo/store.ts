@@ -33,7 +33,7 @@ const todosSlice = createSlice({
 		addTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; text: string }>) => {
 			const todoArr = getTodoArr(todos, action.payload.level);
 
-			todoArr?.push({
+			todoArr?.unshift({
 				id: generateUniqueId(todoArr),
 				text: action.payload.text,
 				completed: false,
@@ -47,6 +47,8 @@ const todosSlice = createSlice({
 
 			todo.completed = !todo.completed;
 			todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
+			// Sort completed todos to be after uncompleted
+			todoArr?.sort((a, b) => Number(a.completed) - Number(b.completed));
 		},
 		editTodo: (
 			todos: FullData,
