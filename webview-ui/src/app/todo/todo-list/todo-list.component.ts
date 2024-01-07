@@ -1,21 +1,43 @@
-import { Component, Input } from "@angular/core";
+import { AfterViewInit, Component, Input, OnInit } from "@angular/core";
 import { Todo, TodoLevel } from "../../../../../src/todo/store";
 import { TodoService } from "../todo.service";
 import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
+import { trigger, style, transition, animate } from "@angular/animations";
 
 @Component({
 	selector: "todo-list",
 	templateUrl: "./todo-list.component.html",
 	styleUrls: ["./todo-list.component.scss"],
+	animations: [
+		trigger("fadeAnimation", [
+			transition(":enter", [
+				style({
+					transform: "translateY(calc(100vh - 200px))",
+				}),
+				animate(150),
+			]),
+			transition(":leave", [
+				animate(
+					200,
+					style({
+						opacity: "0",
+						transform: "translateX(300px)",
+					})
+				),
+			]),
+		]),
+	],
 })
-export class TodoList {
+export class TodoList implements OnInit, AfterViewInit {
 	@Input()
 	level!: TodoLevel;
+
 	todos: Todo[] = [];
 	userTodos: Todo[] = [];
 	workspaceTodos: Todo[] = [];
-	isChecked: boolean = false;
+	isChecked = false;
 	todoCount = 0;
+	animationDisabled = true;
 
 	//Store temporary UI state
 	componentState: {
@@ -35,6 +57,13 @@ export class TodoList {
 		} else {
 			this.todos = this.todoService.workspaceTodos;
 		}
+	}
+
+	ngAfterViewInit(): void {
+		// Enable animations after first render
+		setTimeout(() => {
+			this.animationDisabled = false;
+		}, 200);
 	}
 
 	toggleEdit(id: number) {
@@ -98,4 +127,8 @@ export class TodoList {
 		}
 		return item.data.completed ? index > this.todoCount - 1 : index < this.todoCount;
 	};
+
+	trackById(index: number, todo: Todo): number {
+		return todo.id;
+	}
 }
