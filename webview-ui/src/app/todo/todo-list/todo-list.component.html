@@ -18,8 +18,8 @@
 							<todo-label [todo]="todo"></todo-label>
 						</div>
 						<div class="buttons">
-							<vscode-button (click)="componentState[todo.id]?.isEditable ? saveEdit(todo.id) : toggleEdit(todo.id)"
-								   [innerText]="componentState[todo.id]?.isEditable ? 'Ok' : 'Edit'"></vscode-button>
+							<vscode-button (click)="componentState[todo.id].isEditable ? saveEdit(todo.id) : toggleEdit(todo.id)"
+								   [innerText]="componentState[todo.id].isEditable ? 'Ok' : 'Edit'"></vscode-button>
 							<vscode-button *ngIf="componentState[todo.id]?.isEditable" (click)="cancelEdit(todo.id)">Cancel</vscode-button>
 							<vscode-button *ngIf="!componentState[todo.id]?.isEditable" (click)="delete(todo.id)">Delete</vscode-button>
 						</div>
