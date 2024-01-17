@@ -13,6 +13,7 @@ export interface Todo {
 export interface FullData {
 	workspaceTodos: Todo[];
 	userTodos: Todo[];
+	lastActionType?: string;
 }
 
 export enum TodoLevel {
@@ -25,13 +26,15 @@ const todosSlice = createSlice({
 	initialState: {
 		userTodos: [],
 		workspaceTodos: [],
+		lastActionType: undefined,
 	} as FullData,
 	reducers: {
-		loadData: (todos: FullData, action: PayloadAction<{ data: FullData }>) => {
-			return action.payload.data;
+		loadData: (state: FullData, action: PayloadAction<{ data: FullData }>) => {
+			Object.assign(state, action.payload.data);
+			state.lastActionType = action.type;
 		},
-		addTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; text: string }>) => {
-			const todoArr = getTodoArr(todos, action.payload.level);
+		addTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; text: string }>) => {
+			const todoArr = getTodoArr(state, action.payload.level);
 
 			todoArr?.unshift({
 				id: generateUniqueId(todoArr),
@@ -39,9 +42,10 @@ const todosSlice = createSlice({
 				completed: false,
 				creationDate: new Date().toISOString(),
 			});
+			state.lastActionType = action.type;
 		},
-		toggleTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
-			const todoArr = getTodoArr(todos, action.payload.level);
+		toggleTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
+			const todoArr = getTodoArr(state, action.payload.level);
 			const todo = todoArr?.find((todo) => todo.id === action.payload.id);
 			if (!todo) return;
 
@@ -49,33 +53,37 @@ const todosSlice = createSlice({
 			todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
 			// Sort completed todos to be after uncompleted
 			todoArr?.sort((a, b) => Number(a.completed) - Number(b.completed));
+			state.lastActionType = action.type;
 		},
 		editTodo: (
-			todos: FullData,
+			state: FullData,
 			action: PayloadAction<{ level: TodoLevel; id: number; newText: string }>
 		) => {
-			const todoArr = getTodoArr(todos, action.payload.level);
+			const todoArr = getTodoArr(state, action.payload.level);
 			const todo = todoArr?.find((todo) => todo.id === action.payload.id);
 			if (!todo) return;
 
 			todo.text = action.payload.newText;
+			state.lastActionType = action.type;
 		},
-		deleteTodo: (todos: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
-			const todoArr = getTodoArr(todos, action.payload.level);
+		deleteTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
+			const todoArr = getTodoArr(state, action.payload.level);
 			const index = todoArr?.findIndex((todo) => todo.id === action.payload.id);
 			if (index === undefined || index === -1) return;
 
 			todoArr?.splice(index, 1);
+			state.lastActionType = action.type;
 		},
 		reorderTodo: (
-			todos: FullData,
+			state: FullData,
 			action: PayloadAction<{ level: TodoLevel; reorderedTodos: Todo[] }>
 		) => {
 			if (action.payload.level === TodoLevel.user) {
-				todos.userTodos = action.payload.reorderedTodos;
+				state.userTodos = action.payload.reorderedTodos;
 			} else if (action.payload.level === TodoLevel.workspace) {
-				todos.workspaceTodos = action.payload.reorderedTodos;
+				state.workspaceTodos = action.payload.reorderedTodos;
 			}
+			state.lastActionType = action.type;
 		},
 	},
 });
