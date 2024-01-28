@@ -12,7 +12,6 @@ import { getNonce } from "../utilities/getNonce";
 import { storeActions } from "../todo/store";
 import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
 import { Message, MessageActions, MESSAGE } from "./message";
-import { TodoCount, getNumberOfTodos } from "../todo/todoUtils";
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -28,7 +27,6 @@ export class HelloWorldPanel {
 	private readonly _panel: WebviewPanel;
 	private _disposables: Disposable[] = [];
 	private _store: ToolkitStore;
-	private _todoCount: TodoCount = { user: 0, workspace: 0 };
 
 	/**
 	 * The HelloWorldPanel class private constructor (called only from the render method).
@@ -53,16 +51,12 @@ export class HelloWorldPanel {
 		this._panel.onDidChangeViewState(
 			() => {
 				if (this._panel.visible) {
-					// Send data to the webview
 					this.updateWebview();
 				}
 			},
 			null,
 			this._disposables
 		);
-
-		this._todoCount = getNumberOfTodos(store.getState());
-		// Send data to the webview
 		this.updateWebview();
 	}
 
@@ -108,32 +102,11 @@ export class HelloWorldPanel {
 	}
 
 	/**
-	 * Updates the webview with the current state and optionally with a new todo count.
-	 * This method retrieves the current state from the store and sends it to the webview.
-	 * If the `todoCount` parameter is provided, it updates the todo count in the webview;
-	 * otherwise, it uses the currently stored todo count.
-	 * This method is designed to be called both from the constructor to set the initial state
-	 * and from the store's subscribe callback to reflect state changes.
-	 *
-	 * @param {TodoCount} [todoCount] - An optional parameter representing the new todo count.
-	 *                                  If provided, this count will be used to update the webview.
-	 *                                  If omitted, the current stored todo count is used.
+	 * Sends the current state to the webview
 	 */
-	updateWebview(todoCount?: TodoCount) {
-		const state = this._store.getState();
-		if (todoCount) {
-			this._todoCount = todoCount;
-		}
-
-		this.update(MESSAGE.setData(state));
-		this.update(MESSAGE.setTodoCount(this._todoCount));
-	}
-
-	/**
-	 * Sends data to the webview.
-	 */
-	private update(message: Message<MessageActions>) {
-		this._panel.webview.postMessage(message);
+	public updateWebview() {
+		const currentState = this._store.getState();
+		this._panel.webview.postMessage(MESSAGE.setData(currentState));
 	}
 
 	/**

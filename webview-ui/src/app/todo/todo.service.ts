@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { Todo, storeActions, TodoLevel } from "../../../../src/todo/store";
+import { Todo, storeActions } from "../../../../src/todo/store";
 import { MESSAGE, Message, MessageActions } from "../../../../src/panels/message";
 import { vscode } from "../utilities/vscode";
 import { TodoCount } from "../../../../src/todo/todoUtils";
@@ -15,17 +15,17 @@ export class TodoService {
 	constructor() {
 		window.addEventListener("message", ({ data }: { data: Message<MessageActions> }) => {
 			if (data.type === MessageActions.setData) {
-				const { payload } = data as Message<MessageActions.setData>;
+				const {
+					payload: { workspaceTodos, userTodos, lastActionType, numberOfTodos },
+				} = data as Message<MessageActions.setData>;
 
 				// Clear old data
 				if (this._userTodos.length) this._userTodos.length = 0;
 				if (this._workspaceTodos.length) this._workspaceTodos.length = 0;
 
-				if (payload.userTodos.length) this._userTodos.push(...payload.userTodos);
-				if (payload.workspaceTodos.length) this._workspaceTodos.push(...payload.workspaceTodos);
-			} else if (data.type === MessageActions.setTodoCount) {
-				const { payload } = data as Message<MessageActions.setTodoCount>;
-				Object.assign(this._todoCount, payload);
+				if (userTodos.length) this._userTodos.push(...userTodos);
+				if (workspaceTodos.length) this._workspaceTodos.push(...workspaceTodos);
+				Object.assign(this._todoCount, numberOfTodos);
 			}
 		});
 	}

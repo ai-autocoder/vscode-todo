@@ -1,6 +1,6 @@
 import { configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
 import { ExtensionContext } from "vscode";
+import { getNumberOfTodos, TodoCount } from "./todoUtils";
 
 export interface Todo {
 	id: number;
@@ -14,6 +14,7 @@ export interface FullData {
 	workspaceTodos: Todo[];
 	userTodos: Todo[];
 	lastActionType?: string;
+	numberOfTodos: TodoCount;
 }
 
 export enum TodoLevel {
@@ -27,11 +28,13 @@ const todosSlice = createSlice({
 		userTodos: [],
 		workspaceTodos: [],
 		lastActionType: undefined,
+		numberOfTodos: { workspace: 0, user: 0 },
 	} as FullData,
 	reducers: {
 		loadData: (state: FullData, action: PayloadAction<{ data: FullData }>) => {
 			Object.assign(state, action.payload.data);
 			state.lastActionType = action.type;
+			state.numberOfTodos = getNumberOfTodos(state);
 		},
 		addTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; text: string }>) => {
 			const todoArr = getTodoArr(state, action.payload.level);
@@ -43,6 +46,7 @@ const todosSlice = createSlice({
 				creationDate: new Date().toISOString(),
 			});
 			state.lastActionType = action.type;
+			state.numberOfTodos = getNumberOfTodos(state);
 		},
 		toggleTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
 			const todoArr = getTodoArr(state, action.payload.level);
@@ -54,6 +58,7 @@ const todosSlice = createSlice({
 			// Sort completed todos to be after uncompleted
 			todoArr?.sort((a, b) => Number(a.completed) - Number(b.completed));
 			state.lastActionType = action.type;
+			state.numberOfTodos = getNumberOfTodos(state);
 		},
 		editTodo: (
 			state: FullData,
@@ -73,6 +78,7 @@ const todosSlice = createSlice({
 
 			todoArr?.splice(index, 1);
 			state.lastActionType = action.type;
+			state.numberOfTodos = getNumberOfTodos(state);
 		},
 		reorderTodo: (
 			state: FullData,
@@ -97,9 +103,12 @@ export default function () {
 // Export actions
 export const storeActions = todosSlice.actions;
 
-export function persist(store: ToolkitStore, context: ExtensionContext): void {
-	context.globalState.update("TodoData", store.getState().userTodos);
-	context.workspaceState.update("TodoData", store.getState().workspaceTodos);
+/**
+ * Persists the provided state to the extension context.
+ */
+export function persist(state: FullData, context: ExtensionContext): void {
+	context.globalState.update("TodoData", state.userTodos);
+	context.workspaceState.update("TodoData", state.workspaceTodos);
 }
 
 /**

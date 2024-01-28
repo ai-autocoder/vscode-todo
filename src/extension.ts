@@ -2,8 +2,6 @@ import { commands, ExtensionContext } from "vscode";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { createStatusBarItem, updateStatusBarItem } from "./statusBarItem";
 import createStore, { storeActions, persist, FullData } from "./todo/store";
-import { getNumberOfTodos } from "./todo/todoUtils";
-
 export function activate(context: ExtensionContext) {
 	const store = createStore();
 
@@ -18,16 +16,9 @@ export function activate(context: ExtensionContext) {
 
 	store.subscribe(() => {
 		const state: FullData = store.getState();
-		const numberOfTodos = getNumberOfTodos(state);
-
-		// Update webview
-		HelloWorldPanel.currentPanel?.updateWebview(numberOfTodos);
-
-		// Save data
-		persist(store, context);
-
-		//Update status bar
-		updateStatusBarItem(numberOfTodos);
+		persist(state, context);
+		HelloWorldPanel.currentPanel?.updateWebview();
+		updateStatusBarItem(state.numberOfTodos);
 	});
 
 	// Load data in the store
