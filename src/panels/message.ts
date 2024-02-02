@@ -1,4 +1,5 @@
-import { FullData, storeActions } from "../todo/store";
+import { storeActions } from "../todo/store";
+import { FullData } from "../todo/todoTypes";
 
 export interface Message<T extends MessageActions> {
 	type: T;

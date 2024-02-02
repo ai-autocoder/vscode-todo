@@ -1,5 +1,5 @@
 import { Component, Input } from "@angular/core";
-import { Todo } from "../../../../src/todo/store";
+import { Todo } from "../../../../src/todo/todoTypes";
 
 @Component({
 	selector: "todo-label",

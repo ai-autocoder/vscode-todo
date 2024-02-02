@@ -1,5 +1,5 @@
 import { Component, Input } from "@angular/core";
-import { TodoLevel } from "../../../../../src/todo/store";
+import { TodoLevel } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
 @Component({

@@ -10,8 +10,7 @@ import {
 	vsCodePanels,
 	vsCodeBadge,
 } from "@vscode/webview-ui-toolkit";
-import { TodoLevel } from "../../../src/todo/store";
-import { TodoCount } from "../../../src/todo/todoUtils";
+import { TodoLevel, TodoCount } from "../../../src/todo/todoTypes";
 import { TodoService } from "./todo/todo.service";
 
 // In order to use the Webview UI Toolkit web components they

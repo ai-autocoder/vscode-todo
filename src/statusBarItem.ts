@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { TodoCount } from "./todo/todoUtils";
+import { TodoCount } from "./todo/todoTypes";
 
 let _statusBarItem: vscode.StatusBarItem | undefined;
 

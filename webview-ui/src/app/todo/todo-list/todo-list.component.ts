@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, Input, OnInit } from "@angular/core";
-import { Todo, TodoLevel } from "../../../../../src/todo/store";
+import { Todo, TodoLevel } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
 import { trigger, style, transition, animate } from "@angular/animations";

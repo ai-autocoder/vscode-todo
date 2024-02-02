@@ -1,8 +1,8 @@
 import { Injectable } from "@angular/core";
-import { Todo, storeActions } from "../../../../src/todo/store";
+import { Todo, TodoCount } from "../../../../src/todo/todoTypes";
+import { storeActions } from "../../../../src/todo/store";
 import { MESSAGE, Message, MessageActions } from "../../../../src/panels/message";
 import { vscode } from "../utilities/vscode";
-import { TodoCount } from "../../../../src/todo/todoUtils";
 
 @Injectable({
 	providedIn: "root",
