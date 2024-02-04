@@ -11,7 +11,9 @@ export interface Message<T extends MessageActions> {
 		? Parameters<typeof storeActions.deleteTodo>[0]
 		: T extends MessageActions.editTodo
 		? Parameters<typeof storeActions.editTodo>[0]
-		: T extends MessageActions.setData
+		: T extends MessageActions.reloadWebview
+		? FullData
+		: T extends MessageActions.syncData
 		? FullData
 		: T extends MessageActions.reorderTodo
 		? Parameters<typeof storeActions.reorderTodo>[0]
@@ -24,7 +26,8 @@ export const enum MessageActions {
 	toggleTodo = "toggleTodo",
 	deleteTodo = "deleteTodo",
 	reorderTodo = "reorderTodo",
-	setData = "setData",
+	reloadWebview = "reloadWebview", // Initial data sent to webview
+	syncData = "syncData", //Subsequent data synchronization to webview
 }
 
 // Message creators from Webview to Extension
@@ -60,8 +63,12 @@ export const MESSAGE = {
 		payload,
 	}),
 	// Message creators from extension to UI
-	setData: (payload: FullData): Message<MessageActions.setData> => ({
-		type: MessageActions.setData,
+	reloadWebview: (payload: FullData): Message<MessageActions.reloadWebview> => ({
+		type: MessageActions.reloadWebview,
+		payload,
+	}),
+	syncData: (payload: FullData): Message<MessageActions.syncData> => ({
+		type: MessageActions.syncData,
 		payload,
 	}),
 };

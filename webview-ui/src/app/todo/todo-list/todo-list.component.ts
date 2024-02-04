@@ -3,6 +3,8 @@ import { Todo, TodoLevel } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
 import { trigger, style, transition, animate } from "@angular/animations";
+import { Subscription } from "rxjs";
+import { ChangeDetectorRef } from "@angular/core";
 
 @Component({
 	selector: "todo-list",
@@ -10,13 +12,13 @@ import { trigger, style, transition, animate } from "@angular/animations";
 	styleUrls: ["./todo-list.component.scss"],
 	animations: [
 		trigger("fadeAnimation", [
-			transition(":enter", [
+			transition("void => true", [
 				style({
 					transform: "translateY(calc(100vh - 200px))",
 				}),
 				animate(150),
 			]),
-			transition(":leave", [
+			transition("true => void", [
 				animate(
 					200,
 					style({
@@ -28,7 +30,7 @@ import { trigger, style, transition, animate } from "@angular/animations";
 		]),
 	],
 })
-export class TodoList implements OnInit, AfterViewInit {
+export class TodoList implements OnInit {
 	@Input()
 	level!: TodoLevel;
 
@@ -37,7 +39,14 @@ export class TodoList implements OnInit, AfterViewInit {
 	workspaceTodos: Todo[] = [];
 	isChecked = false;
 	todoCount = 0;
-	animationDisabled = true;
+	isFadeAnimationEnabled = false;
+	private lastActionTypeSubscription!: Subscription;
+	isFadeAnimationEnabledMap: { [key: string]: boolean } = {
+		"": false,
+		"todos/loadData": false,
+		"todos/addTodo": true,
+		"todos/deleteTodo": true,
+	};
 
 	//Store temporary UI state
 	componentState: {
@@ -48,7 +57,7 @@ export class TodoList implements OnInit, AfterViewInit {
 		};
 	} = {};
 
-	constructor(private todoService: TodoService) {}
+	constructor(private todoService: TodoService, private cdRef: ChangeDetectorRef) {}
 
 	ngOnInit(): void {
 		// Get data
@@ -57,13 +66,14 @@ export class TodoList implements OnInit, AfterViewInit {
 		} else {
 			this.todos = this.todoService.workspaceTodos;
 		}
-	}
 
-	ngAfterViewInit(): void {
-		// Enable animations after first render
-		setTimeout(() => {
-			this.animationDisabled = false;
-		}, 200);
+		// Control animation based on last action
+		this.lastActionTypeSubscription = this.todoService.lastActionType.subscribe((actionType) => {
+			this.isFadeAnimationEnabled = this.isFadeAnimationEnabledMap.hasOwnProperty(actionType)
+				? this.isFadeAnimationEnabledMap[actionType]
+				: false;
+			this.cdRef.detectChanges();
+		});
 	}
 
 	toggleEdit(id: number) {
@@ -130,5 +140,12 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	trackById(index: number, todo: Todo): number {
 		return todo.id;
+	}
+
+	ngOnDestroy(): void {
+		// Clean up the subscription
+		if (this.lastActionTypeSubscription) {
+			this.lastActionTypeSubscription.unsubscribe();
+		}
 	}
 }

@@ -3,6 +3,7 @@ import { Todo, TodoCount } from "../../../../src/todo/todoTypes";
 import { storeActions } from "../../../../src/todo/store";
 import { MESSAGE, Message, MessageActions } from "../../../../src/panels/message";
 import { vscode } from "../utilities/vscode";
+import { BehaviorSubject } from "rxjs";
 
 @Injectable({
 	providedIn: "root",
@@ -11,23 +12,32 @@ export class TodoService {
 	private _userTodos: Todo[] = [];
 	private _workspaceTodos: Todo[] = [];
 	private _todoCount: TodoCount = { user: 0, workspace: 0 };
+	lastActionType = new BehaviorSubject<string>("");
 
 	constructor() {
 		window.addEventListener("message", ({ data }: { data: Message<MessageActions> }) => {
-			if (data.type === MessageActions.setData) {
-				const {
-					payload: { workspaceTodos, userTodos, lastActionType, numberOfTodos },
-				} = data as Message<MessageActions.setData>;
+			const {
+				payload: { workspaceTodos, userTodos, lastActionType, numberOfTodos },
+			} = data as Message<MessageActions.reloadWebview | MessageActions.syncData>;
 
-				// Clear old data
-				if (this._userTodos.length) this._userTodos.length = 0;
-				if (this._workspaceTodos.length) this._workspaceTodos.length = 0;
-
-				if (userTodos.length) this._userTodos.push(...userTodos);
-				if (workspaceTodos.length) this._workspaceTodos.push(...workspaceTodos);
-				Object.assign(this._todoCount, numberOfTodos);
+			if (data.type === MessageActions.reloadWebview) {
+				this.updateLastActionType("");
+			} else {
+				this.updateLastActionType(lastActionType);
 			}
+
+			// Clear old data
+			this._userTodos.length = 0;
+			this._workspaceTodos.length = 0;
+
+			if (userTodos.length) this._userTodos.push(...userTodos);
+			if (workspaceTodos.length) this._workspaceTodos.push(...workspaceTodos);
+			Object.assign(this._todoCount, numberOfTodos);
 		});
+	}
+
+	updateLastActionType(actionType: string = ""): void {
+		this.lastActionType.next(actionType);
 	}
 
 	get userTodos(): Todo[] {

@@ -48,16 +48,18 @@ export class HelloWorldPanel {
 
 		// Set an event listener to listen for messages passed from the webview context
 		this._setWebviewMessageListener(this._panel.webview);
+
 		this._panel.onDidChangeViewState(
 			() => {
 				if (this._panel.visible) {
-					this.updateWebview();
+					this.updateWebview(true);
 				}
 			},
 			null,
 			this._disposables
 		);
-		this.updateWebview();
+
+		this.updateWebview(true);
 	}
 
 	/**
@@ -102,11 +104,17 @@ export class HelloWorldPanel {
 	}
 
 	/**
-	 * Sends the current state to the webview
+	 * Sends the current state to the webview.
+	 *
+	 * @param {boolean} isReloadWebview - True to initialize the webview with initial data, false to sync state changes from the store.
 	 */
-	public updateWebview() {
+	public updateWebview(isReloadWebview = false) {
 		const currentState = this._store.getState();
-		this._panel.webview.postMessage(MESSAGE.setData(currentState));
+		if (isReloadWebview) {
+			this._panel.webview.postMessage(MESSAGE.reloadWebview(currentState));
+		} else {
+			this._panel.webview.postMessage(MESSAGE.syncData(currentState));
+		}
 	}
 
 	/**

@@ -1,7 +1,7 @@
 <section>
 	<div cdkDropList (cdkDropListDropped)="onDrop($event)" [cdkDropListSortPredicate]="sortPredicate">
-		<div class="todo-container" *ngFor="let todo of todos; trackBy: trackById" #dragItem cdkDrag [cdkDragData]="todo" [@fadeAnimation]
-			   [@.disabled]="animationDisabled">
+		<div class="todo-container" *ngFor="let todo of todos; trackBy: trackById" #dragItem cdkDrag [cdkDragData]="todo"
+			   [@fadeAnimation]="isFadeAnimationEnabled">
 			<div class="checkbox">
 				<vscode-checkbox (click)="toggleCompleted(todo.id)" [checked]="todo.completed"></vscode-checkbox>
 			</div>
