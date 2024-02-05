@@ -1,7 +1,8 @@
 <section>
-	<div cdkDropList (cdkDropListDropped)="onDrop($event)" [cdkDropListSortPredicate]="sortPredicate">
+	<div cdkDropList (cdkDropListDropped)="onDrop($event)" [cdkDropListSortPredicate]="sortPredicate" auto-animate
+		   [options]="isAnimationEnabled ? {duration: 400} : {duration: 0}">
 		<div class="todo-container" *ngFor="let todo of todos; trackBy: trackById" #dragItem cdkDrag [cdkDragData]="todo"
-			   [@fadeAnimation]="isFadeAnimationEnabled">
+			   (cdkDragStarted)="dragStarted()">
 			<div class="checkbox">
 				<vscode-checkbox (click)="toggleCompleted(todo.id)" [checked]="todo.completed"></vscode-checkbox>
 			</div>

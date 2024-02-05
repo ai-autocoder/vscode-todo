@@ -1,34 +1,13 @@
-import { AfterViewInit, Component, Input, OnInit } from "@angular/core";
+import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
+import { ChangeDetectorRef, Component, Input, OnInit } from "@angular/core";
+import { Subscription } from "rxjs";
 import { Todo, TodoLevel } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
-import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
-import { trigger, style, transition, animate } from "@angular/animations";
-import { Subscription } from "rxjs";
-import { ChangeDetectorRef } from "@angular/core";
 
 @Component({
 	selector: "todo-list",
 	templateUrl: "./todo-list.component.html",
 	styleUrls: ["./todo-list.component.scss"],
-	animations: [
-		trigger("fadeAnimation", [
-			transition("void => true", [
-				style({
-					transform: "translateY(calc(100vh - 200px))",
-				}),
-				animate(150),
-			]),
-			transition("true => void", [
-				animate(
-					200,
-					style({
-						opacity: "0",
-						transform: "translateX(300px)",
-					})
-				),
-			]),
-		]),
-	],
 })
 export class TodoList implements OnInit {
 	@Input()
@@ -39,13 +18,13 @@ export class TodoList implements OnInit {
 	workspaceTodos: Todo[] = [];
 	isChecked = false;
 	todoCount = 0;
-	isFadeAnimationEnabled = false;
+	isAnimationEnabled = false;
 	private lastActionTypeSubscription!: Subscription;
-	isFadeAnimationEnabledMap: { [key: string]: boolean } = {
-		"": false,
-		"todos/loadData": false,
+
+	autoAnimateEnabledMap: { [key: string]: boolean } = {
 		"todos/addTodo": true,
 		"todos/deleteTodo": true,
+		"todos/toggleTodo": true,
 	};
 
 	//Store temporary UI state
@@ -69,8 +48,8 @@ export class TodoList implements OnInit {
 
 		// Control animation based on last action
 		this.lastActionTypeSubscription = this.todoService.lastActionType.subscribe((actionType) => {
-			this.isFadeAnimationEnabled = this.isFadeAnimationEnabledMap.hasOwnProperty(actionType)
-				? this.isFadeAnimationEnabledMap[actionType]
+			this.isAnimationEnabled = this.autoAnimateEnabledMap.hasOwnProperty(actionType)
+				? this.autoAnimateEnabledMap[actionType]
 				: false;
 			this.cdRef.detectChanges();
 		});
@@ -122,6 +101,11 @@ export class TodoList implements OnInit {
 			level: this.level,
 			reorderedTodos: this.todos,
 		});
+	}
+
+	dragStarted() {
+		this.isAnimationEnabled = false;
+		this.cdRef.detectChanges();
 	}
 
 	/**
