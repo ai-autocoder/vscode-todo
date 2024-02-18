@@ -1,5 +1,5 @@
 import { Component, Input } from "@angular/core";
-import { TodoLevel } from "../../../../../src/todo/todoTypes";
+import { TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
 @Component({
@@ -9,12 +9,12 @@ import { TodoService } from "../todo.service";
 })
 export class NewTodoComponent {
 	newTodoText: string = "";
-	@Input() level!: TodoLevel;
+	@Input() scope!: TodoScope;
 	constructor(private todoService: TodoService) {}
 
 	addTodo() {
 		if (this.newTodoText === "") return;
-		this.todoService.addTodo({ text: this.newTodoText, level: this.level });
+		this.todoService.addTodo(this.scope, { text: this.newTodoText });
 		this.newTodoText = "";
 	}
 

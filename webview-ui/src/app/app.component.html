@@ -1,23 +1,23 @@
 <main>
 	<vscode-panels activeid="tab-2">
-		<vscode-panel-tab (click)="selectTab(TodoLevel.user)" id="tab-1">
+		<vscode-panel-tab (click)="selectTab(TodoScope.user)" id="tab-1">
 			User
 			<vscode-badge appearance="secondary">{{todoCount.user}}</vscode-badge>
 		</vscode-panel-tab>
-		<vscode-panel-tab (click)="selectTab(TodoLevel.workspace)" id="tab-2">
+		<vscode-panel-tab (click)="selectTab(TodoScope.workspace)" id="tab-2">
 			Workspace
 			<vscode-badge appearance="secondary">{{todoCount.workspace}}</vscode-badge>
 		</vscode-panel-tab>
 
 		<vscode-panel-view id="view-1">
-			<todo-list [level]="TodoLevel.user"></todo-list>
+			<todo-list [scope]="TodoScope.user" *ngIf="scope === TodoScope.user"></todo-list>
 		</vscode-panel-view>
 		<vscode-panel-view id="view-2">
-			<todo-list [level]="TodoLevel.workspace"></todo-list>
+			<todo-list [scope]="TodoScope.workspace" *ngIf="scope === TodoScope.workspace"></todo-list>
 		</vscode-panel-view>
 	</vscode-panels>
 
 	<vscode-divider role="separator"></vscode-divider>
 
-	<new-todo [level]="level"></new-todo>
+	<new-todo [scope]="scope"></new-todo>
 </main>

@@ -1,17 +1,18 @@
+import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
 import {
 	Disposable,
+	ExtensionContext,
+	Uri,
+	ViewColumn,
 	Webview,
 	WebviewPanel,
 	window,
-	Uri,
-	ViewColumn,
-	ExtensionContext,
 } from "vscode";
-import { getUri } from "../utilities/getUri";
+import { userActions, workspaceActions } from "../todo/store";
+import { TodoScope, TodoSlice } from "../todo/todoTypes";
 import { getNonce } from "../utilities/getNonce";
-import { storeActions } from "../todo/store";
-import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
-import { Message, MessageActions, MESSAGE } from "./message";
+import { getUri } from "../utilities/getUri";
+import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -52,14 +53,14 @@ export class HelloWorldPanel {
 		this._panel.onDidChangeViewState(
 			() => {
 				if (this._panel.visible) {
-					this.updateWebview(true);
+					this.reloadWebview();
 				}
 			},
 			null,
 			this._disposables
 		);
 
-		this.updateWebview(true);
+		this.reloadWebview();
 	}
 
 	/**
@@ -108,13 +109,13 @@ export class HelloWorldPanel {
 	 *
 	 * @param {boolean} isReloadWebview - True to initialize the webview with initial data, false to sync state changes from the store.
 	 */
-	public updateWebview(isReloadWebview = false) {
+	private reloadWebview() {
 		const currentState = this._store.getState();
-		if (isReloadWebview) {
-			this._panel.webview.postMessage(MESSAGE.reloadWebview(currentState));
-		} else {
-			this._panel.webview.postMessage(MESSAGE.syncData(currentState));
-		}
+		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState));
+	}
+
+	public updateWebview(newSliceState: TodoSlice) {
+		this._panel.webview.postMessage(messagesToWebview.syncData(newSliceState));
 	}
 
 	/**
@@ -185,35 +186,44 @@ export class HelloWorldPanel {
 	 */
 	private _setWebviewMessageListener(webview: Webview) {
 		webview.onDidReceiveMessage(
-			(message: Message<MessageActions>) => {
+			(message: Message<MessageActionsFromWebview, TodoScope>) => {
+				let storeActions;
+				if (message.scope === TodoScope.user) {
+					storeActions = userActions;
+				} else if (message.scope === TodoScope.workspace) {
+					storeActions = workspaceActions;
+				} else {
+					console.error("Action scope not found");
+					return;
+				}
 				switch (message.type) {
-					case MessageActions.addTodo: {
-						const { payload } = message as Message<MessageActions.addTodo>;
+					case MessageActionsFromWebview.addTodo: {
+						const { payload } = message as Message<MessageActionsFromWebview.addTodo, TodoScope>;
 						this._store.dispatch(storeActions.addTodo(payload));
 						break;
 					}
-					case MessageActions.deleteTodo: {
-						const { payload } = message as Message<MessageActions.deleteTodo>;
+					case MessageActionsFromWebview.deleteTodo: {
+						const { payload } = message as Message<MessageActionsFromWebview.deleteTodo, TodoScope>;
 						this._store.dispatch(storeActions.deleteTodo(payload));
 						break;
 					}
-					case MessageActions.toggleTodo: {
-						const { payload } = message as Message<MessageActions.toggleTodo>;
+					case MessageActionsFromWebview.toggleTodo: {
+						const { payload } = message as Message<MessageActionsFromWebview.toggleTodo, TodoScope>;
 						this._store.dispatch(storeActions.toggleTodo(payload));
 						break;
 					}
-					case MessageActions.editTodo: {
-						const { payload } = message as Message<MessageActions.editTodo>;
+					case MessageActionsFromWebview.editTodo: {
+						const { payload } = message as Message<MessageActionsFromWebview.editTodo, TodoScope>;
 						this._store.dispatch(storeActions.editTodo(payload));
 						break;
 					}
-					case MessageActions.reorderTodo: {
-						const { payload } = message as Message<MessageActions.reorderTodo>;
+					case MessageActionsFromWebview.reorderTodo: {
+						const { payload } = message as Message<MessageActionsFromWebview.reorderTodo, TodoScope>;
 						this._store.dispatch(storeActions.reorderTodo(payload));
 						break;
 					}
 					default:
-						console.log("Action not found");
+						console.error("Action not found");
 				}
 			},
 			undefined,

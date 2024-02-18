@@ -1,74 +1,106 @@
-import { storeActions } from "../todo/store";
-import { FullData } from "../todo/todoTypes";
+import { userActions, workspaceActions } from "../todo/store";
+import { StoreState, TodoScope, TodoSlice } from "../todo/todoTypes";
 
-export interface Message<T extends MessageActions> {
-	type: T;
-	payload: T extends MessageActions.addTodo
-		? Parameters<typeof storeActions.addTodo>[0]
-		: T extends MessageActions.toggleTodo
-		? Parameters<typeof storeActions.toggleTodo>[0]
-		: T extends MessageActions.deleteTodo
-		? Parameters<typeof storeActions.deleteTodo>[0]
-		: T extends MessageActions.editTodo
-		? Parameters<typeof storeActions.editTodo>[0]
-		: T extends MessageActions.reloadWebview
-		? FullData
-		: T extends MessageActions.syncData
-		? FullData
-		: T extends MessageActions.reorderTodo
-		? Parameters<typeof storeActions.reorderTodo>[0]
-		: never;
-}
+type MessagePayload<T, L> = T extends
+	| MessageActionsFromWebview.addTodo
+	| MessageActionsFromWebview.editTodo
+	| MessageActionsFromWebview.toggleTodo
+	| MessageActionsFromWebview.deleteTodo
+	| MessageActionsFromWebview.reorderTodo
+	? Parameters<L extends TodoScope.user ? (typeof userActions)[T] : (typeof workspaceActions)[T]>[0]
+	: T extends MessageActionsToWebview.syncData
+	? TodoSlice
+	: T extends MessageActionsToWebview.reloadWebview
+	? StoreState
+	: never;
 
-export const enum MessageActions {
+export type Message<
+	T extends MessageActionsFromWebview | MessageActionsToWebview,
+	L extends TodoScope = never
+> = T extends MessageActionsToWebview.syncData | MessageActionsToWebview.reloadWebview
+	? {
+			type: T;
+			payload: MessagePayload<T, L>;
+	  }
+	: {
+			type: T;
+			scope: L;
+			payload: MessagePayload<T, L>;
+	  };
+
+export const enum MessageActionsFromWebview {
 	addTodo = "addTodo",
 	editTodo = "editTodo",
 	toggleTodo = "toggleTodo",
 	deleteTodo = "deleteTodo",
 	reorderTodo = "reorderTodo",
-	reloadWebview = "reloadWebview", // Initial data sent to webview
-	syncData = "syncData", //Subsequent data synchronization to webview
+}
+export const enum MessageActionsToWebview {
+	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
+	syncData = "syncData",
 }
 
 // Message creators from Webview to Extension
-export const MESSAGE = {
-	addTodo: (
-		payload: Parameters<typeof storeActions.addTodo>[0]
-	): Message<MessageActions.addTodo> => ({
-		type: MessageActions.addTodo,
+export const messagesFromWebview = {
+	addTodo: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.addTodo>[0]
+			: Parameters<typeof workspaceActions.addTodo>[0]
+	): Message<MessageActionsFromWebview.addTodo, TodoScope> => ({
+		type: MessageActionsFromWebview.addTodo,
+		scope,
 		payload,
 	}),
-	editTodo: (
-		payload: Parameters<typeof storeActions.editTodo>[0]
-	): Message<MessageActions.editTodo> => ({
-		type: MessageActions.editTodo,
+	editTodo: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.editTodo>[0]
+			: Parameters<typeof workspaceActions.editTodo>[0]
+	): Message<MessageActionsFromWebview.editTodo, TodoScope> => ({
+		type: MessageActionsFromWebview.editTodo,
+		scope,
 		payload,
 	}),
-	toggleTodo: (
-		payload: Parameters<typeof storeActions.toggleTodo>[0]
-	): Message<MessageActions.toggleTodo> => ({
-		type: MessageActions.toggleTodo,
+	toggleTodo: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.toggleTodo>[0]
+			: Parameters<typeof workspaceActions.toggleTodo>[0]
+	): Message<MessageActionsFromWebview.toggleTodo, TodoScope> => ({
+		type: MessageActionsFromWebview.toggleTodo,
+		scope,
 		payload,
 	}),
-	deleteTodo: (
-		payload: Parameters<typeof storeActions.deleteTodo>[0]
-	): Message<MessageActions.deleteTodo> => ({
-		type: MessageActions.deleteTodo,
+	deleteTodo: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.deleteTodo>[0]
+			: Parameters<typeof workspaceActions.deleteTodo>[0]
+	): Message<MessageActionsFromWebview.deleteTodo, TodoScope> => ({
+		type: MessageActionsFromWebview.deleteTodo,
+		scope,
 		payload,
 	}),
-	reorderTodo: (
-		payload: Parameters<typeof storeActions.reorderTodo>[0]
-	): Message<MessageActions.reorderTodo> => ({
-		type: MessageActions.reorderTodo,
+	reorderTodo: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.reorderTodo>[0]
+			: Parameters<typeof workspaceActions.reorderTodo>[0]
+	): Message<MessageActionsFromWebview.reorderTodo, TodoScope> => ({
+		type: MessageActionsFromWebview.reorderTodo,
+		scope,
 		payload,
 	}),
+};
+export const messagesToWebview = {
 	// Message creators from extension to UI
-	reloadWebview: (payload: FullData): Message<MessageActions.reloadWebview> => ({
-		type: MessageActions.reloadWebview,
+	reloadWebview: (payload: StoreState): Message<MessageActionsToWebview.reloadWebview> => ({
+		type: MessageActionsToWebview.reloadWebview,
 		payload,
 	}),
-	syncData: (payload: FullData): Message<MessageActions.syncData> => ({
-		type: MessageActions.syncData,
+	syncData: (payload: TodoSlice): Message<MessageActionsToWebview.syncData> => ({
+		type: MessageActionsToWebview.syncData,
 		payload,
 	}),
 };

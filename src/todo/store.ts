@@ -1,84 +1,116 @@
-import { configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { getNumberOfTodos, generateUniqueId, getTodoArr } from "./todoUtils";
-import { Todo, FullData, TodoLevel } from "./todoTypes";
+import { combineReducers, configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { getNumberOfTodos, generateUniqueId } from "./todoUtils";
+import { Todo, TodoScope, TodoSlice, ActionTrackerState } from "./todoTypes";
+import { Middleware } from "@reduxjs/toolkit";
 
-const todosSlice = createSlice({
-	name: "todos",
+const todoReducers = {
+	loadData: (state: TodoSlice, action: PayloadAction<{ data: Todo[] }>) => {
+		Object.assign(state.todos, action.payload.data);
+		state.lastActionType = action.type;
+		state.numberOfTodos = getNumberOfTodos(state);
+	},
+	addTodo: (state: TodoSlice, action: PayloadAction<{ text: string }>) => {
+		state.todos?.unshift({
+			id: generateUniqueId(state, state.scope),
+			text: action.payload.text,
+			completed: false,
+			creationDate: new Date().toISOString(),
+		});
+		state.lastActionType = action.type;
+		state.numberOfTodos = getNumberOfTodos(state);
+	},
+	toggleTodo: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
+		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
+		if (!todo) return;
+
+		todo.completed = !todo.completed;
+		todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
+		// Sort completed todos to be after uncompleted
+		state.todos?.sort((a, b) => Number(a.completed) - Number(b.completed));
+		state.lastActionType = action.type;
+		state.numberOfTodos = getNumberOfTodos(state);
+	},
+	editTodo: (state: TodoSlice, action: PayloadAction<{ id: number; newText: string }>) => {
+		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
+		if (!todo) return;
+
+		todo.text = action.payload.newText;
+		state.lastActionType = action.type;
+	},
+	deleteTodo: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
+		const index = state.todos?.findIndex((todo) => todo.id === action.payload.id);
+		if (index === undefined || index === -1) return;
+
+		state.todos?.splice(index, 1);
+		state.lastActionType = action.type;
+		state.numberOfTodos = getNumberOfTodos(state);
+	},
+	reorderTodo: (state: TodoSlice, action: PayloadAction<{ reorderedTodos: Todo[] }>) => {
+		state.todos = action.payload.reorderedTodos;
+		state.lastActionType = action.type;
+	},
+};
+
+const userSlice = createSlice({
+	name: "user",
 	initialState: {
-		userTodos: [],
-		workspaceTodos: [],
-		lastActionType: undefined,
-		numberOfTodos: { workspace: 0, user: 0 },
-	} as FullData,
+		todos: [],
+		lastActionType: "",
+		numberOfTodos: 0,
+		scope: TodoScope.user,
+	} as TodoSlice,
+	reducers: todoReducers,
+});
+
+const workspaceSlice = createSlice({
+	name: "workspace",
+	initialState: {
+		todos: [],
+		lastActionType: "",
+		numberOfTodos: 0,
+		scope: TodoScope.workspace,
+	} as TodoSlice,
+	reducers: todoReducers,
+});
+
+const actionTrackerSlice = createSlice({
+	name: "actionTracker",
+	initialState: {
+		lastSliceName: "",
+	} as ActionTrackerState,
 	reducers: {
-		loadData: (state: FullData, action: PayloadAction<{ data: FullData }>) => {
-			Object.assign(state, action.payload.data);
-			state.lastActionType = action.type;
-			state.numberOfTodos = getNumberOfTodos(state);
+		trackAction: (state, action: PayloadAction<{ sliceName: string }>) => {
+			state.lastSliceName = action.payload.sliceName;
 		},
-		addTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; text: string }>) => {
-			const todoArr = getTodoArr(state, action.payload.level);
-
-			todoArr?.unshift({
-				id: generateUniqueId(todoArr),
-				text: action.payload.text,
-				completed: false,
-				creationDate: new Date().toISOString(),
-			});
-			state.lastActionType = action.type;
-			state.numberOfTodos = getNumberOfTodos(state);
-		},
-		toggleTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
-			const todoArr = getTodoArr(state, action.payload.level);
-			const todo = todoArr?.find((todo) => todo.id === action.payload.id);
-			if (!todo) return;
-
-			todo.completed = !todo.completed;
-			todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
-			// Sort completed todos to be after uncompleted
-			todoArr?.sort((a, b) => Number(a.completed) - Number(b.completed));
-			state.lastActionType = action.type;
-			state.numberOfTodos = getNumberOfTodos(state);
-		},
-		editTodo: (
-			state: FullData,
-			action: PayloadAction<{ level: TodoLevel; id: number; newText: string }>
-		) => {
-			const todoArr = getTodoArr(state, action.payload.level);
-			const todo = todoArr?.find((todo) => todo.id === action.payload.id);
-			if (!todo) return;
-
-			todo.text = action.payload.newText;
-			state.lastActionType = action.type;
-		},
-		deleteTodo: (state: FullData, action: PayloadAction<{ level: TodoLevel; id: number }>) => {
-			const todoArr = getTodoArr(state, action.payload.level);
-			const index = todoArr?.findIndex((todo) => todo.id === action.payload.id);
-			if (index === undefined || index === -1) return;
-
-			todoArr?.splice(index, 1);
-			state.lastActionType = action.type;
-			state.numberOfTodos = getNumberOfTodos(state);
-		},
-		reorderTodo: (
-			state: FullData,
-			action: PayloadAction<{ level: TodoLevel; reorderedTodos: Todo[] }>
-		) => {
-			if (action.payload.level === TodoLevel.user) {
-				state.userTodos = action.payload.reorderedTodos;
-			} else if (action.payload.level === TodoLevel.workspace) {
-				state.workspaceTodos = action.payload.reorderedTodos;
-			}
-			state.lastActionType = action.type;
+		resetLastSliceName: (state) => {
+			state.lastSliceName = "";
 		},
 	},
 });
 
-// Create a store
+// Combine reducers
+const rootReducer = combineReducers({
+	user: userSlice.reducer,
+	workspace: workspaceSlice.reducer,
+	actionTracker: actionTrackerSlice.reducer,
+});
+
+// Configure the store with the combined reducer
 export default function () {
 	return configureStore({
-		reducer: todosSlice.reducer,
+		reducer: rootReducer,
+		middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(trackActionMiddleware),
 	});
 }
-// Export actions
-export const storeActions = todosSlice.actions;
+
+export const userActions = userSlice.actions;
+export const workspaceActions = workspaceSlice.actions;
+export const actionTrackerActions = actionTrackerSlice.actions;
+
+const trackActionMiddleware: Middleware = (store) => (next) => (action) => {
+	const result = next(action);
+	const sliceName = action.type.split("/")[0];
+	if (sliceName === "actionTracker") return;
+	store.dispatch(actionTrackerSlice.actions.trackAction({ sliceName }));
+	return result;
+};

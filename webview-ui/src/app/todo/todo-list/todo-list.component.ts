@@ -1,30 +1,39 @@
 import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
-import { ChangeDetectorRef, Component, Input, OnInit } from "@angular/core";
+import {
+	AfterViewInit,
+	ChangeDetectionStrategy,
+	ChangeDetectorRef,
+	Component,
+	Input,
+	OnInit,
+} from "@angular/core";
 import { Subscription } from "rxjs";
-import { Todo, TodoLevel } from "../../../../../src/todo/todoTypes";
+import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
 @Component({
 	selector: "todo-list",
 	templateUrl: "./todo-list.component.html",
 	styleUrls: ["./todo-list.component.scss"],
+	changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TodoList implements OnInit {
+export class TodoList implements OnInit, AfterViewInit {
 	@Input()
-	level!: TodoLevel;
+	scope!: TodoScope;
 
 	todos: Todo[] = [];
-	userTodos: Todo[] = [];
-	workspaceTodos: Todo[] = [];
-	isChecked = false;
 	todoCount = 0;
 	isAnimationEnabled = false;
+	isInitialized = false;
 	private lastActionTypeSubscription!: Subscription;
+	autoAnimateOptions = {
+		duration: 0,
+	};
 
 	autoAnimateEnabledMap: { [key: string]: boolean } = {
-		"todos/addTodo": true,
-		"todos/deleteTodo": true,
-		"todos/toggleTodo": true,
+		addTodo: true,
+		deleteTodo: true,
+		toggleTodo: true,
 	};
 
 	//Store temporary UI state
@@ -39,20 +48,43 @@ export class TodoList implements OnInit {
 	constructor(private todoService: TodoService, private cdRef: ChangeDetectorRef) {}
 
 	ngOnInit(): void {
-		// Get data
-		if (this.level === TodoLevel.user) {
-			this.todos = this.todoService.userTodos;
-		} else {
-			this.todos = this.todoService.workspaceTodos;
+		if (this.scope === TodoScope.user) {
+			this.lastActionTypeSubscription = this.todoService.userLastAction.subscribe((actionType) =>
+				this.handleSubscription(actionType)
+			);
+		} else if (this.scope === TodoScope.workspace) {
+			this.lastActionTypeSubscription = this.todoService.workspaceLastAction.subscribe((actionType) =>
+				this.handleSubscription(actionType)
+			);
 		}
+	}
 
-		// Control animation based on last action
-		this.lastActionTypeSubscription = this.todoService.lastActionType.subscribe((actionType) => {
-			this.isAnimationEnabled = this.autoAnimateEnabledMap.hasOwnProperty(actionType)
-				? this.autoAnimateEnabledMap[actionType]
-				: false;
-			this.cdRef.detectChanges();
-		});
+	ngAfterViewInit(): void {
+		this.isInitialized = true;
+	}
+
+	handleSubscription(actionType: string) {
+		this.handleAnimations(actionType);
+		this.pullTodos();
+	}
+
+	handleAnimations(actionType: string): void {
+		actionType = actionType.split("/")[1];
+		if (this.autoAnimateEnabledMap.hasOwnProperty(actionType) && this.isInitialized) {
+			this.autoAnimateOptions.duration = 300;
+		} else {
+			this.autoAnimateOptions.duration = 0;
+		}
+		this.cdRef.detectChanges();
+	}
+
+	pullTodos() {
+		if (this.scope === TodoScope.user) {
+			this.todos = [...this.todoService.userTodos];
+		} else {
+			this.todos = [...this.todoService.workspaceTodos];
+		}
+		this.cdRef.detectChanges();
 	}
 
 	toggleEdit(id: number) {
@@ -75,7 +107,7 @@ export class TodoList implements OnInit {
 	saveEdit(id: number) {
 		const thisTodo = this.todos.find((todo) => todo.id === id);
 		if (!thisTodo) return;
-		this.todoService.editTodo({ id, level: this.level, newText: thisTodo.text });
+		this.todoService.editTodo(this.scope, { id, newText: thisTodo.text });
 		this.toggleEdit(id);
 	}
 
@@ -86,25 +118,24 @@ export class TodoList implements OnInit {
 	}
 
 	toggleCompleted(id: number) {
-		this.todoService.toggleTodo({ id, level: this.level });
+		this.todoService.toggleTodo(this.scope, { id });
 	}
 
 	delete(id: number) {
-		this.todoService.removeTodo({ id, level: this.level });
+		this.todoService.deleteTodo(this.scope, { id });
 	}
 
 	onDrop(event: CdkDragDrop<Todo[]>) {
 		// Move item within the array and update the order
 		moveItemInArray(this.todos, event.previousIndex, event.currentIndex);
 
-		this.todoService.reorderTodos({
-			level: this.level,
+		this.todoService.reorderTodos(this.scope, {
 			reorderedTodos: this.todos,
 		});
 	}
 
 	dragStarted() {
-		this.isAnimationEnabled = false;
+		this.autoAnimateOptions.duration = 0;
 		this.cdRef.detectChanges();
 	}
 
@@ -114,7 +145,7 @@ export class TodoList implements OnInit {
 	 * categories, without intermixing.
 	 */
 	sortPredicate = (index: number, item: CdkDrag<Todo>): boolean => {
-		if (this.level === TodoLevel.user) {
+		if (this.scope === TodoScope.user) {
 			this.todoCount = this.todoService.todoCount.user;
 		} else {
 			this.todoCount = this.todoService.todoCount.workspace;

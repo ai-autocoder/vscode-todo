@@ -1,9 +1,12 @@
 import { Injectable } from "@angular/core";
-import { Todo, TodoCount } from "../../../../src/todo/todoTypes";
-import { storeActions } from "../../../../src/todo/store";
-import { MESSAGE, Message, MessageActions } from "../../../../src/panels/message";
-import { vscode } from "../utilities/vscode";
 import { BehaviorSubject } from "rxjs";
+import {
+	Message,
+	MessageActionsToWebview,
+	messagesFromWebview,
+} from "../../../../src/panels/message";
+import { Todo, TodoCount, TodoScope } from "../../../../src/todo/todoTypes";
+import { vscode } from "../utilities/vscode";
 
 @Injectable({
 	providedIn: "root",
@@ -12,32 +15,45 @@ export class TodoService {
 	private _userTodos: Todo[] = [];
 	private _workspaceTodos: Todo[] = [];
 	private _todoCount: TodoCount = { user: 0, workspace: 0 };
-	lastActionType = new BehaviorSubject<string>("");
+	userLastAction = new BehaviorSubject<string>("");
+	workspaceLastAction = new BehaviorSubject<string>("");
 
 	constructor() {
-		window.addEventListener("message", ({ data }: { data: Message<MessageActions> }) => {
-			const {
-				payload: { workspaceTodos, userTodos, lastActionType, numberOfTodos },
-			} = data as Message<MessageActions.reloadWebview | MessageActions.syncData>;
-
-			if (data.type === MessageActions.reloadWebview) {
-				this.updateLastActionType("");
-			} else {
-				this.updateLastActionType(lastActionType);
-			}
-
-			// Clear old data
-			this._userTodos.length = 0;
-			this._workspaceTodos.length = 0;
-
-			if (userTodos.length) this._userTodos.push(...userTodos);
-			if (workspaceTodos.length) this._workspaceTodos.push(...workspaceTodos);
-			Object.assign(this._todoCount, numberOfTodos);
-		});
+		window.addEventListener("message", this.handleMessage.bind(this));
 	}
 
-	updateLastActionType(actionType: string = ""): void {
-		this.lastActionType.next(actionType);
+	private handleMessage(event: MessageEvent) {
+		const { data } = event;
+		switch (data.type) {
+			case MessageActionsToWebview.reloadWebview:
+				this.handleReloadWebview(data);
+				break;
+			case MessageActionsToWebview.syncData:
+				this.handleSyncData(data);
+				break;
+			default:
+				console.warn("Unhandled message type:", data.type);
+		}
+	}
+
+	private handleReloadWebview(data: Message<MessageActionsToWebview.reloadWebview>) {
+		const { user, workspace } = data.payload;
+		this.updateTodos("user", user.todos, user.numberOfTodos);
+		this.updateTodos("workspace", workspace.todos, workspace.numberOfTodos);
+		this.userLastAction.next("");
+		this.workspaceLastAction.next("");
+	}
+
+	private handleSyncData(data: Message<MessageActionsToWebview.syncData>) {
+		const { payload } = data;
+		const scope = payload.scope === TodoScope.user ? "user" : "workspace";
+		this.updateTodos(scope, payload.todos, payload.numberOfTodos);
+		this[`${scope}LastAction`].next(payload.lastActionType);
+	}
+
+	private updateTodos(scope: "user" | "workspace", todos: Todo[], numberOfTodos: number) {
+		this[`_${scope}Todos`] = [...todos];
+		this._todoCount[scope] = numberOfTodos;
 	}
 
 	get userTodos(): Todo[] {
@@ -52,23 +68,23 @@ export class TodoService {
 		return this._todoCount;
 	}
 
-	addTodo(payload: Parameters<typeof storeActions.addTodo>[0]) {
-		vscode.postMessage(MESSAGE.addTodo(payload));
+	addTodo(...args: Parameters<typeof messagesFromWebview.addTodo>) {
+		vscode.postMessage(messagesFromWebview.addTodo(...args));
 	}
 
-	removeTodo(payload: Parameters<typeof storeActions.deleteTodo>[0]) {
-		vscode.postMessage(MESSAGE.deleteTodo(payload));
+	deleteTodo(...args: Parameters<typeof messagesFromWebview.deleteTodo>) {
+		vscode.postMessage(messagesFromWebview.deleteTodo(...args));
 	}
 
-	toggleTodo(payload: Parameters<typeof storeActions.toggleTodo>[0]) {
-		vscode.postMessage(MESSAGE.toggleTodo(payload));
+	toggleTodo(...args: Parameters<typeof messagesFromWebview.toggleTodo>) {
+		vscode.postMessage(messagesFromWebview.toggleTodo(...args));
 	}
 
-	editTodo(payload: Parameters<typeof storeActions.editTodo>[0]) {
-		vscode.postMessage(MESSAGE.editTodo(payload));
+	editTodo(...args: Parameters<typeof messagesFromWebview.editTodo>) {
+		vscode.postMessage(messagesFromWebview.editTodo(...args));
 	}
 
-	reorderTodos(payload: Parameters<typeof storeActions.reorderTodo>[0]) {
-		vscode.postMessage(MESSAGE.reorderTodo(payload));
+	reorderTodos(...args: Parameters<typeof messagesFromWebview.reorderTodo>) {
+		vscode.postMessage(messagesFromWebview.reorderTodo(...args));
 	}
 }

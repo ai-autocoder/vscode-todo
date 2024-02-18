@@ -10,7 +10,7 @@ import {
 	vsCodePanels,
 	vsCodeBadge,
 } from "@vscode/webview-ui-toolkit";
-import { TodoLevel, TodoCount } from "../../../src/todo/todoTypes";
+import { TodoScope, TodoCount } from "../../../src/todo/todoTypes";
 import { TodoService } from "./todo/todo.service";
 
 // In order to use the Webview UI Toolkit web components they
@@ -50,8 +50,8 @@ provideVSCodeDesignSystem().register(
 	styleUrls: ["./app.component.css"],
 })
 export class AppComponent implements OnInit {
-	level: TodoLevel = TodoLevel.workspace;
-	TodoLevel: typeof TodoLevel = TodoLevel;
+	scope: TodoScope = TodoScope.workspace;
+	TodoScope: typeof TodoScope = TodoScope;
 	todoCount!: TodoCount;
 
 	constructor(private todoService: TodoService) {}
@@ -61,7 +61,7 @@ export class AppComponent implements OnInit {
 		this.todoCount = this.todoService.todoCount;
 	}
 
-	selectTab(tab: TodoLevel) {
-		this.level = tab;
+	selectTab(tab: TodoScope) {
+		this.scope = tab;
 	}
 }
