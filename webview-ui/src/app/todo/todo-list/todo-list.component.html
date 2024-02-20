@@ -1,30 +1,35 @@
-<section>
-	<div cdkDropList (cdkDropListDropped)="onDrop($event)" [cdkDropListSortPredicate]="sortPredicate" auto-animate [options]="autoAnimateOptions">
-		<div class="todo-container" *ngFor="let todo of todos; trackBy: trackById" #dragItem cdkDrag [cdkDragData]="todo"
-			   (cdkDragStarted)="dragStarted()">
-			<div class="checkbox">
-				<vscode-checkbox (click)="toggleCompleted(todo.id)" [checked]="todo.completed"></vscode-checkbox>
+<div cdkDropList (cdkDropListDropped)="onDrop($event)" [cdkDropListSortPredicate]="sortPredicate" auto-animate [options]="autoAnimateOptions">
+	<div class="todo-container" *ngFor="let todo of todos; trackBy: trackById" #dragItem cdkDrag [cdkDragData]="todo"
+			(cdkDragStarted)="dragStarted()">
+		<div class="drag-handle-container" >
+			<div class="drag-handle" cdkDragHandle>
+				<svg width="1.5rem" height="1.5rem" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+					<path fill-rule="evenodd" clip-rule="evenodd" d="M15 6H1V7H15V6ZM15 9H1V10H15V9Z" fill="#C5C5C5"/>
+				</svg>
 			</div>
-			<div class="content">
-				<div class="body" (click)="toggleFooter(todo.id)">
-					<text-area *ngIf="componentState[todo.id]?.isEditable" id="text-area-{{ todo.id }}" class="todo-text" [(value)]="todo.text">
-					</text-area>
-					<p *ngIf="!componentState[todo.id]?.isEditable" class="todo-text" [class.complete]="todo.completed">
-						{{ todo.text }}
-					</p>
+		</div>
+		<div class="checkbox">
+			<vscode-checkbox (click)="toggleCompleted(todo.id)" [checked]="todo.completed"></vscode-checkbox>
+		</div>
+		<div class="content">
+			<div class="body" (click)="toggleFooter(todo.id)">
+				<text-area *ngIf="componentState[todo.id]?.isEditable" id="text-area-{{ todo.id }}" class="todo-text" [(value)]="todo.text">
+				</text-area>
+				<p *ngIf="!componentState[todo.id]?.isEditable" class="todo-text" [class.complete]="todo.completed">
+					{{ todo.text }}
+				</p>
+			</div>
+			<div class="footer" *ngIf="componentState[todo.id]?.footerActive">
+				<div class="labels">
+					<todo-label [todo]="todo"></todo-label>
 				</div>
-				<div class="footer" *ngIf="componentState[todo.id]?.footerActive">
-					<div class="labels">
-						<todo-label [todo]="todo"></todo-label>
-					</div>
-					<div class="buttons">
-						<vscode-button (click)="componentState[todo.id].isEditable ? saveEdit(todo.id) : toggleEdit(todo.id)"
-							   [innerText]="componentState[todo.id].isEditable ? 'Ok' : 'Edit'"></vscode-button>
-						<vscode-button *ngIf="componentState[todo.id]?.isEditable" (click)="cancelEdit(todo.id)">Cancel</vscode-button>
-						<vscode-button *ngIf="!componentState[todo.id]?.isEditable" (click)="delete(todo.id)">Delete</vscode-button>
-					</div>
+				<div class="buttons">
+					<vscode-button (click)="componentState[todo.id].isEditable ? saveEdit(todo.id) : toggleEdit(todo.id)"
+							[innerText]="componentState[todo.id].isEditable ? 'Ok' : 'Edit'"></vscode-button>
+					<vscode-button *ngIf="componentState[todo.id]?.isEditable" (click)="cancelEdit(todo.id)">Cancel</vscode-button>
+					<vscode-button *ngIf="!componentState[todo.id]?.isEditable" (click)="delete(todo.id)">Delete</vscode-button>
 				</div>
 			</div>
 		</div>
 	</div>
-</section>
+</div>
