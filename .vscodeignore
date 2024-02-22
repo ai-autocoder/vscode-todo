@@ -20,6 +20,13 @@ webview-ui/README.md
 webview-ui/package.json
 webview-ui/package-lock.json
 webview-ui/node_modules/**
+webview-ui/.angular/**
+webview-ui/.vscode/**
+webview-ui/.editorconfig
+webview-ui/karma.conf.js
+webview-ui/tsconfig.app.json
+webview-ui/tsconfig.spec.json
+webview-ui/angular.json
 
 # Ignore Misc
 .yarnrc
@@ -30,3 +37,4 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
+assets/**
