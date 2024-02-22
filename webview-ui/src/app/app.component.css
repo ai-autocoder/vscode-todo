@@ -11,12 +11,20 @@ todo-list {
 	width: 100%;
 	height: 100%;
 }
+
 vscode-panel-tab[aria-selected="true"] {
 	color: var(--vscode-settings-headerForeground);
 }
 
 vscode-panel-view {
-	border-top: 1px solid var(--vscode-settings-headerBorder);
+	border-top: 2px solid var(--vscode-settings-headerBorder);
+	transform: translateY(-2px);
+}
+
+vscode-panels::part(activeIndicator) {
+	z-index: 1;
+	height: 2px;
+	width: 130%;
 }
 
 new-todo {
