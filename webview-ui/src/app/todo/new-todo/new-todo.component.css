@@ -1,8 +1,7 @@
 .new-todo-container {
 	display: flex;
-	align-items: flex-start;
-	gap: 1rem;
-	min-height: 100px;
+	align-items: flex-end;
+	gap: 0.5rem;
 	width: 100%;
 }
 
