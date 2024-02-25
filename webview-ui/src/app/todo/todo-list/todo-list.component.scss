@@ -1,7 +1,7 @@
 .todo-container {
-	display: flex;
-	padding: 0 0.25rem;
-	gap: 0.5rem;
+	display: grid;
+	grid-template-columns: 40px 30px calc(100% - 70px);
+	padding: 0.5rem 1rem;
 
 	& > .drag-handle-container {
 		opacity: 0;
@@ -11,7 +11,7 @@
 
 	.content {
 		width: 100%;
-		padding: 0.25rem;
+		padding: 0;
 
 		.body {
 			padding-bottom: 0.25rem;
@@ -19,6 +19,8 @@
 				font-size: var(--vscode-editor-font-size);
 				margin: 0;
 				padding: 0;
+				white-space: pre-wrap;
+				word-wrap: break-word;
 			}
 			p.todo-text.complete {
 				text-decoration: line-through;
