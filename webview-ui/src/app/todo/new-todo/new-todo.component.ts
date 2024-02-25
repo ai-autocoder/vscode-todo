@@ -11,10 +11,10 @@ export class NewTodoComponent {
 	newTodoText: string = "";
 	@Input() scope!: TodoScope;
 	constructor(private todoService: TodoService) {}
-	
+
 	addTodo($event: Event) {
 		$event.preventDefault();
-		if (this.newTodoText === "") return;
+		if (!this.newTodoText.trim().length) return;
 		this.todoService.addTodo(this.scope, { text: this.newTodoText });
 		this.newTodoText = "";
 	}
