@@ -15,7 +15,7 @@ export class NewTodoComponent {
 	addTodo($event: Event) {
 		$event.preventDefault();
 		if (!this.newTodoText.trim().length) return;
-		this.todoService.addTodo(this.scope, { text: this.newTodoText });
+		this.todoService.addTodo(this.scope, { text: this.newTodoText.trim() });
 		this.newTodoText = "";
 	}
 

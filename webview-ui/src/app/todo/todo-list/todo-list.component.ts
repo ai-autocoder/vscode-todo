@@ -106,8 +106,8 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	saveEdit(id: number) {
 		const thisTodo = this.todos.find((todo) => todo.id === id);
-		if (!thisTodo) return;
-		this.todoService.editTodo(this.scope, { id, newText: thisTodo.text });
+		if (!thisTodo ) return;
+		this.todoService.editTodo(this.scope, { id, newText: thisTodo.text.trim() });
 		this.toggleEdit(id);
 	}
 
