@@ -1,20 +1,36 @@
 .todo-container {
 	display: grid;
-	grid-template-columns: 40px 30px calc(100% - 70px);
-	padding: 0.5rem 1rem;
+	grid-template-columns: 40px 40px calc(100% - 160px) 40px 40px;
+	padding: 0.5rem 0.75rem;
 
-	& > .drag-handle-container {
-		opacity: 0;
+	& > * {
 		display: flex;
+		justify-content: center;
+		justify-items: center;
 		align-items: flex-start;
 	}
 
+	.button {
+		display: flex;
+		opacity: 0;
+		cursor: pointer;
+		justify-self: flex-end;
+		background: none;
+		border: none;
+
+		&[disabled] {
+			cursor: default;
+		}
+	}
+
 	.content {
+		justify-content: flex-start;
+		flex-direction: column;
 		width: 100%;
-		padding: 0;
+		padding: 0 0.5rem;
 
 		.body {
-			padding-bottom: 0.25rem;
+			width: 100%;
 			p.todo-text {
 				font-size: var(--vscode-editor-font-size);
 				margin: 0;
@@ -33,11 +49,19 @@
 		.footer {
 			display: flex;
 			justify-content: space-between;
-			gap: 0.8rem;
-			padding-top: 0.25rem;
+			align-items: center;
+			width: 100%;
+			margin-top: .5rem;
+
+			.buttons {
+				display: flex;
+				flex: 1 1 auto;
+				justify-content: flex-end;
+			}
 
 			vscode-button {
-				margin-right: 1rem;
+				margin-left: 1rem;
+				flex: 1 1 auto;
 			}
 			.labels {
 				display: block;
@@ -71,13 +95,16 @@
 		&:hover {
 			background-color: var(--vscode-menu-background);
 
-			& > .drag-handle-container {
+			& .button {
+				opacity: 0.5;
+			}
+			& .button:hover:not([disabled]) {
 				opacity: 1;
 			}
 		}
 	}
 }
 
-.todo-container.cdk-drag.cdk-drag-preview > .drag-handle-container {
+.todo-container.cdk-drag.cdk-drag-preview .drag-handle {
 	opacity: 1;
 }
