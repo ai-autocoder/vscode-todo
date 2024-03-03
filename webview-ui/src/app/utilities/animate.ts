@@ -43,11 +43,11 @@ export class AutoAnimateDirective implements AfterViewInit, OnChanges {
 		autoAnimate(this.el.nativeElement, (el, action, oldCoords, newCoords) => {
 			let keyframes: KeyframeWithSize[] = [];
 			const animationOptions = this.options as AutoAnimateOptions;
+			const containerHeight = el.parentElement?.offsetHeight || 0;
 			// supply a different set of keyframes for each action
 			if (action === "add") {
 				keyframes = [
-					{ transform: "translateY(calc(100vh - 200px))" },
-					{ transform: "translateY(-15px)", offset: 0.65 },
+					{ transform: `translateY(calc(${containerHeight}px - 101%))`, background: "grey" },
 					{ transform: "translateY(0px)" },
 				];
 			}
@@ -71,23 +71,17 @@ export class AutoAnimateDirective implements AfterViewInit, OnChanges {
 				const [widthFrom, widthTo, heightFrom, heightTo] = getTransitionSizes(el, oldCoords, newCoords);
 				// set up our steps with our positioning keyframes
 				const start: KeyframeWithSize = { transform: `translate(${deltaX}px, ${deltaY}px)` };
-				const mid: KeyframeWithSize = {
-					transform: `translate(${deltaX * -0.15}px, ${deltaY * -0.15}px)`,
-					offset: 0.75,
-				};
 				const end: KeyframeWithSize = { transform: `translate(0, 0)` };
 				// if the dimensions changed, animate them too.
 				if (widthFrom !== widthTo) {
 					start.width = `${widthFrom}px`;
-					mid.width = `${widthFrom >= widthTo ? widthTo / 1.05 : widthTo * 1.05}px`;
 					end.width = `${widthTo}px`;
 				}
 				if (heightFrom !== heightTo) {
 					start.height = `${heightFrom}px`;
-					mid.height = `${heightFrom >= heightTo ? heightTo / 1.05 : heightTo * 1.05}px`;
 					end.height = `${heightTo}px`;
 				}
-				keyframes = [start, mid, end];
+				keyframes = [start, end];
 			}
 			// return our KeyframeEffect() and pass
 			// it the chosen keyframes.

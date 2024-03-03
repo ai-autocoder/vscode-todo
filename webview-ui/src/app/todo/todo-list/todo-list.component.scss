@@ -70,6 +70,11 @@
 	}
 }
 
+.cdk-drop-list{
+	height: 100%;
+	max-height: 100%;
+}
+
 // Styles when dragging starts
 .cdk-drop-list.cdk-drop-list-dragging {
 	.cdk-drag {
