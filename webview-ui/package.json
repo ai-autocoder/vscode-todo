@@ -20,7 +20,7 @@
 		"@angular/router": "^17.0.9",
 		"@formkit/auto-animate": "^0.8.1",
 		"@vscode/webview-ui-toolkit": "^1.2.2",
-		"rxjs": "~7.5.0",
+		"rxjs": "~7.8.1",
 		"tslib": "^2.3.0",
 		"zone.js": "~0.14.3"
 	},
@@ -37,6 +37,6 @@
 		"karma-coverage": "~2.1.0",
 		"karma-jasmine": "~4.0.0",
 		"karma-jasmine-html-reporter": "~1.7.0",
-		"typescript": "~5.2.2"
+		"typescript": "~5.3.3"
 	}
 }
