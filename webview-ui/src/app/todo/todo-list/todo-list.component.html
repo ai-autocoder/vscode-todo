@@ -23,7 +23,7 @@
 					<todo-label [todo]="todo"></todo-label>
 				</div>
 				<div class="buttons">
-					<vscode-button (click)="saveEdit(todo.id)">Ok</vscode-button>
+					<vscode-button (click)="saveEdit(todo.id)" [disabled]="!todo.text.trim().length">Ok</vscode-button>
 					<vscode-button appearance="secondary" (click)="cancelEdit(todo.id)">Cancel</vscode-button>
 				</div>
 			</div>
