@@ -19,7 +19,7 @@
 		border: none;
 
 		&[disabled] {
-			cursor: default;
+			cursor: not-allowed;
 		}
 	}
 
