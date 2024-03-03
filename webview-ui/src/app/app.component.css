@@ -2,13 +2,23 @@ main {
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
-	padding: 0.5rem;
+	padding: .25rem;
 }
 
 vscode-panels,
 todo-list {
 	width: 100%;
 	height: 100%;
+	overflow-x: hidden;
+	flex-grow: 1;
+}
+
+vscode-panels::part(tabpanel) {
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	border-top: 2px solid var(--vscode-settings-headerBorder);
+	transform: translateY(-2px);
 }
 
 vscode-panel-tab[aria-selected="true"] {
@@ -16,8 +26,8 @@ vscode-panel-tab[aria-selected="true"] {
 }
 
 vscode-panel-view {
-	border-top: 2px solid var(--vscode-settings-headerBorder);
-	transform: translateY(-2px);
+	overflow-y: auto;
+	padding: 0.5rem 0 0;
 }
 
 vscode-panels::part(activeIndicator) {
