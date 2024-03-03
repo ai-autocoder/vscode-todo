@@ -1,4 +1,4 @@
-import { ToolkitStore } from "@reduxjs/toolkit/dist/configureStore";
+import { EnhancedStore } from "@reduxjs/toolkit/dist/configureStore";
 import {
 	Disposable,
 	ExtensionContext,
@@ -27,7 +27,7 @@ export class HelloWorldPanel {
 	public static currentPanel: HelloWorldPanel | undefined;
 	private readonly _panel: WebviewPanel;
 	private _disposables: Disposable[] = [];
-	private _store: ToolkitStore;
+	private _store: EnhancedStore;
 
 	/**
 	 * The HelloWorldPanel class private constructor (called only from the render method).
@@ -35,7 +35,7 @@ export class HelloWorldPanel {
 	 * @param panel A reference to the webview panel
 	 * @param context The ExtensionContext
 	 */
-	private constructor(panel: WebviewPanel, context: ExtensionContext, store: ToolkitStore) {
+	private constructor(panel: WebviewPanel, context: ExtensionContext, store: EnhancedStore) {
 		this._panel = panel;
 		this._store = store;
 		const extensionUri = context.extensionUri;
@@ -69,7 +69,7 @@ export class HelloWorldPanel {
 	 *
 	 * @param extensionUri The URI of the directory containing the extension.
 	 */
-	public static render(context: ExtensionContext, store: ToolkitStore) {
+	public static render(context: ExtensionContext, store: EnhancedStore) {
 		const extensionUri = context.extensionUri;
 		if (HelloWorldPanel.currentPanel) {
 			// If the webview panel already exists but and in focus, dispose it

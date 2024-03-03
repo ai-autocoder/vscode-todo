@@ -1,4 +1,4 @@
-import { combineReducers, configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { combineReducers, configureStore, createSlice, PayloadAction, MiddlewareAPI  } from "@reduxjs/toolkit";
 import { getNumberOfTodos, generateUniqueId } from "./todoUtils";
 import { Todo, TodoScope, TodoSlice, ActionTrackerState } from "./todoTypes";
 import { Middleware } from "@reduxjs/toolkit";
@@ -107,10 +107,15 @@ export const userActions = userSlice.actions;
 export const workspaceActions = workspaceSlice.actions;
 export const actionTrackerActions = actionTrackerSlice.actions;
 
-const trackActionMiddleware: Middleware = (store) => (next) => (action) => {
-	const result = next(action);
-	const sliceName = action.type.split("/")[0];
-	if (sliceName === "actionTracker") return;
-	store.dispatch(actionTrackerSlice.actions.trackAction({ sliceName }));
-	return result;
+const trackActionMiddleware: Middleware = (api:MiddlewareAPI) => (next) => (action) => {
+	if (typeof action === 'object' && action !== null && 'type' in action && typeof action.type === 'string') {
+        const result = next(action);
+        const sliceName = action.type.split('/')[0];
+		const knownSliceNames = ['user', 'workspace']; 
+        if (knownSliceNames.includes(sliceName)) {
+            api.dispatch(actionTrackerSlice.actions.trackAction({ sliceName }));
+        }
+        return result;
+    }
+    return next(action);
 };
