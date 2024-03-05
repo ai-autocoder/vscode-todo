@@ -10,40 +10,35 @@
 		align-items: flex-start;
 	}
 
-	.button {
-		display: flex;
-		opacity: 0;
-		cursor: pointer;
-		justify-self: flex-end;
-		background: none;
-		border: none;
+	vscode-checkbox {
+		padding: 2px;
+	}
 
-		&[disabled] {
-			cursor: not-allowed;
-		}
+	.icon-button-container {
+		opacity: 0;
+	}
+	.icon-button {
+		margin: calc(var(--design-unit) * 1px) 0;
 	}
 
 	.content {
-		justify-content: flex-start;
+		justify-content: center;
 		flex-direction: column;
 		width: 100%;
 		padding: 0 0.5rem;
 
-		.body {
+		p.todo-text {
+			font-size: var(--vscode-editor-font-size);
+			margin: 0;
+			padding: 0;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+		}
+		p.todo-text.complete {
+			text-decoration: line-through;
+		}
+		text-area {
 			width: 100%;
-			p.todo-text {
-				font-size: var(--vscode-editor-font-size);
-				margin: 0;
-				padding: 0;
-				white-space: pre-wrap;
-				word-wrap: break-word;
-			}
-			p.todo-text.complete {
-				text-decoration: line-through;
-			}
-			text-area {
-				width: 100%;
-			}
 		}
 
 		.footer {
@@ -100,16 +95,13 @@
 		&:hover {
 			background-color: var(--vscode-menu-background);
 
-			& .button {
-				opacity: 0.5;
-			}
-			& .button:hover:not([disabled]) {
+			& .icon-button-container {
 				opacity: 1;
 			}
 		}
 	}
 }
 
-.todo-container.cdk-drag.cdk-drag-preview .drag-handle {
+.todo-container.cdk-drag.cdk-drag-preview .drag-handle-container {
 	opacity: 1;
 }

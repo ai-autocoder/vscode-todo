@@ -95,15 +95,6 @@ export class TodoList implements OnInit, AfterViewInit {
 		this.componentState[id].isEditable = !this.componentState[id].isEditable;
 	}
 
-	toggleFooter(id: number) {
-		if (this.componentState[id] === undefined) {
-			this.componentState[id] = {};
-		}
-		if (!this.componentState[id].isEditable) {
-			this.componentState[id].footerActive = !this.componentState[id].footerActive;
-		}
-	}
-
 	saveEdit(id: number) {
 		const thisTodo = this.todos.find((todo) => todo.id === id);
 		if (!thisTodo ) return;
