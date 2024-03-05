@@ -2,11 +2,13 @@
 	<vscode-panels activeid="tab-2">
 		<vscode-panel-tab (click)="selectTab(TodoScope.user)" id="tab-1">
 			User
-			<vscode-badge appearance="secondary">{{todoCount.user}}</vscode-badge>
+			<vscode-badge [ngStyle]="{ opacity: todoCount.user ? 1 : 0 }">{{ todoCount.user }}</vscode-badge>
 		</vscode-panel-tab>
 		<vscode-panel-tab (click)="selectTab(TodoScope.workspace)" id="tab-2">
 			Workspace
-			<vscode-badge appearance="secondary">{{todoCount.workspace}}</vscode-badge>
+			<vscode-badge [ngStyle]="{ opacity: todoCount.workspace ? 1 : 0 }">{{
+				todoCount.workspace
+			}}</vscode-badge>
 		</vscode-panel-tab>
 
 		<vscode-panel-view id="view-1">
