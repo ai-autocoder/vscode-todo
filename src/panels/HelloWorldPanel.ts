@@ -62,7 +62,7 @@ export class HelloWorldPanel {
 	public static render(context: ExtensionContext, store: EnhancedStore) {
 		const extensionUri = context.extensionUri;
 		if (HelloWorldPanel.currentPanel) {
-			// If the webview panel already exists but and in focus, dispose it
+			// If the webview panel already exists and in focus, dispose it
 			if (HelloWorldPanel.currentPanel._panel?.active) {
 				HelloWorldPanel.currentPanel._panel.dispose();
 			}
@@ -89,7 +89,7 @@ export class HelloWorldPanel {
 						Uri.joinPath(extensionUri, "webview-ui/build"),
 					],
 					retainContextWhenHidden: true,
-				}
+									}
 			);
 			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store);
 		}
