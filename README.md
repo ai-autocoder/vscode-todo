@@ -2,31 +2,36 @@
 
 ## Introduction
 
-**VSCode Todo** is a to-do list manager for Visual Studio Code. It allows you to create to-dos linked to either the workspace or your user profile, providing quick and easy access from the VSCode status bar. This extension simplifies task management directly within your coding environment, helping you stay organized and focused.
+**VSCode Todo** enhances your productivity by integrating a streamlined to-do list manager within Visual Studio Code. Effortlessly manage tasks tied to your workspace or global user profile, accessible directly from the VSCode status bar.
 
-## Features
+## Key Features
 
-- Workspace and Global To-dos: Create to-dos linked to either the current workspace or your user account for global access.
-- Easy Access from Status Bar: Quickly access your to-dos from the VSCode status bar, where the number of outstanding tasks is also displayed.
-- Edit and Manage To-dos: Click on a to-do to view its creation and completion dates/times or to edit or delete it.
-- Drag and Drop Functionality: Easily reorder your to-do list with a simple drag and drop action.
+- **Workspace & Global To-dos**: Seamlessly switch between tasks associated with your current workspace or stored globally across sessions.
+- **Status Bar Integration**: Instantly view and access your task list, including a count of pending to-dos, from the status bar.
+- **Manage Tasks with Ease**: Directly edit, delete, or mark tasks as completed with a simple click.
+- **Intuitive Task Ordering**: Organize your priorities with drag-and-drop functionality for your to-do list.
 
 ## Installation
 
-This extension is available in the VSCode Marketplace. You can install it directly from there.
+Find **VSCode Todo** in the VSCode Marketplace. Install with a single click to boost your productivity straight away.
 
-## Usage
+## How to Use
 
-After installation, you'll find a new button in your status bar indicating the number of outstanding to-dos. Clicking this button opens the to-do list interface.
+A new icon appears in your status bar post-installation, displaying the number of active to-dos. Click it to open the to-do list panel where you can manage your tasks.
 
-## Contribution
+## Screenshots
 
-I welcome contributions to the VSCode Todo extension. Feel free to submit pull requests, report issues, or suggest new features through the project's GitHub repository.
+<!-- [Interface screenshots] -->
+
+## Contributing
+
+Contributions are welcome! Please submit pull requests, report bugs, or suggest enhancements via the [GitHub repository](#).
 
 ## License
 
-This project is licensed under the MIT License.
+Distributed under the MIT License. See `LICENSE` for more information.
 
-## Contact
+## Support
 
-For questions, feedback, or issue reporting, please reach out through our GitHub repository.
+For support, feature requests, or bug reporting, please visit the [GitHub issues page](#).
+
