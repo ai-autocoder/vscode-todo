@@ -68,7 +68,7 @@ export class HelloWorldPanel {
 			}
 			// If the webview panel already exists but not in focus, reveal it
 			else {
-				HelloWorldPanel.currentPanel._panel.reveal(ViewColumn.One);
+				HelloWorldPanel.currentPanel._panel.reveal(ViewColumn.Beside);
 			}
 		} else {
 			// If a webview panel does not already exist create and show a new one
@@ -78,7 +78,7 @@ export class HelloWorldPanel {
 				// Panel title
 				"Tasks / Todo",
 				// The editor column the panel should be displayed in
-				ViewColumn.One,
+				ViewColumn.Beside,
 				// Extra panel configurations
 				{
 					// Enable JavaScript in the webview
