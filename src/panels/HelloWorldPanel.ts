@@ -89,6 +89,7 @@ export class HelloWorldPanel {
 						Uri.joinPath(extensionUri, "webview-ui/build"),
 					],
 					retainContextWhenHidden: true,
+					enableFindWidget: true,
 				}
 			);
 			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store);
