@@ -50,16 +50,6 @@ export class HelloWorldPanel {
 		// Set an event listener to listen for messages passed from the webview context
 		this._setWebviewMessageListener(this._panel.webview);
 
-		this._panel.onDidChangeViewState(
-			() => {
-				if (this._panel.visible) {
-					this.reloadWebview();
-				}
-			},
-			null,
-			this._disposables
-		);
-
 		this.reloadWebview();
 	}
 
@@ -98,6 +88,7 @@ export class HelloWorldPanel {
 						Uri.joinPath(extensionUri, "out"),
 						Uri.joinPath(extensionUri, "webview-ui/build"),
 					],
+					retainContextWhenHidden: true,
 				}
 			);
 			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store);
