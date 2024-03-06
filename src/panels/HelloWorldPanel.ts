@@ -74,7 +74,7 @@ export class HelloWorldPanel {
 			// If a webview panel does not already exist create and show a new one
 			const panel = window.createWebviewPanel(
 				// Panel view type
-				"showHelloWorld",
+				"showVscodeTasksWebview",
 				// Panel title
 				"Tasks / Todo",
 				// The editor column the panel should be displayed in
@@ -89,7 +89,7 @@ export class HelloWorldPanel {
 						Uri.joinPath(extensionUri, "webview-ui/build"),
 					],
 					retainContextWhenHidden: true,
-									}
+				}
 			);
 			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store);
 		}
