@@ -7,7 +7,7 @@ import { persist } from "./todo/todoUtils";
 export function activate(context: ExtensionContext) {
 	const store = createStore();
 
-	const openTodoCommand = commands.registerCommand("vscode-tasks.openTodo", () => {
+	const openTodoCommand = commands.registerCommand("vscode-todo.openTodo", () => {
 		HelloWorldPanel.render(context, store);
 	});
 

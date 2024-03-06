@@ -1,7 +1,7 @@
 {
-	"name": "vscode-tasks",
-	"displayName": "VS Code Tasks",
-	"description": "Save tasks linked to workspaces or globally, access from the status bar.",
+	"name": "vscode-todo",
+	"displayName": "VSCode Todo",
+	"description": "Manage workspace and global todos directly from the VSCode status bar.",
 	"icon": "icon.png",
 	"version": "0.0.1",
 	"engines": {
@@ -14,9 +14,9 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "vscode-tasks.openTodo",
+				"command": "vscode-todo.openTodo",
 				"title": "Open Todo list",
-				"category": "VSCode Tasks"
+				"category": "VSCode Todo"
 			}
 		]
 	},

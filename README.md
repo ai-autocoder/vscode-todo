@@ -1,8 +1,8 @@
-# VSCode Tasks Extension
+# VSCode Todo Extension
 
 ## Introduction
 
-**VSCode Tasks** is a to-do list manager for Visual Studio Code. It allows you to create to-dos linked to either the workspace or your user profile, providing quick and easy access from the VSCode status bar. This extension simplifies task management directly within your coding environment, helping you stay organized and focused.
+**VSCode Todo** is a to-do list manager for Visual Studio Code. It allows you to create to-dos linked to either the workspace or your user profile, providing quick and easy access from the VSCode status bar. This extension simplifies task management directly within your coding environment, helping you stay organized and focused.
 
 ## Features
 
@@ -21,7 +21,7 @@ After installation, you'll find a new button in your status bar indicating the n
 
 ## Contribution
 
-I welcome contributions to the VSCode Tasks extension. Feel free to submit pull requests, report issues, or suggest new features through the project's GitHub repository.
+I welcome contributions to the VSCode Todo extension. Feel free to submit pull requests, report issues, or suggest new features through the project's GitHub repository.
 
 ## License
 

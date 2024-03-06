@@ -11,7 +11,7 @@ let _statusBarItem: vscode.StatusBarItem | undefined;
  */
 export function createStatusBarItem(context: vscode.ExtensionContext) {
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-	statusBarItem.command = "vscode-tasks.openTodo";
+	statusBarItem.command = "vscode-todo.openTodo";
 	statusBarItem.text = "Todo";
 	statusBarItem.tooltip = "Open Todos";
 	statusBarItem.show();

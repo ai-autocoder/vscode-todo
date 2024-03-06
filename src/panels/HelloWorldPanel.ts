@@ -74,9 +74,9 @@ export class HelloWorldPanel {
 			// If a webview panel does not already exist create and show a new one
 			const panel = window.createWebviewPanel(
 				// Panel view type
-				"showVscodeTasksWebview",
+				"showVscodeTodoWebview",
 				// Panel title
-				"Tasks / Todo",
+				"Todo",
 				// The editor column the panel should be displayed in
 				ViewColumn.Beside,
 				// Extra panel configurations
@@ -158,7 +158,7 @@ export class HelloWorldPanel {
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
           <link rel="stylesheet" type="text/css" href="${stylesUri}">
-          <title>Tasks / Todo</title>
+          <title>Todo</title>
         </head>
         <body>
           <app-root></app-root>
