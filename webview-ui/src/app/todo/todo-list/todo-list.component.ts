@@ -10,6 +10,7 @@ import {
 import { Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
+import { MatSnackBar } from "@angular/material/snack-bar";
 
 @Component({
 	selector: "todo-list",
@@ -45,7 +46,11 @@ export class TodoList implements OnInit, AfterViewInit {
 		};
 	} = {};
 
-	constructor(private todoService: TodoService, private cdRef: ChangeDetectorRef) {}
+	constructor(
+		private todoService: TodoService,
+		private cdRef: ChangeDetectorRef,
+		private snackBar: MatSnackBar
+	) {}
 
 	ngOnInit(): void {
 		if (this.scope === TodoScope.user) {
@@ -97,7 +102,7 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	saveEdit(id: number) {
 		const thisTodo = this.todos.find((todo) => todo.id === id);
-		if (!thisTodo ) return;
+		if (!thisTodo) return;
 		this.todoService.editTodo(this.scope, { id, newText: thisTodo.text.trim() });
 		this.toggleEdit(id);
 	}
@@ -113,7 +118,17 @@ export class TodoList implements OnInit, AfterViewInit {
 	}
 
 	delete(id: number) {
+		const deletedItem = this.todos.find((todo) => todo.id === id) as Todo;
 		this.todoService.deleteTodo(this.scope, { id });
+		// Snackbar with undo
+		const snackBarRef = this.snackBar.open("Todo deleted", "UNDO", {
+			duration: 5000,
+		});
+		snackBarRef.onAction().subscribe(() => {
+			this.todoService.addTodo(this.scope, {
+				text: deletedItem.text,
+			});
+		});
 	}
 
 	onDrop(event: CdkDragDrop<Todo[]>) {

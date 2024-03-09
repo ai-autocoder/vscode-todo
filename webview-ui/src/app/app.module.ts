@@ -8,6 +8,8 @@ import { TodoLabel } from "./shared/todo-label.component";
 import { NewTodoComponent } from "./todo/new-todo/new-todo.component";
 import { TodoList } from "./todo/todo-list/todo-list.component";
 import { AutoAnimateDirective } from "./utilities/animate";
+import { MatSnackBarModule } from "@angular/material/snack-bar";
+import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 
 @NgModule({
 	declarations: [
@@ -18,7 +20,7 @@ import { AutoAnimateDirective } from "./utilities/animate";
 		NewTodoComponent,
 		AutoAnimateDirective,
 	],
-	imports: [BrowserModule, FormsModule, DragDropModule],
+	imports: [BrowserModule, FormsModule, DragDropModule, MatSnackBarModule, BrowserAnimationsModule],
 	providers: [],
 	bootstrap: [AppComponent],
 	schemas: [CUSTOM_ELEMENTS_SCHEMA],
