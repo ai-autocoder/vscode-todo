@@ -30,7 +30,7 @@
 		p.todo-text {
 			font-size: var(--vscode-editor-font-size);
 			margin: 0;
-			padding: 0;
+			padding: 3.75px 0;
 			white-space: pre-wrap;
 			word-wrap: break-word;
 		}
@@ -39,6 +39,8 @@
 		}
 		text-area {
 			width: 100%;
+			margin: calc(var(--design-unit) * 1px) 0;
+			padding: 2px 0;
 		}
 
 		.footer {
@@ -46,7 +48,7 @@
 			justify-content: space-between;
 			align-items: center;
 			width: 100%;
-			margin-top: .5rem;
+			margin: .25rem 0;
 
 			.buttons {
 				display: flex;
