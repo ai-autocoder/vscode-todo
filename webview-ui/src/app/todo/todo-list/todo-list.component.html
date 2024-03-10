@@ -2,7 +2,8 @@
 	<div class="todo-container" *ngFor="let todo of todos; trackBy: trackById" #dragItem cdkDrag [cdkDragData]="todo"
 		   (cdkDragStarted)="dragStarted()">
 		<div class="icon-button-container drag-handle-container">
-			<vscode-button appearance="icon" class="icon-button drag-handle" cdkDragHandle  aria-label="Drag to reorder todo item" title="Drag to reorder">
+			<vscode-button appearance="icon" class="icon-button drag-handle" cdkDragHandle aria-label="Drag to reorder todo item"
+				   title="Drag to reorder">
 				<span>
 					<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
 						<path fill-rule="evenodd" clip-rule="evenodd" d="M15 6H1V7H15V6ZM15 9H1V10H15V9Z" fill="#C5C5C5" />
@@ -15,7 +16,7 @@
 		</div>
 		<div class="content">
 			<text-area *ngIf="componentState[todo.id]?.isEditable" id="text-area-{{ todo.id }}" class="todo-text" [(value)]="todo.text"
-					[autoResize]="true">
+				   [autoResize]="true">
 			</text-area>
 			<p *ngIf="!componentState[todo.id]?.isEditable" class="todo-text" [class.complete]="todo.completed">{{ todo.text }}</p>
 			<div class="footer" *ngIf="componentState[todo.id]?.isEditable">
@@ -29,22 +30,20 @@
 			</div>
 		</div>
 		<div class="icon-button-container">
-			<vscode-button appearance="icon" class="icon-button" (click)="toggleEdit(todo.id)"
-				   [disabled]="componentState[todo.id] && componentState[todo.id].isEditable" aria-label="Edit" title="Edit">
-				<span><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
-					<path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"
-						   fill="#C5C5C5" />
-				</svg></span>
+			<vscode-button appearance="icon" class="icon-button" [matMenuTriggerFor]="actionMenu" aria-label="Open menu" title="Menu">
+				<span>
+					<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
+						<path d="M4 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"
+							   fill="#C5C5C5" />
+					</svg>
+				</span>
 			</vscode-button>
-		</div>
-		<div class="icon-button-container">
-			<vscode-button appearance="icon" class="icon-button" (click)="delete(todo.id)" aria-label="Delete todo item" title="Delete">
-				<span><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
-					<path fill-rule="evenodd" clip-rule="evenodd"
-						   d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z"
-						   fill="#C5C5C5" />
-				</svg></span>
-			</vscode-button>
+			<!-- Action menu -->
+			<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
+				<button mat-menu-item (click)="toggleEdit(todo.id)" [disabled]="componentState[todo.id] && componentState[todo.id].isEditable"
+					   aria-label="Edit">Edit</button>
+				<button mat-menu-item (click)="delete(todo.id)" aria-label="Delete item">Delete</button>
+			</mat-menu>
 		</div>
 	</div>
 </div>

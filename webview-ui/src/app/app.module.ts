@@ -10,6 +10,7 @@ import { TodoList } from "./todo/todo-list/todo-list.component";
 import { AutoAnimateDirective } from "./utilities/animate";
 import { MatSnackBarModule } from "@angular/material/snack-bar";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
+import { MatMenuModule } from "@angular/material/menu";
 
 @NgModule({
 	declarations: [
@@ -20,7 +21,14 @@ import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 		NewTodoComponent,
 		AutoAnimateDirective,
 	],
-	imports: [BrowserModule, FormsModule, DragDropModule, MatSnackBarModule, BrowserAnimationsModule],
+	imports: [
+		BrowserModule,
+		FormsModule,
+		DragDropModule,
+		MatSnackBarModule,
+		BrowserAnimationsModule,
+		MatMenuModule,
+	],
 	providers: [],
 	bootstrap: [AppComponent],
 	schemas: [CUSTOM_ELEMENTS_SCHEMA],

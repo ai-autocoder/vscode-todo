@@ -11,3 +11,22 @@ main {
 	max-width: 110ch;
 	margin: 0 auto;
 }
+
+/* Overrides for Angular Material theme */
+
+/* Menu */
+.mat-mdc-menu-content,
+.mat-mdc-menu-content .mat-mdc-menu-item .mat-mdc-menu-item-text {
+	--mat-menu-item-label-text-font: var(--font-family);
+	--mat-menu-item-label-text-size: var(--vscode-editor-font-size);
+	--mat-menu-item-label-text-tracking: "normal";
+	--mat-menu-item-hover-state-layer-color: var(--list-active-selection-background);
+}
+.mat-mdc-menu-content {
+	background-color: var(--vscode-notifications-background);
+	border-radius: 4px;
+	padding: 5px !important;
+}
+.mat-mdc-menu-item {
+	border-radius: 4px;
+}
