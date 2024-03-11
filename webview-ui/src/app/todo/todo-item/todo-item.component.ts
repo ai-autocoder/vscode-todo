@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnInit, Output } from "@angular/core";
+import { Component, EventEmitter, Input, Output } from "@angular/core";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
@@ -7,7 +7,7 @@ import { TodoService } from "../todo.service";
 	templateUrl: "./todo-item.component.html",
 	styleUrls: ["./todo-item.component.scss"],
 })
-export class TodoItemComponent implements OnInit {
+export class TodoItemComponent {
 	@Input() todo!: Todo;
 	@Input() scope!: TodoScope;
 	@Input() dragging = false;
@@ -17,11 +17,6 @@ export class TodoItemComponent implements OnInit {
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
 
 	constructor(private todoService: TodoService) {}
-
-	ngOnInit() {
-		// Initialize previousText with the text of the input todo when the component is created
-		this.previousText = this.todo.text;
-	}
 
 	saveEdit() {
 		this.todoService.editTodo(this.scope, { id: this.todo.id, newText: this.todo.text.trim() });
