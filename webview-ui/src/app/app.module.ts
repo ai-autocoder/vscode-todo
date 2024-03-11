@@ -11,12 +11,14 @@ import { AutoAnimateDirective } from "./utilities/animate";
 import { MatSnackBarModule } from "@angular/material/snack-bar";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { MatMenuModule } from "@angular/material/menu";
+import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
 
 @NgModule({
 	declarations: [
 		AppComponent,
 		TodoLabel,
 		TodoList,
+		TodoItemComponent,
 		TextArea,
 		NewTodoComponent,
 		AutoAnimateDirective,

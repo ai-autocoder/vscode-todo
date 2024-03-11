@@ -12,7 +12,7 @@ main {
 	margin: 0 auto;
 }
 
-/* Overrides for Angular Material theme */
+/* Overrides for Angular Material theme -> */
 
 /* Menu */
 .mat-mdc-menu-content,
@@ -29,4 +29,21 @@ main {
 }
 .mat-mdc-menu-item {
 	border-radius: 4px;
+}
+
+/* Drag and drop -> */
+
+/* Item being dragged */
+.cdk-drag.cdk-drag-preview {
+	background-color: var(--vscode-menu-background);
+
+	& .todo-container .icon-button-container.drag-handle-container {
+		opacity: 1;
+	}
+}
+.cdk-drop-list:not(.cdk-drop-list-dragging) todo-item:hover {
+	background-color: var(--vscode-menu-background);
+	& .icon-button-container {
+		opacity: 1;
+	}
 }

@@ -21,7 +21,6 @@ import { MatSnackBar } from "@angular/material/snack-bar";
 export class TodoList implements OnInit, AfterViewInit {
 	@Input()
 	scope!: TodoScope;
-
 	todos: Todo[] = [];
 	todoCount = 0;
 	isAnimationEnabled = false;
@@ -36,15 +35,6 @@ export class TodoList implements OnInit, AfterViewInit {
 		deleteTodo: true,
 		toggleTodo: true,
 	};
-
-	//Store temporary UI state
-	componentState: {
-		[id: number]: {
-			isEditable?: boolean;
-			previousText?: string;
-			footerActive?: boolean;
-		};
-	} = {};
 
 	constructor(
 		private todoService: TodoService,
@@ -92,45 +82,6 @@ export class TodoList implements OnInit, AfterViewInit {
 		this.cdRef.detectChanges();
 	}
 
-	toggleEdit(id: number) {
-		if (this.componentState[id] === undefined) {
-			this.componentState[id] = {};
-		}
-		this.componentState[id].previousText = this.todos.find((todo) => todo.id === id)?.text;
-		this.componentState[id].isEditable = !this.componentState[id].isEditable;
-	}
-
-	saveEdit(id: number) {
-		const thisTodo = this.todos.find((todo) => todo.id === id);
-		if (!thisTodo) return;
-		this.todoService.editTodo(this.scope, { id, newText: thisTodo.text.trim() });
-		this.toggleEdit(id);
-	}
-
-	cancelEdit(id: number) {
-		const thisTodo = this.todos.find((todo) => todo.id === id);
-		if (thisTodo) thisTodo.text = this.componentState[id]?.previousText || "";
-		this.toggleEdit(id);
-	}
-
-	toggleCompleted(id: number) {
-		this.todoService.toggleTodo(this.scope, { id });
-	}
-
-	delete(id: number) {
-		const deletedItem = this.todos.find((todo) => todo.id === id) as Todo;
-		this.todoService.deleteTodo(this.scope, { id });
-		// Snackbar with undo
-		const snackBarRef = this.snackBar.open("Todo deleted", "UNDO", {
-			duration: 5000,
-		});
-		snackBarRef.onAction().subscribe(() => {
-			this.todoService.addTodo(this.scope, {
-				text: deletedItem.text,
-			});
-		});
-	}
-
 	onDrop(event: CdkDragDrop<Todo[]>) {
 		// Move item within the array and update the order
 		moveItemInArray(this.todos, event.previousIndex, event.currentIndex);
@@ -161,6 +112,20 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	trackById(index: number, todo: Todo): number {
 		return todo.id;
+	}
+
+	handleDelete(todo: Todo) {
+		const deletedItem = todo;
+		this.todoService.deleteTodo(this.scope, { id: todo.id });
+		// Snackbar with undo
+		const snackBarRef = this.snackBar.open("Todo deleted", "UNDO", {
+			duration: 5000,
+		});
+		snackBarRef.onAction().subscribe(() => {
+			this.todoService.addTodo(this.scope, {
+				text: deletedItem.text,
+			});
+		});
 	}
 
 	ngOnDestroy(): void {

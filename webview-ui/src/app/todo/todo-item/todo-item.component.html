@@ -1,0 +1,43 @@
+<div class="todo-container" [ngClass]="{'dragging': dragging}">
+	<!-- Button dragger -->
+	<div class="icon-button-container drag-handle-container">
+		<vscode-button appearance="icon" class="icon-button drag-handle" cdkDragHandle aria-label="Drag to reorder todo item" title="Drag to reorder">
+			<span>
+				<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+					<path fill-rule="evenodd" clip-rule="evenodd" d="M15 6H1V7H15V6ZM15 9H1V10H15V9Z" fill="#C5C5C5" />
+				</svg>
+			</span>
+		</vscode-button>
+	</div>
+	<div class="checkbox">
+		<vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
+	</div>
+	<div class="content">
+		<text-area *ngIf="isEditable" id="text-area-{{ todo.id }}" class="todo-text" [(value)]="todo.text" [autoResize]="true">
+		</text-area>
+		<p *ngIf="!isEditable" class="todo-text" [class.complete]="todo.completed">{{ todo.text }}</p>
+		<div class="footer" *ngIf="isEditable">
+			<div class="labels">
+				<todo-label [todo]="todo"></todo-label>
+			</div>
+			<div class="buttons">
+				<vscode-button (click)="saveEdit()" [disabled]="!todo.text.trim().length" aria-label="Save">Save</vscode-button>
+				<vscode-button appearance="secondary" (click)="cancelEdit()" aria-label="Cancel">Cancel</vscode-button>
+			</div>
+		</div>
+	</div>
+	<div class="icon-button-container">
+		<vscode-button appearance="icon" class="icon-button" [matMenuTriggerFor]="actionMenu" aria-label="Open menu" title="Menu">
+			<span>
+				<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
+					<path d="M4 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z" fill="#C5C5C5" />
+				</svg>
+			</span>
+		</vscode-button>
+		<!-- Action menu -->
+		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
+			<button mat-menu-item (click)="edit()" [disabled]="isEditable" aria-label="Edit">Edit</button>
+			<button mat-menu-item (click)="onDelete(todo)" aria-label="Delete item">Delete</button>
+		</mat-menu>
+	</div>
+</div>
