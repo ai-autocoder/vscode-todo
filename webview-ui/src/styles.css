@@ -59,9 +59,14 @@ markdown > *:first-child {
 		opacity: 1;
 	}
 }
-.cdk-drop-list:not(.cdk-drop-list-dragging) todo-item:hover {
-	background-color: var(--vscode-menu-background);
-	& .icon-button-container {
-		opacity: 1;
+.cdk-drop-list:not(.cdk-drop-list-dragging) {
+	todo-item:hover {
+		background-color: var(--vscode-menu-background);
+		& .icon-button-container {
+			opacity: 1;
+		}
+	}
+	todo-item.note {
+		background-color: var(--vscode-menu-background);
 	}
 }

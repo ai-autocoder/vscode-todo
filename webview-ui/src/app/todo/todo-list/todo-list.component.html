@@ -1,6 +1,23 @@
-<div cdkDropList (cdkDropListDropped)="onDrop($event)" [cdkDropListSortPredicate]="sortPredicate" auto-animate [options]="autoAnimateOptions">
-	<div *ngFor="let todo of todos; trackBy: trackById" #dragItem cdkDrag [cdkDragData]="todo" (cdkDragStarted)="dragStarted()">
-		<todo-item [todo]="todo" [scope]="scope" (delete)="handleDelete($event)">
+<div
+	cdkDropList
+	(cdkDropListDropped)="onDrop($event)"
+	[cdkDropListSortPredicate]="sortPredicate"
+	auto-animate
+	[options]="autoAnimateOptions"
+>
+	<div
+		*ngFor="let todo of todos; trackBy: trackById"
+		#dragItem
+		cdkDrag
+		[cdkDragData]="todo"
+		(cdkDragStarted)="dragStarted()"
+	>
+		<todo-item
+			[todo]="todo"
+			[scope]="scope"
+			(delete)="handleDelete($event)"
+			[ngClass]="{ note: todo.isNote }"
+		>
 		</todo-item>
 	</div>
 </div>

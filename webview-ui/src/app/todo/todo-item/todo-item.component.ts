@@ -41,6 +41,10 @@ export class TodoItemComponent {
 		this.todoService.toggleMarkdown(this.scope, { id: this.todo.id });
 	}
 
+	toggleTodoNote() {
+		this.todoService.toggleTodoNote(this.scope, { id: this.todo.id });
+	}
+
 	onDelete(todo: Todo): void {
 		this.delete.emit(todo);
 	}

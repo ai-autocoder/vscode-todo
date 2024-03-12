@@ -8,6 +8,7 @@ type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.deleteTodo
 	| MessageActionsFromWebview.reorderTodo
 	| MessageActionsFromWebview.toggleMarkdown
+	| MessageActionsFromWebview.toggleTodoNote
 	? Parameters<L extends TodoScope.user ? (typeof userActions)[T] : (typeof workspaceActions)[T]>[0]
 	: T extends MessageActionsToWebview.syncData
 		? TodoSlice
@@ -36,6 +37,7 @@ export const enum MessageActionsFromWebview {
 	deleteTodo = "deleteTodo",
 	reorderTodo = "reorderTodo",
 	toggleMarkdown = "toggleMarkdown",
+	toggleTodoNote = "toggleTodoNote",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
@@ -101,6 +103,16 @@ export const messagesFromWebview = {
 			: Parameters<typeof workspaceActions.toggleMarkdown>[0]
 	): Message<MessageActionsFromWebview.toggleMarkdown, TodoScope> => ({
 		type: MessageActionsFromWebview.toggleMarkdown,
+		scope,
+		payload,
+	}),
+	toggleTodoNote: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.toggleTodoNote>[0]
+			: Parameters<typeof workspaceActions.toggleTodoNote>[0]
+	): Message<MessageActionsFromWebview.toggleTodoNote, TodoScope> => ({
+		type: MessageActionsFromWebview.toggleTodoNote,
 		scope,
 		payload,
 	}),

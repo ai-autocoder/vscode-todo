@@ -91,4 +91,8 @@ export class TodoService {
 	toggleMarkdown(...args: Parameters<typeof messagesFromWebview.toggleMarkdown>) {
 		vscode.postMessage(messagesFromWebview.toggleMarkdown(...args));
 	}
+
+	toggleTodoNote(...args: Parameters<typeof messagesFromWebview.toggleTodoNote>) {
+		vscode.postMessage(messagesFromWebview.toggleTodoNote(...args));
+	}
 }

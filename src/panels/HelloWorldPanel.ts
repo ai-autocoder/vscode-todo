@@ -219,6 +219,11 @@ export class HelloWorldPanel {
 						this._store.dispatch(storeActions.toggleMarkdown(payload));
 						break;
 					}
+					case MessageActionsFromWebview.toggleTodoNote: {
+						const { payload } = message as Message<MessageActionsFromWebview.toggleTodoNote, TodoScope>;
+						this._store.dispatch(storeActions.toggleTodoNote(payload));
+						break;
+					}
 					default:
 						console.error("Action not found");
 				}

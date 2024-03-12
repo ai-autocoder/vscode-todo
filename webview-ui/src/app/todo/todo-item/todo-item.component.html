@@ -1,4 +1,4 @@
-<div class="todo-container" [ngClass]="{ dragging: dragging }">
+<div class="todo-container" [ngClass]="{ dragging: dragging, note: todo.isNote }">
 	<!-- Button dragger -->
 	<div class="icon-button-container drag-handle-container">
 		<vscode-button
@@ -20,7 +20,7 @@
 			</span>
 		</vscode-button>
 	</div>
-	<div class="checkbox">
+	<div class="checkbox" *ngIf="!todo.isNote">
 		<vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
 	</div>
 	<div class="content">
@@ -32,13 +32,13 @@
 			[autoResize]="true"
 		>
 		</text-area>
-		<p *ngIf="!isEditable && !todo.isMarkdown" class="todo-text" [class.complete]="todo.completed">
+		<p *ngIf="!isEditable && !todo.isMarkdown" class="todo-text" [class.complete]="todo.completed && !todo.isNote">
 			{{ todo.text }}
 		</p>
 		<markdown
 			*ngIf="!isEditable && todo.isMarkdown"
 			class="todo-text"
-			[class.complete]="todo.completed"
+			[class.complete]="todo.completed && !todo.isNote"
 			[data]="todo.text"
 		></markdown>
 		<div class="footer" *ngIf="isEditable">
@@ -77,6 +77,9 @@
 			<button mat-menu-item (click)="edit()" [disabled]="isEditable" aria-label="Edit">Edit</button>
 			<button mat-menu-item (click)="toggleMarkdown()" [disabled]="isEditable" aria-label="Edit">
 				{{ todo.isMarkdown ? "Text" : "Markdown" }}
+			</button>
+			<button mat-menu-item (click)="toggleTodoNote()" [disabled]="isEditable" aria-label="Edit">
+				{{ todo.isNote ? "Todo" : "Note" }}
 			</button>
 			<button mat-menu-item (click)="onDelete(todo)" aria-label="Delete item">Delete</button>
 		</mat-menu>

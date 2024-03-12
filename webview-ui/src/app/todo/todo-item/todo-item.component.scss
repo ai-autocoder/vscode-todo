@@ -11,6 +11,10 @@
 		align-items: flex-start;
 	}
 
+	&.note {
+		grid-template-columns: 40px calc(100% - 80px) 40px;
+	}
+
 	.icon-button-container {
 		opacity: 0;
 	}

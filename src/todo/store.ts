@@ -22,6 +22,7 @@ const todoReducers = {
 			completed: false,
 			creationDate: new Date().toISOString(),
 			isMarkdown: false,
+			isNote: false,
 		});
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
@@ -60,6 +61,12 @@ const todoReducers = {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
 		if (!todo) return;
 		todo.isMarkdown = !(todo.isMarkdown ?? false);
+		state.lastActionType = action.type;
+	},
+	toggleTodoNote: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
+		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
+		if (!todo) return;
+		todo.isNote = !(todo.isNote ?? false);
 		state.lastActionType = action.type;
 	},
 };
