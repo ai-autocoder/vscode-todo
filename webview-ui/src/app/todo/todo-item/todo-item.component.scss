@@ -36,9 +36,15 @@
 			white-space: pre-wrap;
 			word-wrap: break-word;
 		}
-		p.todo-text.complete {
+
+		markdown.todo-text {
+			font-size: var(--vscode-editor-font-size);
+		}
+
+		.todo-text.complete {
 			text-decoration: line-through;
 		}
+
 		text-area {
 			width: 100%;
 			margin: calc(var(--design-unit) * 1px) 0;
@@ -68,5 +74,3 @@
 		}
 	}
 }
-
-

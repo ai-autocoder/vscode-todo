@@ -1,4 +1,10 @@
-import { combineReducers, configureStore, createSlice, PayloadAction, MiddlewareAPI  } from "@reduxjs/toolkit";
+import {
+	combineReducers,
+	configureStore,
+	createSlice,
+	PayloadAction,
+	MiddlewareAPI,
+} from "@reduxjs/toolkit";
 import { getNumberOfTodos, generateUniqueId } from "./todoUtils";
 import { Todo, TodoScope, TodoSlice, ActionTrackerState } from "./todoTypes";
 import { Middleware } from "@reduxjs/toolkit";
@@ -15,6 +21,7 @@ const todoReducers = {
 			text: action.payload.text,
 			completed: false,
 			creationDate: new Date().toISOString(),
+			isMarkdown: false,
 		});
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
@@ -47,6 +54,12 @@ const todoReducers = {
 	},
 	reorderTodo: (state: TodoSlice, action: PayloadAction<{ reorderedTodos: Todo[] }>) => {
 		state.todos = action.payload.reorderedTodos;
+		state.lastActionType = action.type;
+	},
+	toggleMarkdown: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
+		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
+		if (!todo) return;
+		todo.isMarkdown = !(todo.isMarkdown ?? false);
 		state.lastActionType = action.type;
 	},
 };
@@ -107,15 +120,20 @@ export const userActions = userSlice.actions;
 export const workspaceActions = workspaceSlice.actions;
 export const actionTrackerActions = actionTrackerSlice.actions;
 
-const trackActionMiddleware: Middleware = (api:MiddlewareAPI) => (next) => (action) => {
-	if (typeof action === 'object' && action !== null && 'type' in action && typeof action.type === 'string') {
-        const result = next(action);
-        const sliceName = action.type.split('/')[0];
-		const knownSliceNames = ['user', 'workspace']; 
-        if (knownSliceNames.includes(sliceName)) {
-            api.dispatch(actionTrackerSlice.actions.trackAction({ sliceName }));
-        }
-        return result;
-    }
-    return next(action);
+const trackActionMiddleware: Middleware = (api: MiddlewareAPI) => (next) => (action) => {
+	if (
+		typeof action === "object" &&
+		action !== null &&
+		"type" in action &&
+		typeof action.type === "string"
+	) {
+		const result = next(action);
+		const sliceName = action.type.split("/")[0];
+		const knownSliceNames = ["user", "workspace"];
+		if (knownSliceNames.includes(sliceName)) {
+			api.dispatch(actionTrackerSlice.actions.trackAction({ sliceName }));
+		}
+		return result;
+	}
+	return next(action);
 };

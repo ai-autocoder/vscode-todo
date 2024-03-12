@@ -87,4 +87,8 @@ export class TodoService {
 	reorderTodos(...args: Parameters<typeof messagesFromWebview.reorderTodo>) {
 		vscode.postMessage(messagesFromWebview.reorderTodo(...args));
 	}
+
+	toggleMarkdown(...args: Parameters<typeof messagesFromWebview.toggleMarkdown>) {
+		vscode.postMessage(messagesFromWebview.toggleMarkdown(...args));
+	}
 }

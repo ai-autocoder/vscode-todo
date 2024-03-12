@@ -12,6 +12,24 @@ main {
 	margin: 0 auto;
 }
 
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+	margin: 0.5em 0;
+}
+
+markdown {
+	max-width: 100%;
+}
+
+markdown > *:first-child {
+	margin-top: 0;
+}
+
 /* Overrides for Angular Material theme -> */
 
 /* Menu */

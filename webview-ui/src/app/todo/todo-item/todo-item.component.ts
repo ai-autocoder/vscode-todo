@@ -37,6 +37,10 @@ export class TodoItemComponent {
 		this.isEditable = true;
 	}
 
+	toggleMarkdown() {
+		this.todoService.toggleMarkdown(this.scope, { id: this.todo.id });
+	}
+
 	onDelete(todo: Todo): void {
 		this.delete.emit(todo);
 	}

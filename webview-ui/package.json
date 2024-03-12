@@ -22,6 +22,9 @@
 		"@angular/router": "^17.0.9",
 		"@formkit/auto-animate": "^0.8.1",
 		"@vscode/webview-ui-toolkit": "^1.2.2",
+		"marked": "^9.0.0",
+		"ngx-markdown": "^17.1.1",
+		"prismjs": "^1.28.0",
 		"rxjs": "~7.8.1",
 		"tslib": "^2.3.0",
 		"zone.js": "~0.14.3"

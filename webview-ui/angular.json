@@ -23,8 +23,18 @@
 						"polyfills": "src/polyfills.ts",
 						"tsConfig": "tsconfig.app.json",
 						"assets": ["src/favicon.ico", "src/assets"],
-						"styles": ["@angular/material/prebuilt-themes/pink-bluegrey.css", "src/styles.css"],
-						"scripts": []
+						"styles": [
+							"@angular/material/prebuilt-themes/pink-bluegrey.css",
+							"node_modules/prismjs/themes/prism-okaidia.css",
+							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.css",
+							"src/styles.css"
+						],
+						"scripts": [
+							"node_modules/prismjs/prism.js",
+							"node_modules/prismjs/components/prism-csharp.min.js",
+							"node_modules/prismjs/components/prism-css.min.js",
+							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.js"
+						]
 					},
 					"configurations": {
 						"production": {
@@ -85,8 +95,18 @@
 						"tsConfig": "tsconfig.spec.json",
 						"karmaConfig": "karma.conf.js",
 						"assets": ["src/favicon.ico", "src/assets"],
-						"styles": ["@angular/material/prebuilt-themes/pink-bluegrey.css", "src/styles.css"],
-						"scripts": []
+						"styles": [
+							"@angular/material/prebuilt-themes/pink-bluegrey.css",
+							"node_modules/prismjs/themes/prism-okaidia.css",
+							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.css",
+							"src/styles.css"
+						],
+						"scripts": [
+							"node_modules/prismjs/prism.js",
+							"node_modules/prismjs/components/prism-csharp.min.js",
+							"node_modules/prismjs/components/prism-css.min.js",
+							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.js"
+						]
 					}
 				}
 			}

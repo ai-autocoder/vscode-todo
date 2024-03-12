@@ -4,6 +4,7 @@ export interface Todo {
 	completed: boolean;
 	creationDate: string;
 	completionDate?: string;
+	isMarkdown: boolean;
 }
 
 export enum TodoScope {

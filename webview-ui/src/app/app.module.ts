@@ -12,6 +12,13 @@ import { MatSnackBarModule } from "@angular/material/snack-bar";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { MatMenuModule } from "@angular/material/menu";
 import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
+import { MarkdownModule } from "ngx-markdown";
+import { HttpClientModule } from "@angular/common/http";
+
+import "prismjs";
+import "prismjs/components/prism-typescript.min.js";
+import "prismjs/plugins/line-numbers/prism-line-numbers.js";
+import "prismjs/plugins/line-highlight/prism-line-highlight.js";
 
 @NgModule({
 	declarations: [
@@ -30,6 +37,8 @@ import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
 		MatSnackBarModule,
 		BrowserAnimationsModule,
 		MatMenuModule,
+		HttpClientModule, // HttpClientModule is required for ngx-markdown
+		MarkdownModule.forRoot(),
 	],
 	providers: [],
 	bootstrap: [AppComponent],
