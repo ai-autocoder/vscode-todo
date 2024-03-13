@@ -33,12 +33,18 @@
 		width: 100%;
 		padding: 0 0.5rem;
 
-		p.todo-text {
+		div.todo-text {
 			font-size: var(--vscode-editor-font-size);
 			margin: 0;
 			padding: 3.75px 0;
 			white-space: pre-wrap;
 			word-wrap: break-word;
+			width: 100%;
+		}
+
+		div.markdown-container {
+			display: flex;
+			width: 100%;
 		}
 
 		markdown.todo-text {

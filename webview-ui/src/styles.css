@@ -12,22 +12,29 @@ main {
 	margin: 0 auto;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-p {
+/* Markdown -> */
+
+markdown > h1,
+markdown > h2,
+markdown > h3,
+markdown > h4,
+markdown > h5,
+markdown > h6,
+markdown > p {
 	margin: 0.5em 0;
 }
 
 markdown {
 	max-width: 100%;
+	padding: 3.75px 0;
 }
 
 markdown > *:first-child {
 	margin-top: 0;
+}
+
+markdown > *:only-child {
+	margin-bottom: 0;
 }
 
 /* Overrides for Angular Material theme -> */

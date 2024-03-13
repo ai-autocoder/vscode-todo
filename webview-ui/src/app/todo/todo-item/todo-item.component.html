@@ -32,15 +32,19 @@
 			[autoResize]="true"
 		>
 		</text-area>
-		<p *ngIf="!isEditable && !todo.isMarkdown" class="todo-text" [class.complete]="todo.completed && !todo.isNote">
-			{{ todo.text }}
-		</p>
-		<markdown
-			*ngIf="!isEditable && todo.isMarkdown"
+		<!-- prettier-ignore -->
+		<div
+			*ngIf="!isEditable && !todo.isMarkdown"
 			class="todo-text"
 			[class.complete]="todo.completed && !todo.isNote"
-			[data]="todo.text"
-		></markdown>
+		>{{ todo.text }}</div>
+		<div *ngIf="!isEditable && todo.isMarkdown" class="markdown-container">
+			<markdown
+				class="todo-text"
+				[class.complete]="todo.completed && !todo.isNote"
+				[data]="todo.text"
+			></markdown>
+		</div>
 		<div class="footer" *ngIf="isEditable">
 			<div class="labels">
 				<todo-label [todo]="todo"></todo-label>
