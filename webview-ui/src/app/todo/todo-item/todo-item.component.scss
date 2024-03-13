@@ -40,11 +40,13 @@
 			white-space: pre-wrap;
 			word-wrap: break-word;
 			width: 100%;
+			cursor: pointer;
 		}
 
 		div.markdown-container {
 			display: flex;
 			width: 100%;
+			cursor: pointer;
 		}
 
 		markdown.todo-text {

@@ -34,11 +34,12 @@
 		</text-area>
 		<!-- prettier-ignore -->
 		<div
+			(click)="edit()"
 			*ngIf="!isEditable && !todo.isMarkdown"
 			class="todo-text"
 			[class.complete]="todo.completed && !todo.isNote"
 		>{{ todo.text }}</div>
-		<div *ngIf="!isEditable && todo.isMarkdown" class="markdown-container">
+		<div *ngIf="!isEditable && todo.isMarkdown" class="markdown-container" (click)="edit($event)">
 			<markdown
 				class="todo-text"
 				[class.complete]="todo.completed && !todo.isNote"
@@ -53,7 +54,11 @@
 				<vscode-button (click)="saveEdit()" [disabled]="!todo.text.trim().length" aria-label="Save"
 					>Save</vscode-button
 				>
-				<vscode-button appearance="secondary" (click)="cancelEdit()" aria-label="Cancel"
+				<vscode-button
+					appearance="secondary"
+					(click)="cancelEdit()"
+					aria-label="Cancel"
+					id="cancel-button"
 					>Cancel</vscode-button
 				>
 			</div>
@@ -78,11 +83,20 @@
 		</vscode-button>
 		<!-- Action menu -->
 		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
-			<button mat-menu-item (click)="edit()" [disabled]="isEditable" aria-label="Edit">Edit</button>
-			<button mat-menu-item (click)="toggleMarkdown()" [disabled]="isEditable" aria-label="Edit">
+			<button
+				mat-menu-item
+				(click)="toggleMarkdown()"
+				[disabled]="isEditable"
+				aria-label="Toggle text / markdown"
+			>
 				{{ todo.isMarkdown ? "Text" : "Markdown" }}
 			</button>
-			<button mat-menu-item (click)="toggleTodoNote()" [disabled]="isEditable" aria-label="Edit">
+			<button
+				mat-menu-item
+				(click)="toggleTodoNote()"
+				[disabled]="isEditable"
+				aria-label="Toggle todo / note"
+			>
 				{{ todo.isNote ? "Todo" : "Note" }}
 			</button>
 			<button mat-menu-item (click)="onDelete(todo)" aria-label="Delete item">Delete</button>
