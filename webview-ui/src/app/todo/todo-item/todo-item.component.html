@@ -86,7 +86,6 @@
 			<button
 				mat-menu-item
 				(click)="toggleMarkdown()"
-				[disabled]="isEditable"
 				aria-label="Toggle text / markdown"
 			>
 				{{ todo.isMarkdown ? "Text" : "Markdown" }}
@@ -94,7 +93,6 @@
 			<button
 				mat-menu-item
 				(click)="toggleTodoNote()"
-				[disabled]="isEditable"
 				aria-label="Toggle todo / note"
 			>
 				{{ todo.isNote ? "Todo" : "Note" }}
