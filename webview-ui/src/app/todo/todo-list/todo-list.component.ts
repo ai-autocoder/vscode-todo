@@ -102,6 +102,9 @@ export class TodoList implements OnInit, AfterViewInit {
 	 * categories, without intermixing.
 	 */
 	sortPredicate = (index: number, item: CdkDrag<Todo>): boolean => {
+		if (item.data.isNote) {
+			return true;
+		}
 		if (this.scope === TodoScope.user) {
 			this.todoCount = this.todoService.todoCount.user;
 		} else {
