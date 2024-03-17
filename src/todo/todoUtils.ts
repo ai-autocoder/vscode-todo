@@ -1,5 +1,5 @@
 import { ExtensionContext } from "vscode";
-import { TodoScope, TodoSlice } from "./todoTypes";
+import { Todo, TodoScope, TodoSlice } from "./todoTypes";
 
 /**
  * Calculate the number of incomplete todos in the given state.
@@ -39,4 +39,32 @@ export function generateUniqueId(state: TodoSlice, scope: TodoScope): number {
 	} while (todos.some((todo) => todo.id === newId));
 
 	return newId;
+}
+
+/**
+ * Sorts an array of todos by their completion status
+ * within sections defined by note items.
+ *
+ * @param {Todo[]} todos - The array of todos and notes to be sorted.
+ * @return {Todo[]} A new array of todos sorted according to the specified rules.
+ */
+export function sortTodosWithNotes(todos: Todo[]): Todo[] {
+	let currentGroup = 0;
+	const mappedTodos = todos.map((todo, index) => ({
+		originalIndex: index,
+		todo,
+		group: todo.isNote ? ++currentGroup : currentGroup,
+	}));
+
+	const sortedMappedTodos = mappedTodos.sort((a, b) => {
+		if (a.group !== b.group) {
+			return a.group - b.group;
+		}
+		if (!a.todo.isNote && !b.todo.isNote) {
+			return Number(a.todo.completed) - Number(b.todo.completed);
+		}
+		return a.originalIndex - b.originalIndex;
+	});
+
+	return sortedMappedTodos.map((mappedItem) => mappedItem.todo);
 }

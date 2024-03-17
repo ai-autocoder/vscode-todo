@@ -5,7 +5,7 @@ import {
 	PayloadAction,
 	MiddlewareAPI,
 } from "@reduxjs/toolkit";
-import { getNumberOfTodos, generateUniqueId } from "./todoUtils";
+import { getNumberOfTodos, generateUniqueId, sortTodosWithNotes } from "./todoUtils";
 import { Todo, TodoScope, TodoSlice, ActionTrackerState } from "./todoTypes";
 import { Middleware } from "@reduxjs/toolkit";
 
@@ -33,8 +33,7 @@ const todoReducers = {
 
 		todo.completed = !todo.completed;
 		todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
-		// Sort completed todos to be after uncompleted
-		state.todos?.sort((a, b) => Number(a.completed) - Number(b.completed));
+		Object.assign(state.todos, sortTodosWithNotes(state.todos));
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
 	},
@@ -56,6 +55,7 @@ const todoReducers = {
 	reorderTodo: (state: TodoSlice, action: PayloadAction<{ reorderedTodos: Todo[] }>) => {
 		state.todos = action.payload.reorderedTodos;
 		state.lastActionType = action.type;
+		Object.assign(state.todos, sortTodosWithNotes(state.todos));
 	},
 	toggleMarkdown: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
@@ -67,6 +67,9 @@ const todoReducers = {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
 		if (!todo) return;
 		todo.isNote = !(todo.isNote ?? false);
+		if (!todo.isNote) {
+			Object.assign(state.todos, sortTodosWithNotes(state.todos));
+		}
 		state.lastActionType = action.type;
 	},
 };

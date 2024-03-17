@@ -97,20 +97,48 @@ export class TodoList implements OnInit, AfterViewInit {
 	}
 
 	/**
-	 * Predicate function that only allows sorting items
-	 * within their respective completed or incomplete
-	 * categories, without intermixing.
+	 * Determines whether the dragged item can be dropped at the specified position.
+	 *
+	 * Parameters:
+	 * - index: number - The index at which the item is being dropped.
+	 * - item: CdkDrag<Todo> - The item being dragged.
+	 *
+	 * Returns:
+	 * - boolean - `true` if the item can be dropped at the index, `false` otherwise.
 	 */
 	sortPredicate = (index: number, item: CdkDrag<Todo>): boolean => {
-		if (item.data.isNote) {
-			return true;
-		}
-		if (this.scope === TodoScope.user) {
-			this.todoCount = this.todoService.todoCount.user;
+		// Dragging a note.
+		if (item.data.isNote) return true;
+
+		const originalIndex = this.todos.findIndex((todo) => todo.id === item.data.id);
+		const targetTodo = this.todos[index];
+		const nextTodo = this.todos[index + 1];
+		const prevTodo = this.todos[index - 1];
+
+		// Dragging a completed todo.
+		if (item.data.completed) {
+			// Allow drop to the last position or onto another completed todo.
+			if (index === this.todos.length - 1 || targetTodo.completed) return true;
+
+			// Dropping onto a note has specific rules based on item original position.
+			if (targetTodo.isNote) {
+				if (originalIndex < index && (!nextTodo || nextTodo.completed)) return true;
+				if (originalIndex > index) return true;
+			} else {
+				// Dropping onto an incomplete todo.
+				return originalIndex < index && nextTodo?.completed;
+			}
 		} else {
-			this.todoCount = this.todoService.todoCount.workspace;
+			// Dragging an incomplete todo.
+			if (index === 0 || !targetTodo.completed || targetTodo.isNote) return true;
+
+			// Dropping onto a completed todo.
+			if (targetTodo.completed && originalIndex > index) {
+				return prevTodo?.isNote || !prevTodo?.completed;
+			}
 		}
-		return item.data.completed ? index > this.todoCount - 1 : index < this.todoCount;
+
+		return false; // Default to not allowing drop for unhandled cases.
 	};
 
 	trackById(index: number, todo: Todo): number {
