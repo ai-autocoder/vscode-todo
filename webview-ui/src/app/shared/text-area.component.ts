@@ -57,6 +57,17 @@ export class TextArea implements AfterViewInit, OnChanges {
 
 	ngAfterViewInit(): void {
 		this.adjustHeight();
+		this.setFocus();
+	}
+
+	private setFocus() {
+		if (this.textareaParts.first) {
+			const textarea: HTMLTextAreaElement =
+				this.textareaParts.first.nativeElement.shadowRoot?.querySelector('[part="control"]');
+			if (textarea) {
+				setTimeout(() => textarea.focus(), 0);
+			}
+		}
 	}
 
 	ngOnChanges(changes: SimpleChanges): void {
