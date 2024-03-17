@@ -93,3 +93,8 @@ markdown > *:only-child {
 		background-color: var(--vscode-menu-background);
 	}
 }
+
+/* VS Code textarea */
+new-todo vscode-text-area::part(control) {
+	max-height: 80vh;
+}

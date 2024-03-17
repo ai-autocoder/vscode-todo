@@ -32,7 +32,6 @@ import {
 		`
 			vscode-text-area::part(control) {
 				font-size: var(--vscode-editor-font-size);
-				max-height: 80vh;
 			}
 		`,
 	],
