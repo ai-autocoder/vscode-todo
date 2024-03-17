@@ -1,4 +1,7 @@
-<div class="todo-container" [ngClass]="{ dragging: dragging, note: todo.isNote }">
+<div
+	class="todo-container"
+	[ngClass]="{ 'dragging': dragging, 'note': todo.isNote, 'edit-mode': isEditable }"
+>
 	<!-- Button dragger -->
 	<div class="icon-button-container drag-handle-container">
 		<vscode-button
@@ -83,18 +86,10 @@
 		</vscode-button>
 		<!-- Action menu -->
 		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
-			<button
-				mat-menu-item
-				(click)="toggleMarkdown()"
-				aria-label="Toggle text / markdown"
-			>
+			<button mat-menu-item (click)="toggleMarkdown()" aria-label="Toggle text / markdown">
 				{{ todo.isMarkdown ? "Text" : "Markdown" }}
 			</button>
-			<button
-				mat-menu-item
-				(click)="toggleTodoNote()"
-				aria-label="Toggle todo / note"
-			>
+			<button mat-menu-item (click)="toggleTodoNote()" aria-label="Toggle todo / note">
 				{{ todo.isNote ? "Todo" : "Note" }}
 			</button>
 			<button mat-menu-item (click)="onDelete(todo)" aria-label="Delete item">Delete</button>
