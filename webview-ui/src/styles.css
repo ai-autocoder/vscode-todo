@@ -89,9 +89,6 @@ markdown > *:only-child {
 			opacity: 1;
 		}
 	}
-	todo-item.note {
-		background-color: var(--vscode-menu-background);
-	}
 }
 
 /* VS Code textarea */
