@@ -2,7 +2,7 @@ main {
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
-	padding: .25rem;
+	padding: 0.25rem;
 }
 
 vscode-panels,
@@ -16,7 +16,7 @@ todo-list {
 vscode-panels::part(tabpanel) {
 	display: flex;
 	flex-direction: column;
-	overflow-y: auto;
+	overflow-y: hidden;
 	border-top: 2px solid var(--vscode-settings-headerBorder);
 	transform: translateY(-2px);
 }
@@ -26,7 +26,7 @@ vscode-panel-tab[aria-selected="true"] {
 }
 
 vscode-panel-view {
-	overflow-y: auto;
+	overflow-y: hidden;
 	padding: 0.5rem 0 0;
 	flex-grow: 1;
 }
