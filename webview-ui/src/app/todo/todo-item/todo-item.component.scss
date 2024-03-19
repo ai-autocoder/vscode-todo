@@ -13,9 +13,10 @@
 
 	&.note {
 		grid-template-columns: 40px calc(100% - 80px) 40px;
+		background-color: var(--note-background-color);
+		border-left: 3px solid var(--note-accent-color);
 	}
 
-	&.note,
 	&.edit-mode {
 		background-color: var(--vscode-menu-background);
 	}

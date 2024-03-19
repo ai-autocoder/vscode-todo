@@ -13,6 +13,7 @@ import { TodoScope, TodoSlice } from "../todo/todoTypes";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
+import { getCurrentThemeKind } from "../utilities/currentTheme";
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -146,8 +147,8 @@ export class HelloWorldPanel {
 		const runtimeUri = getUri(webview, extensionUri, ["webview-ui", "build", "runtime.js"]);
 		const polyfillsUri = getUri(webview, extensionUri, ["webview-ui", "build", "polyfills.js"]);
 		const scriptUri = getUri(webview, extensionUri, ["webview-ui", "build", "main.js"]);
-
 		const nonce = getNonce();
+		const themeKind = getCurrentThemeKind();
 
 		// Tip: Install the es6-string-html VS Code extension to enable code highlighting below
 		return /*html*/ `
@@ -160,7 +161,7 @@ export class HelloWorldPanel {
           <link rel="stylesheet" type="text/css" href="${stylesUri}">
           <title>Todo</title>
         </head>
-        <body>
+        <body class="${themeKind}">
           <app-root></app-root>
           <script type="module" nonce="${nonce}" src="${runtimeUri}"></script>
           <script type="module" nonce="${nonce}" src="${polyfillsUri}"></script>
