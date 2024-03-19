@@ -61,6 +61,7 @@
 
 		.todo-text.complete {
 			text-decoration: line-through;
+			color: var(--input-placeholder-foreground);
 		}
 
 		text-area {
