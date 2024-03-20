@@ -14,7 +14,8 @@
 	&.note {
 		grid-template-columns: 40px calc(100% - 80px) 40px;
 		background-color: var(--note-background-color);
-		border-left: 3px solid var(--note-accent-color);
+		border-left: 4px solid var(--note-accent-color);
+		padding: 0.5rem 0.75rem 0.5rem calc(0.75rem - 4px);
 	}
 
 	&.edit-mode {
