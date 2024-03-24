@@ -1,5 +1,6 @@
 import { ExtensionContext } from "vscode";
 import { Todo, TodoScope, TodoSlice } from "./todoTypes";
+import { getConfig } from "../utilities/config";
 
 /**
  * Calculate the number of incomplete todos in the given state.
@@ -42,13 +43,61 @@ export function generateUniqueId(state: TodoSlice, scope: TodoScope): number {
 }
 
 /**
- * Sorts an array of todos by their completion status
- * within sections defined by note items.
+ * Sorts an array of todos according to the configuration.
  *
  * @param {Todo[]} todos - The array of todos and notes to be sorted.
  * @return {Todo[]} A new array of todos sorted according to the specified rules.
  */
 export function sortTodosWithNotes(todos: Todo[]): Todo[] {
+	const { taskSortingOptions } = getConfig();
+
+	switch (taskSortingOptions) {
+		case "disabled":
+			return todos;
+		case "sortType1":
+			return sortType1(todos);
+		case "sortType2":
+			return sortType2(todos);
+	}
+}
+
+/**
+ * Sorts an array of todos by their completion status.
+ */
+function sortType1(todos: Todo[]) {
+	return todos.slice().sort((a, b) => {
+		const isACompleted = !a.isNote && a.completed;
+		const isBCompleted = !b.isNote && b.completed;
+
+		if (a.isNote && b.isNote) return 0; // Both are notes, maintain original order
+
+		if (!a.isNote && !b.isNote) {
+			// Both are non-notes
+			if (isACompleted === isBCompleted) return 0; // Both completed or both non-completed, maintain original order
+			if (isACompleted) return 1; // A is completed, B is not, A goes after B
+			return -1; // B is completed, A is not, B goes after A
+		}
+
+		if (a.isNote) {
+			// A is a note, B is a non-note
+			if (!isBCompleted) return 0; // B is not completed, maintain original order
+			return -1; // B is completed, note goes before
+		}
+
+		if (b.isNote) {
+			// A is a non-note, B is a note
+			if (!isACompleted) return 0; // A is not completed, maintain original order
+			return 1; // A is completed, note goes before
+		}
+
+		return 0; // Fallback to maintain original order
+	});
+}
+
+/**Sorts an array of todos by their completion status
+ * within groups defined by note items.
+ */
+function sortType2(todos: Todo[]) {
 	let currentGroup = 0;
 	const mappedTodos = todos.map((todo, index) => ({
 		originalIndex: index,

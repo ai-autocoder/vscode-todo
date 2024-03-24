@@ -107,6 +107,54 @@ export class TodoList implements OnInit, AfterViewInit {
 	 * - boolean - `true` if the item can be dropped at the index, `false` otherwise.
 	 */
 	sortPredicate = (index: number, item: CdkDrag<Todo>): boolean => {
+		const { taskSortingOptions } = this.todoService.config;
+
+		switch (taskSortingOptions) {
+			case "disabled":
+				return true;
+			case "sortType1":
+				return this.sortType1Predicate(index, item);
+			case "sortType2":
+				return this.sortType2Predicate(index, item);
+		}
+	};
+
+	sortType1Predicate = (index: number, item: CdkDrag<Todo>): boolean => {
+		const originalIndex = this.todos.findIndex((todo) => todo.id === item.data.id);
+		const targetTodo = this.todos[index];
+		const nextTodo = this.todos[index + 1];
+		const prevTodo = this.todos[index - 1];
+
+		// Dragging a note.
+		if (item.data.isNote) {
+			if (targetTodo.isNote || !targetTodo.completed) return true;
+		}
+		// Dragging a completed todo.
+		else if (item.data.completed) {
+			// Allow drop to the last position or onto another completed todo.
+			if (index === this.todos.length - 1 || (targetTodo.completed && !targetTodo.isNote)) return true;
+
+			// Dropping onto a note has specific rules based on item original position.
+			if (targetTodo.isNote) {
+				if (originalIndex < index && (!nextTodo || nextTodo.completed)) return true;
+			} else {
+				// Dropping onto an incomplete todo.
+				return originalIndex < index && nextTodo?.completed;
+			}
+		} else {
+			// Dragging an incomplete todo.
+			if (index === 0 || !targetTodo.completed || targetTodo.isNote) return true;
+
+			// Dropping onto a completed todo.
+			if (targetTodo.completed && originalIndex > index) {
+				return prevTodo?.isNote || !prevTodo?.completed;
+			}
+		}
+
+		return false; // Default to not allowing drop for unhandled cases.
+	};
+
+	sortType2Predicate = (index: number, item: CdkDrag<Todo>): boolean => {
 		// Dragging a note.
 		if (item.data.isNote) return true;
 

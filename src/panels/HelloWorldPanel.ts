@@ -14,6 +14,7 @@ import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
 import { getCurrentThemeKind } from "../utilities/currentTheme";
+import { getConfig } from "../utilities/config";
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -98,15 +99,19 @@ export class HelloWorldPanel {
 	}
 
 	/**
-	 * Sends the current state to the webview.
-	 *
-	 * @param {boolean} isReloadWebview - True to initialize the webview with initial data, false to sync state changes from the store.
+	 * Sends the full state of the store and config to the webview.
 	 */
 	private reloadWebview() {
 		const currentState = this._store.getState();
-		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState));
+		const config = getConfig();
+		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
 	}
 
+	/**
+	 * Updates the webview with the given new slice state.
+	 *
+	 * @param newSliceState - The new slice state to update the webview with.
+	 */
 	public updateWebview(newSliceState: TodoSlice) {
 		this._panel.webview.postMessage(messagesToWebview.syncData(newSliceState));
 	}

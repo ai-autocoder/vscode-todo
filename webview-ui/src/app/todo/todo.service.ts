@@ -7,6 +7,7 @@ import {
 } from "../../../../src/panels/message";
 import { Todo, TodoCount, TodoScope } from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
+import { Config } from "../../../../src/utilities/config";
 
 @Injectable({
 	providedIn: "root",
@@ -15,6 +16,9 @@ export class TodoService {
 	private _userTodos: Todo[] = [];
 	private _workspaceTodos: Todo[] = [];
 	private _todoCount: TodoCount = { user: 0, workspace: 0 };
+	private _config: Config = {
+		taskSortingOptions: "sortType1",
+	};
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
 
@@ -38,6 +42,8 @@ export class TodoService {
 
 	private handleReloadWebview(data: Message<MessageActionsToWebview.reloadWebview>) {
 		const { user, workspace } = data.payload;
+		this._config = data.config;
+
 		this.updateTodos("user", user.todos, user.numberOfTodos);
 		this.updateTodos("workspace", workspace.todos, workspace.numberOfTodos);
 		this.userLastAction.next("");
@@ -66,6 +72,10 @@ export class TodoService {
 
 	get todoCount(): TodoCount {
 		return this._todoCount;
+	}
+
+	get config(): Config {
+		return this._config;
 	}
 
 	addTodo(...args: Parameters<typeof messagesFromWebview.addTodo>) {

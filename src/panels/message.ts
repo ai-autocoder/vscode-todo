@@ -1,5 +1,6 @@
 import { userActions, workspaceActions } from "../todo/store";
 import { StoreState, TodoScope, TodoSlice } from "../todo/todoTypes";
+import { Config } from "../utilities/config";
 
 type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.addTodo
@@ -19,16 +20,22 @@ type MessagePayload<T, L> = T extends
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
 	L extends TodoScope = never,
-> = T extends MessageActionsToWebview.syncData | MessageActionsToWebview.reloadWebview
+> = T extends MessageActionsToWebview.reloadWebview
 	? {
 			type: T;
 			payload: MessagePayload<T, L>;
+			config: Config;
 		}
-	: {
-			type: T;
-			scope: L;
-			payload: MessagePayload<T, L>;
-		};
+	: T extends MessageActionsToWebview.syncData
+		? {
+				type: T;
+				payload: MessagePayload<T, L>;
+			}
+		: {
+				type: T;
+				scope: L;
+				payload: MessagePayload<T, L>;
+			};
 
 export const enum MessageActionsFromWebview {
 	addTodo = "addTodo",
@@ -119,9 +126,13 @@ export const messagesFromWebview = {
 };
 export const messagesToWebview = {
 	// Message creators from extension to UI
-	reloadWebview: (payload: StoreState): Message<MessageActionsToWebview.reloadWebview> => ({
+	reloadWebview: (
+		payload: StoreState,
+		config: Config
+	): Message<MessageActionsToWebview.reloadWebview> => ({
 		type: MessageActionsToWebview.reloadWebview,
 		payload,
+		config,
 	}),
 	syncData: (payload: TodoSlice): Message<MessageActionsToWebview.syncData> => ({
 		type: MessageActionsToWebview.syncData,

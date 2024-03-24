@@ -6,7 +6,13 @@
 	"icon": "icon.png",
 	"version": "0.0.1",
 	"license": "MIT",
-	"keywords": ["todo", "tasks", "productivity", "workspace", "planner"],
+	"keywords": [
+		"todo",
+		"tasks",
+		"productivity",
+		"workspace",
+		"planner"
+	],
 	"engines": {
 		"vscode": "^1.75.0"
 	},
@@ -24,7 +30,27 @@
 				"title": "Open Todo list",
 				"category": "VSCode Todo"
 			}
-		]
+		],
+		"configuration": {
+			"title": "VSCode Todo",
+			"properties": {
+				"vscodeTodo.taskSortingOptions": {
+					"description": "Controls how completed tasks are reordered in the list.",
+					"type": "string",
+					"enum": [
+						"sortType1",
+						"sortType2",
+						"disabled"
+					],
+					"enumDescriptions": [
+						"Sort Type 1: Moves completed todos to the bottom, just on top of the first completed todo.",
+						"Sort Type 2: Similar to Type 1, but completed todos remain grouped with notes that act as labels or contextual guides.",
+						"Sorting Disabled: Completed todos remain in place"
+					],
+					"default": "sortType1"
+				}
+			}
+		}
 	},
 	"author": {
 		"name": "Francesco Anzalone",
