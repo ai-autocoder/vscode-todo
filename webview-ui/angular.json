@@ -26,23 +26,18 @@
 						"styles": [
 							"@angular/material/prebuilt-themes/pink-bluegrey.css",
 							"node_modules/prismjs/themes/prism-okaidia.css",
-							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.css",
+							"node_modules/prismjs/plugins/line-numbers/prism-line-numbers.css",
 							"src/styles.css"
 						],
-						"scripts": [
-							"node_modules/prismjs/prism.js",
-							"node_modules/prismjs/components/prism-csharp.min.js",
-							"node_modules/prismjs/components/prism-css.min.js",
-							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.js"
-						]
+						"scripts": []
 					},
 					"configurations": {
 						"production": {
 							"budgets": [
 								{
 									"type": "initial",
-									"maximumWarning": "500kb",
-									"maximumError": "1mb"
+									"maximumWarning": "1500kb",
+									"maximumError": "2mb"
 								},
 								{
 									"type": "anyComponentStyle",
@@ -98,15 +93,10 @@
 						"styles": [
 							"@angular/material/prebuilt-themes/pink-bluegrey.css",
 							"node_modules/prismjs/themes/prism-okaidia.css",
-							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.css",
+							"node_modules/prismjs/plugins/line-numbers/prism-line-numbers.css",
 							"src/styles.css"
 						],
-						"scripts": [
-							"node_modules/prismjs/prism.js",
-							"node_modules/prismjs/components/prism-csharp.min.js",
-							"node_modules/prismjs/components/prism-css.min.js",
-							"node_modules/prismjs/plugins/line-highlight/prism-line-highlight.js"
-						]
+						"scripts": []
 					}
 				}
 			}

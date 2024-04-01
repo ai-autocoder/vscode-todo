@@ -45,6 +45,7 @@
 		<div *ngIf="!isEditable && todo.isMarkdown" class="markdown-container" (click)="edit($event)">
 			<markdown
 				class="todo-text"
+				lineNumbers
 				[class.complete]="todo.completed && !todo.isNote"
 				[data]="todo.text"
 			></markdown>

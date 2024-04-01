@@ -7,7 +7,8 @@
 		"start": "ng serve",
 		"build": "ng build --output-hashing=none",
 		"watch": "ng build --watch --configuration development",
-		"test": "ng test"
+		"test": "ng test",
+		"prism-generate-imports": "node generate-prism-imports.js"
 	},
 	"dependencies": {
 		"@angular/animations": "^17.0.9",
