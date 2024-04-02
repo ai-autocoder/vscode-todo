@@ -16,6 +16,7 @@ import {
 	TodoSlice,
 } from "./todoTypes";
 import { generateUniqueId, getNumberOfTodos, sortTodosWithNotes } from "./todoUtils";
+import LogChannel from "../utilities/LogChannel";
 
 const todoReducers = {
 	loadData: (state: TodoSlice, action: PayloadAction<{ data: Todo[] }>) => {
@@ -199,6 +200,10 @@ const trackActionMiddleware: Middleware = (api: MiddlewareAPI) => (next) => (act
 			knownSliceNames.includes(sliceName) &&
 			sliceName !== Slices.actionTracker
 		) {
+			LogChannel.log(
+				`Dispatching action: ${action.type}.${"payload" in action ? ` Payload: ${JSON.stringify(action.payload)}` : ""}`
+			);
+
 			api.dispatch(actionTrackerSlice.actions.trackAction({ sliceName }));
 		}
 		return result;
