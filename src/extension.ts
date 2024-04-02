@@ -1,8 +1,9 @@
 import { commands, ExtensionContext } from "vscode";
+import { onDidChangeActiveTextEditorDisposable, tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
-import { createStatusBarItem, updateStatusBarItem } from "./statusBarItem";
+import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
 import createStore, { actionTrackerActions, userActions, workspaceActions } from "./todo/store";
-import { StoreState, TodoScope, TodoSlice } from "./todo/todoTypes";
+import { CurrentFileSlice, Slices, StoreState, TodoSlice } from "./todo/todoTypes";
 import { persist } from "./todo/todoUtils";
 export function activate(context: ExtensionContext) {
 	const store = createStore();
@@ -11,21 +12,30 @@ export function activate(context: ExtensionContext) {
 		HelloWorldPanel.render(context, store);
 	});
 
-	// Add command to the extension context
-	context.subscriptions.push(openTodoCommand);
+	const statusBarItem = initStatusBarItem(context);
 
-	createStatusBarItem(context);
+	context.subscriptions.push(openTodoCommand, statusBarItem);
 
 	store.subscribe(() => {
 		const state = store.getState() as StoreState;
-		if (!Object.values(TodoScope).includes(state.actionTracker.lastSliceName as TodoScope)) return;
-		const sliceState = state[state.actionTracker.lastSliceName] as TodoSlice;
-		HelloWorldPanel.currentPanel?.updateWebview(sliceState);
-		updateStatusBarItem({
-			user: state.user.numberOfTodos,
-			workspace: state.workspace.numberOfTodos,
-		});
-		persist(sliceState, context);
+
+		switch (state.actionTracker.lastSliceName) {
+			case Slices.unset:
+			case Slices.actionTracker:
+				return;
+			case Slices.user:
+				handleTodoChange(state, state.user, context);
+				break;
+			case Slices.workspace:
+				handleTodoChange(state, state.workspace, context);
+				break;
+			case Slices.currentFile:
+				handleTodoChange(state, state.currentFile, context);
+				break;
+			case Slices.fileDataInfo:
+				HelloWorldPanel.currentPanel?.updateWebview(state.fileDataInfo, Slices.fileDataInfo);
+				break;
+		}
 		store.dispatch(actionTrackerActions.resetLastSliceName());
 	});
 
@@ -40,4 +50,21 @@ export function activate(context: ExtensionContext) {
 			data: context.globalState.get("TodoData") ?? [],
 		})
 	);
+
+	tabChangeHandler(store, context);
+
+	context.subscriptions.push(onDidChangeActiveTextEditorDisposable(store, context));
+}
+
+function handleTodoChange(
+	state: StoreState,
+	sliceState: TodoSlice | CurrentFileSlice,
+	context: ExtensionContext
+) {
+	HelloWorldPanel.currentPanel?.updateWebview(sliceState);
+	updateStatusBarItem({
+		user: state.user.numberOfTodos,
+		workspace: state.workspace.numberOfTodos,
+	});
+	persist(sliceState as TodoSlice | CurrentFileSlice, context);
 }

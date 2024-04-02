@@ -1,12 +1,12 @@
 import { ExtensionContext } from "vscode";
-import { Todo, TodoScope, TodoSlice } from "./todoTypes";
 import { getConfig } from "../utilities/config";
+import { CurrentFileSlice, Todo, TodoScope, TodoSlice } from "./todoTypes";
 
 /**
  * Calculate the number of incomplete todos in the given state.
  *
- * @param {TodoSlice} state - The state containing the todos.
- * @return {Object} todoCount - An object containing the number of todos in the workspace and for the user.
+ * @param state - The state containing the todos.
+ * @return The number of todos in the workspace and for the user.
  */
 export function getNumberOfTodos(state: TodoSlice): number {
 	return state?.todos.filter((todo) => !todo.completed).length ?? 0;
@@ -15,10 +15,19 @@ export function getNumberOfTodos(state: TodoSlice): number {
 /**
  * Persists the provided slice state to the extension context.
  */
-export function persist(state: TodoSlice, context: ExtensionContext): void {
-	state.scope === TodoScope.user
-		? context.globalState.update("TodoData", state.todos)
-		: context.workspaceState.update("TodoData", state.todos);
+export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionContext): void {
+	switch (state.scope) {
+		case TodoScope.user:
+			context.globalState.update("TodoData", state.todos);
+			break;
+		case TodoScope.workspace:
+			context.workspaceState.update("TodoData", state.todos);
+			break;
+		case TodoScope.currentFile:
+			const currentFileState = state as CurrentFileSlice;
+			context.workspaceState.update(currentFileState.filePath, state.todos);
+			break;
+	}
 }
 
 /**

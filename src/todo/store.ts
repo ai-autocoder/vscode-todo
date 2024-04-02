@@ -2,12 +2,20 @@ import {
 	combineReducers,
 	configureStore,
 	createSlice,
-	PayloadAction,
+	Middleware,
 	MiddlewareAPI,
+	PayloadAction,
 } from "@reduxjs/toolkit";
-import { getNumberOfTodos, generateUniqueId, sortTodosWithNotes } from "./todoUtils";
-import { Todo, TodoScope, TodoSlice, ActionTrackerState } from "./todoTypes";
-import { Middleware } from "@reduxjs/toolkit";
+import {
+	ActionTrackerState,
+	CurrentFileSlice,
+	FileDataInfoSlice,
+	Slices,
+	Todo,
+	TodoScope,
+	TodoSlice,
+} from "./todoTypes";
+import { generateUniqueId, getNumberOfTodos, sortTodosWithNotes } from "./todoUtils";
 
 const todoReducers = {
 	loadData: (state: TodoSlice, action: PayloadAction<{ data: Todo[] }>) => {
@@ -96,17 +104,59 @@ const workspaceSlice = createSlice({
 	reducers: todoReducers,
 });
 
+const fileDataInfoSlice = createSlice({
+	name: "fileDataInfo",
+	initialState: {
+		editorFocusedFilePath: "",
+		workspaceFilesWithRecords: [],
+	} as FileDataInfoSlice,
+	reducers: {
+		setCurrentFile: (state, action: PayloadAction<string>) => {
+			state.editorFocusedFilePath = action.payload;
+		},
+		setWorkspaceFilesWithRecords: (
+			state,
+			action: PayloadAction<{ filePath: string; todoNumber: number }[]>
+		) => {
+			state.workspaceFilesWithRecords = action.payload;
+		},
+	},
+});
+
+const currentFileSlice = createSlice({
+	name: "currentFile",
+	initialState: {
+		filePath: "",
+		todos: [],
+		lastActionType: "",
+		numberOfTodos: 0,
+		scope: TodoScope.currentFile,
+	} as CurrentFileSlice,
+	reducers: {
+		...todoReducers,
+		loadData: (
+			state: CurrentFileSlice,
+			action: PayloadAction<{ filePath: string; todos: Todo[] }>
+		) => {
+			state.filePath = action.payload.filePath;
+			Object.assign(state.todos, action.payload.todos);
+			state.lastActionType = action.type;
+			state.numberOfTodos = getNumberOfTodos(state);
+		},
+	},
+});
+
 const actionTrackerSlice = createSlice({
 	name: "actionTracker",
 	initialState: {
-		lastSliceName: "",
+		lastSliceName: Slices.unset,
 	} as ActionTrackerState,
 	reducers: {
-		trackAction: (state, action: PayloadAction<{ sliceName: string }>) => {
+		trackAction: (state, action: PayloadAction<{ sliceName: Slices }>) => {
 			state.lastSliceName = action.payload.sliceName;
 		},
 		resetLastSliceName: (state) => {
-			state.lastSliceName = "";
+			state.lastSliceName = Slices.unset;
 		},
 	},
 });
@@ -115,6 +165,8 @@ const actionTrackerSlice = createSlice({
 const rootReducer = combineReducers({
 	user: userSlice.reducer,
 	workspace: workspaceSlice.reducer,
+	fileDataInfo: fileDataInfoSlice.reducer,
+	currentFile: currentFileSlice.reducer,
 	actionTracker: actionTrackerSlice.reducer,
 });
 
@@ -128,6 +180,8 @@ export default function () {
 
 export const userActions = userSlice.actions;
 export const workspaceActions = workspaceSlice.actions;
+export const fileDataInfoActions = fileDataInfoSlice.actions;
+export const currentFileActions = currentFileSlice.actions;
 export const actionTrackerActions = actionTrackerSlice.actions;
 
 const trackActionMiddleware: Middleware = (api: MiddlewareAPI) => (next) => (action) => {
@@ -138,9 +192,13 @@ const trackActionMiddleware: Middleware = (api: MiddlewareAPI) => (next) => (act
 		typeof action.type === "string"
 	) {
 		const result = next(action);
-		const sliceName = action.type.split("/")[0];
-		const knownSliceNames = ["user", "workspace"];
-		if (knownSliceNames.includes(sliceName)) {
+		const sliceName = action.type.split("/")[0] as Slices;
+		const knownSliceNames = Object.values(Slices);
+		if (
+			sliceName !== "" &&
+			knownSliceNames.includes(sliceName) &&
+			sliceName !== Slices.actionTracker
+		) {
 			api.dispatch(actionTrackerSlice.actions.trackAction({ sliceName }));
 		}
 		return result;

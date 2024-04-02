@@ -1,5 +1,11 @@
 import { userActions, workspaceActions } from "../todo/store";
-import { StoreState, TodoScope, TodoSlice } from "../todo/todoTypes";
+import {
+	CurrentFileSlice,
+	FileDataInfoSlice,
+	StoreState,
+	TodoScope,
+	TodoSlice,
+} from "../todo/todoTypes";
 import { Config } from "../utilities/config";
 
 type MessagePayload<T, L> = T extends
@@ -11,11 +17,13 @@ type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.toggleMarkdown
 	| MessageActionsFromWebview.toggleTodoNote
 	? Parameters<L extends TodoScope.user ? (typeof userActions)[T] : (typeof workspaceActions)[T]>[0]
-	: T extends MessageActionsToWebview.syncData
-		? TodoSlice
-		: T extends MessageActionsToWebview.reloadWebview
-			? StoreState
-			: never;
+	: T extends MessageActionsToWebview.syncTodoData
+		? TodoSlice | CurrentFileSlice
+		: T extends MessageActionsToWebview.syncfileDataInfo
+			? FileDataInfoSlice
+			: T extends MessageActionsToWebview.reloadWebview
+				? StoreState
+				: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -26,12 +34,13 @@ export type Message<
 			payload: MessagePayload<T, L>;
 			config: Config;
 		}
-	: T extends MessageActionsToWebview.syncData
+	: T extends MessageActionsToWebview.syncTodoData | MessageActionsToWebview.syncfileDataInfo
 		? {
 				type: T;
 				payload: MessagePayload<T, L>;
 			}
-		: {
+		: // MessageActionsFromWebview 👇
+			{
 				type: T;
 				scope: L;
 				payload: MessagePayload<T, L>;
@@ -48,7 +57,8 @@ export const enum MessageActionsFromWebview {
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
-	syncData = "syncData",
+	syncTodoData = "syncTodoData",
+	syncfileDataInfo = "syncfileDataInfo",
 }
 
 // Message creators from Webview to Extension
@@ -134,8 +144,16 @@ export const messagesToWebview = {
 		payload,
 		config,
 	}),
-	syncData: (payload: TodoSlice): Message<MessageActionsToWebview.syncData> => ({
-		type: MessageActionsToWebview.syncData,
+	syncTodoData: (
+		payload: TodoSlice | CurrentFileSlice
+	): Message<MessageActionsToWebview.syncTodoData> => ({
+		type: MessageActionsToWebview.syncTodoData,
+		payload,
+	}),
+	syncFileDataInfo: (
+		payload: FileDataInfoSlice
+	): Message<MessageActionsToWebview.syncfileDataInfo> => ({
+		type: MessageActionsToWebview.syncfileDataInfo,
 		payload,
 	}),
 };

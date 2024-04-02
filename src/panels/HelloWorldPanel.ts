@@ -9,12 +9,18 @@ import {
 	window,
 } from "vscode";
 import { userActions, workspaceActions } from "../todo/store";
-import { TodoScope, TodoSlice } from "../todo/todoTypes";
+import {
+	CurrentFileSlice,
+	FileDataInfoSlice,
+	Slices,
+	TodoScope,
+	TodoSlice,
+} from "../todo/todoTypes";
+import { getConfig } from "../utilities/config";
+import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
-import { getCurrentThemeKind } from "../utilities/currentTheme";
-import { getConfig } from "../utilities/config";
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -111,9 +117,18 @@ export class HelloWorldPanel {
 	 * Updates the webview with the given new slice state.
 	 *
 	 * @param newSliceState - The new slice state to update the webview with.
+	 * @param sliceType - (Optional) The type of slice state being updated.
+	 * Defaults to `user / workspace / currentFile` slices.
 	 */
-	public updateWebview(newSliceState: TodoSlice) {
-		this._panel.webview.postMessage(messagesToWebview.syncData(newSliceState));
+	public updateWebview(
+		newSliceState: TodoSlice | FileDataInfoSlice | CurrentFileSlice,
+		sliceType?: Slices
+	) {
+		const message =
+			sliceType === Slices.fileDataInfo
+				? messagesToWebview.syncFileDataInfo(newSliceState as FileDataInfoSlice)
+				: messagesToWebview.syncTodoData(newSliceState as TodoSlice | CurrentFileSlice);
+		this._panel.webview.postMessage(message);
 	}
 
 	/**

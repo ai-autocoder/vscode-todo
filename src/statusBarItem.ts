@@ -9,14 +9,14 @@ let _statusBarItem: vscode.StatusBarItem | undefined;
  * @param {vscode.ExtensionContext} context - The vscode extension context.
  * @return {void} There is no return value.
  */
-export function createStatusBarItem(context: vscode.ExtensionContext) {
+export function initStatusBarItem(context: vscode.ExtensionContext) {
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	statusBarItem.command = "vscode-todo.openTodo";
 	statusBarItem.text = "Todo";
 	statusBarItem.tooltip = "Open Todos";
 	statusBarItem.show();
-	context.subscriptions.push(statusBarItem);
 	_statusBarItem = statusBarItem;
+	return statusBarItem;
 }
 
 /**

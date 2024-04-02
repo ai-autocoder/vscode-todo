@@ -32,8 +32,11 @@ export class TodoService {
 			case MessageActionsToWebview.reloadWebview:
 				this.handleReloadWebview(data);
 				break;
-			case MessageActionsToWebview.syncData:
-				this.handleSyncData(data);
+			case MessageActionsToWebview.syncTodoData:
+				this.handleSyncTodoData(data);
+				break;
+			case MessageActionsToWebview.syncfileDataInfo:
+				this.handleSyncfileDataInfo(data);
 				break;
 			default:
 				console.warn("Unhandled message type:", data.type);
@@ -50,11 +53,16 @@ export class TodoService {
 		this.workspaceLastAction.next("");
 	}
 
-	private handleSyncData(data: Message<MessageActionsToWebview.syncData>) {
+	private handleSyncTodoData(data: Message<MessageActionsToWebview.syncTodoData>) {
 		const { payload } = data;
 		const scope = payload.scope === TodoScope.user ? "user" : "workspace";
 		this.updateTodos(scope, payload.todos, payload.numberOfTodos);
 		this[`${scope}LastAction`].next(payload.lastActionType);
+	}
+
+	private handleSyncfileDataInfo(data: Message<MessageActionsToWebview.syncfileDataInfo>) {
+		const { payload } = data;
+		console.log("fileDataInfo", payload);
 	}
 
 	private updateTodos(scope: "user" | "workspace", todos: Todo[], numberOfTodos: number) {
