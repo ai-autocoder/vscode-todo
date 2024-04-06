@@ -1,4 +1,4 @@
-import { userActions, workspaceActions } from "../todo/store";
+import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
 	CurrentFileSlice,
 	FileDataInfoSlice,
@@ -16,14 +16,26 @@ type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.reorderTodo
 	| MessageActionsFromWebview.toggleMarkdown
 	| MessageActionsFromWebview.toggleTodoNote
-	? Parameters<L extends TodoScope.user ? (typeof userActions)[T] : (typeof workspaceActions)[T]>[0]
-	: T extends MessageActionsToWebview.syncTodoData
-		? TodoSlice | CurrentFileSlice
-		: T extends MessageActionsToWebview.syncfileDataInfo
-			? FileDataInfoSlice
-			: T extends MessageActionsToWebview.reloadWebview
-				? StoreState
-				: never;
+	? Parameters<
+			L extends TodoScope.user
+				? (typeof userActions)[T]
+				: L extends TodoScope.workspace
+					? (typeof workspaceActions)[T]
+					: L extends TodoScope.currentFile
+						? (typeof currentFileActions)[T]
+						: never
+		>[0]
+	: T extends MessageActionsFromWebview.requestData
+		? L extends TodoScope.currentFile
+			? { filePath: string }
+			: never
+		: T extends MessageActionsToWebview.syncTodoData
+			? TodoSlice | CurrentFileSlice
+			: T extends MessageActionsToWebview.syncfileDataInfo
+				? FileDataInfoSlice
+				: T extends MessageActionsToWebview.reloadWebview
+					? StoreState
+					: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -54,6 +66,7 @@ export const enum MessageActionsFromWebview {
 	reorderTodo = "reorderTodo",
 	toggleMarkdown = "toggleMarkdown",
 	toggleTodoNote = "toggleTodoNote",
+	requestData = "requestData",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
@@ -130,6 +143,14 @@ export const messagesFromWebview = {
 			: Parameters<typeof workspaceActions.toggleTodoNote>[0]
 	): Message<MessageActionsFromWebview.toggleTodoNote, TodoScope> => ({
 		type: MessageActionsFromWebview.toggleTodoNote,
+		scope,
+		payload,
+	}),
+	requestData: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.currentFile ? { filePath: string } : never
+	): Message<MessageActionsFromWebview.requestData, TodoScope> => ({
+		type: MessageActionsFromWebview.requestData,
 		scope,
 		payload,
 	}),

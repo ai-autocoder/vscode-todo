@@ -26,6 +26,7 @@ export enum Slices {
 export type TodoCount = {
 	workspace: number;
 	user: number;
+	currentFile: number;
 };
 
 export interface TodoSlice {
@@ -42,6 +43,7 @@ export interface CurrentFileSlice extends TodoSlice {
 export interface FileDataInfoSlice {
 	editorFocusedFilePath: string;
 	workspaceFilesWithRecords: Array<{ filePath: string; todoNumber: number }> | [];
+	lastActionType: string;
 }
 
 export interface StoreState {
@@ -56,4 +58,8 @@ export interface StoreState {
 // Middleware
 export interface ActionTrackerState {
 	lastSliceName: Slices;
+}
+
+export interface TodoFilesData {
+	[filePath: string]: Todo[];
 }

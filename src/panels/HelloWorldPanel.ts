@@ -8,11 +8,12 @@ import {
 	WebviewPanel,
 	window,
 } from "vscode";
-import { userActions, workspaceActions } from "../todo/store";
+import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
 	CurrentFileSlice,
 	FileDataInfoSlice,
 	Slices,
+	Todo,
 	TodoScope,
 	TodoSlice,
 } from "../todo/todoTypes";
@@ -56,7 +57,7 @@ export class HelloWorldPanel {
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
 
 		// Set an event listener to listen for messages passed from the webview context
-		this._setWebviewMessageListener(this._panel.webview);
+		this._setWebviewMessageListener(this._panel.webview, context);
 
 		this.reloadWebview();
 	}
@@ -197,18 +198,10 @@ export class HelloWorldPanel {
 	 *
 	 * @param webview A reference to the extension webview
 	 */
-	private _setWebviewMessageListener(webview: Webview) {
+	private _setWebviewMessageListener(webview: Webview, context: ExtensionContext) {
 		webview.onDidReceiveMessage(
 			(message: Message<MessageActionsFromWebview, TodoScope>) => {
-				let storeActions;
-				if (message.scope === TodoScope.user) {
-					storeActions = userActions;
-				} else if (message.scope === TodoScope.workspace) {
-					storeActions = workspaceActions;
-				} else {
-					console.error("Action scope not found");
-					return;
-				}
+				const storeActions = this.getStoreActions(message.scope);
 				switch (message.type) {
 					case MessageActionsFromWebview.addTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.addTodo, TodoScope>;
@@ -245,6 +238,30 @@ export class HelloWorldPanel {
 						this._store.dispatch(storeActions.toggleTodoNote(payload));
 						break;
 					}
+					case MessageActionsFromWebview.requestData: {
+						const { payload: massagePayload } = message as Message<
+							MessageActionsFromWebview.requestData,
+							TodoScope
+						>;
+						if (message.scope === TodoScope.currentFile) {
+							const data = context.workspaceState.get("TodoFilesData") as
+								| {
+										[filePath: string]: Todo[];
+								  }
+								| undefined;
+							const todos = data?.[massagePayload.filePath] || [];
+							const actionPayload = {
+								filePath: massagePayload.filePath,
+								data: todos,
+							};
+							this._store.dispatch(
+								storeActions.loadData(actionPayload as Parameters<typeof currentFileActions.loadData>[0])
+							);
+						} else {
+							console.error("Scope not supported for loadData");
+						}
+						break;
+					}
 					default:
 						console.error("Action not found");
 				}
@@ -252,5 +269,18 @@ export class HelloWorldPanel {
 			undefined,
 			this._disposables
 		);
+	}
+
+	private getStoreActions(scope: TodoScope) {
+		switch (scope) {
+			case TodoScope.user:
+				return userActions;
+			case TodoScope.workspace:
+				return workspaceActions;
+			case TodoScope.currentFile:
+				return currentFileActions;
+			default:
+				throw new Error("Invalid action scope");
+		}
 	}
 }

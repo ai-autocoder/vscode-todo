@@ -2,9 +2,19 @@ import { commands, ExtensionContext } from "vscode";
 import { onDidChangeActiveTextEditorDisposable, tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
-import createStore, { actionTrackerActions, userActions, workspaceActions } from "./todo/store";
-import { CurrentFileSlice, Slices, StoreState, TodoSlice } from "./todo/todoTypes";
-import { persist } from "./todo/todoUtils";
+import createStore, {
+	actionTrackerActions,
+	fileDataInfoActions,
+	userActions,
+	workspaceActions
+} from "./todo/store";
+import {
+	CurrentFileSlice,
+	Slices,
+	StoreState,
+	TodoSlice
+} from "./todo/todoTypes";
+import { getWorkspaceFilesWithRecords, persist } from "./todo/todoUtils";
 export function activate(context: ExtensionContext) {
 	const store = createStore();
 
@@ -51,6 +61,12 @@ export function activate(context: ExtensionContext) {
 		})
 	);
 
+	store.dispatch(
+		fileDataInfoActions.setWorkspaceFilesWithRecords(
+			getWorkspaceFilesWithRecords(context.workspaceState.get("TodoFilesData") ?? {})
+		)
+	);
+
 	tabChangeHandler(store, context);
 
 	context.subscriptions.push(onDidChangeActiveTextEditorDisposable(store, context));
@@ -65,6 +81,7 @@ function handleTodoChange(
 	updateStatusBarItem({
 		user: state.user.numberOfTodos,
 		workspace: state.workspace.numberOfTodos,
+		currentFile: state.currentFile.numberOfTodos,
 	});
 	persist(sliceState as TodoSlice | CurrentFileSlice, context);
 }

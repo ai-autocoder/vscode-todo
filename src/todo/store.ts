@@ -20,7 +20,7 @@ import LogChannel from "../utilities/LogChannel";
 
 const todoReducers = {
 	loadData: (state: TodoSlice, action: PayloadAction<{ data: Todo[] }>) => {
-		Object.assign(state.todos, action.payload.data);
+		state.todos = action.payload.data;
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
 	},
@@ -110,16 +110,19 @@ const fileDataInfoSlice = createSlice({
 	initialState: {
 		editorFocusedFilePath: "",
 		workspaceFilesWithRecords: [],
+		lastActionType: "",
 	} as FileDataInfoSlice,
 	reducers: {
 		setCurrentFile: (state, action: PayloadAction<string>) => {
 			state.editorFocusedFilePath = action.payload;
+			state.lastActionType = action.type;
 		},
 		setWorkspaceFilesWithRecords: (
 			state,
 			action: PayloadAction<{ filePath: string; todoNumber: number }[]>
 		) => {
 			state.workspaceFilesWithRecords = action.payload;
+			state.lastActionType = action.type;
 		},
 	},
 });
@@ -137,10 +140,10 @@ const currentFileSlice = createSlice({
 		...todoReducers,
 		loadData: (
 			state: CurrentFileSlice,
-			action: PayloadAction<{ filePath: string; todos: Todo[] }>
+			action: PayloadAction<{ filePath: string; data: Todo[] }>
 		) => {
 			state.filePath = action.payload.filePath;
-			Object.assign(state.todos, action.payload.todos);
+			state.todos = action.payload.data;
 			state.lastActionType = action.type;
 			state.numberOfTodos = getNumberOfTodos(state);
 		},

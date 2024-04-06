@@ -24,11 +24,11 @@ export function initStatusBarItem(context: vscode.ExtensionContext) {
  *
  * @param {Object} todoCount - An object containing the number of todos.
  */
-export function updateStatusBarItem({ workspace, user }: TodoCount) {
+export function updateStatusBarItem({ workspace, user, currentFile }: TodoCount) {
 	if (!_statusBarItem) return;
 
-	_statusBarItem.text = `Todo ${user} / ${workspace}`;
+	_statusBarItem.text = `Todo ${user} / ${workspace} / ${currentFile}`;
 	_statusBarItem.tooltip = new vscode.MarkdownString(
-		`Open Todos\n- User: ${user}\n- Workspace: ${workspace}`
+		`Open Todos\n- User: ${user}\n- Workspace: ${workspace}\n- Current File: ${currentFile}`
 	);
 }

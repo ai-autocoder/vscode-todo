@@ -12,6 +12,7 @@ import {
 } from "@vscode/webview-ui-toolkit";
 import { TodoScope, TodoCount } from "../../../src/todo/todoTypes";
 import { TodoService } from "./todo/todo.service";
+import { Observable } from "rxjs";
 
 // In order to use the Webview UI Toolkit web components they
 // must be registered with the browser (i.e. webview) using the
@@ -53,12 +54,14 @@ export class AppComponent implements OnInit {
 	scope: TodoScope = TodoScope.workspace;
 	TodoScope: typeof TodoScope = TodoScope;
 	todoCount!: TodoCount;
+	currentFilePath!: Observable<string>;
 
 	constructor(private todoService: TodoService) {}
 
 	ngOnInit(): void {
 		// Get data
 		this.todoCount = this.todoService.todoCount;
+		this.currentFilePath = this.todoService.currentFilePath;
 	}
 
 	selectTab(tab: TodoScope) {

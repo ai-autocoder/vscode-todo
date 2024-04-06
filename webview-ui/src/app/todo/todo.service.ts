@@ -15,12 +15,21 @@ import { Config } from "../../../../src/utilities/config";
 export class TodoService {
 	private _userTodos: Todo[] = [];
 	private _workspaceTodos: Todo[] = [];
-	private _todoCount: TodoCount = { user: 0, workspace: 0 };
+	private _currentFileTodos: Todo[] = [];
+	private _todoCount: TodoCount = { user: 0, workspace: 0, currentFile: 0 };
 	private _config: Config = {
 		taskSortingOptions: "sortType1",
 	};
+	private currentFilePathSource = new BehaviorSubject<string>("");
+	private workspaceFilesWithRecordsSource = new BehaviorSubject<
+		{ filePath: string; todoNumber: number }[]
+	>([]);
+
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
+	currentFileLastAction = new BehaviorSubject<string>("");
+	currentFilePath = this.currentFilePathSource.asObservable();
+	workspaceFilesWithRecords = this.workspaceFilesWithRecordsSource.asObservable();
 
 	constructor() {
 		window.addEventListener("message", this.handleMessage.bind(this));
@@ -36,7 +45,11 @@ export class TodoService {
 				this.handleSyncTodoData(data);
 				break;
 			case MessageActionsToWebview.syncfileDataInfo:
-				this.handleSyncfileDataInfo(data);
+				if (data.payload.lastActionType === "fileDataInfo/setCurrentFile") {
+					this.handleEditorTabChange(data);
+				} else if (data.payload.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
+					this.workspaceFilesWithRecordsSource.next(data.payload.workspaceFilesWithRecords);
+				}
 				break;
 			default:
 				console.warn("Unhandled message type:", data.type);
@@ -44,28 +57,46 @@ export class TodoService {
 	}
 
 	private handleReloadWebview(data: Message<MessageActionsToWebview.reloadWebview>) {
-		const { user, workspace } = data.payload;
+		const { user, workspace, currentFile } = data.payload;
 		this._config = data.config;
 
 		this.updateTodos("user", user.todos, user.numberOfTodos);
 		this.updateTodos("workspace", workspace.todos, workspace.numberOfTodos);
+		this.updateTodos("currentFile", currentFile.todos, currentFile.numberOfTodos);
 		this.userLastAction.next("");
 		this.workspaceLastAction.next("");
+		this.currentFileLastAction.next("");
 	}
 
 	private handleSyncTodoData(data: Message<MessageActionsToWebview.syncTodoData>) {
 		const { payload } = data;
-		const scope = payload.scope === TodoScope.user ? "user" : "workspace";
+		const scope =
+			payload.scope === TodoScope.user
+				? "user"
+				: payload.scope === TodoScope.workspace
+					? "workspace"
+					: "currentFile";
 		this.updateTodos(scope, payload.todos, payload.numberOfTodos);
 		this[`${scope}LastAction`].next(payload.lastActionType);
 	}
 
-	private handleSyncfileDataInfo(data: Message<MessageActionsToWebview.syncfileDataInfo>) {
+	private handleEditorTabChange(data: Message<MessageActionsToWebview.syncfileDataInfo>) {
 		const { payload } = data;
-		console.log("fileDataInfo", payload);
+		if (payload.editorFocusedFilePath !== "") {
+			this.currentFilePathSource.next(payload.editorFocusedFilePath);
+			vscode.postMessage(
+				messagesFromWebview.requestData(TodoScope.currentFile, {
+					filePath: payload.editorFocusedFilePath,
+				})
+			);
+		}
 	}
 
-	private updateTodos(scope: "user" | "workspace", todos: Todo[], numberOfTodos: number) {
+	private updateTodos(
+		scope: "user" | "workspace" | "currentFile",
+		todos: Todo[],
+		numberOfTodos: number
+	) {
 		this[`_${scope}Todos`] = [...todos];
 		this._todoCount[scope] = numberOfTodos;
 	}
@@ -76,6 +107,10 @@ export class TodoService {
 
 	get workspaceTodos(): Todo[] {
 		return this._workspaceTodos;
+	}
+
+	get currentFileTodos(): Todo[] {
+		return this._currentFileTodos;
 	}
 
 	get todoCount(): TodoCount {

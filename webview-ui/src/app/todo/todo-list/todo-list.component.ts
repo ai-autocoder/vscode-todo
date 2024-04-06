@@ -43,15 +43,20 @@ export class TodoList implements OnInit, AfterViewInit {
 	) {}
 
 	ngOnInit(): void {
-		if (this.scope === TodoScope.user) {
-			this.lastActionTypeSubscription = this.todoService.userLastAction.subscribe((actionType) =>
-				this.handleSubscription(actionType)
-			);
-		} else if (this.scope === TodoScope.workspace) {
-			this.lastActionTypeSubscription = this.todoService.workspaceLastAction.subscribe((actionType) =>
-				this.handleSubscription(actionType)
-			);
+		let lastAction;
+
+		switch (this.scope) {
+			case TodoScope.user:
+				lastAction = this.todoService.userLastAction;
+				break;
+			case TodoScope.workspace:
+				lastAction = this.todoService.workspaceLastAction;
+				break;
+			case TodoScope.currentFile:
+				lastAction = this.todoService.currentFileLastAction;
+				break;
 		}
+		this.lastActionTypeSubscription = lastAction.subscribe(this.handleSubscription.bind(this));
 	}
 
 	ngAfterViewInit(): void {
@@ -74,10 +79,16 @@ export class TodoList implements OnInit, AfterViewInit {
 	}
 
 	pullTodos() {
-		if (this.scope === TodoScope.user) {
-			this.todos = [...this.todoService.userTodos];
-		} else {
-			this.todos = [...this.todoService.workspaceTodos];
+		switch (this.scope) {
+			case TodoScope.user:
+				this.todos = [...this.todoService.userTodos];
+				break;
+			case TodoScope.workspace:
+				this.todos = [...this.todoService.workspaceTodos];
+				break;
+			case TodoScope.currentFile:
+				this.todos = [...this.todoService.currentFileTodos];
+				break;
 		}
 		this.cdRef.detectChanges();
 	}

@@ -1,6 +1,6 @@
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
-import { CurrentFileSlice, Todo, TodoScope, TodoSlice } from "./todoTypes";
+import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "./todoTypes";
 
 /**
  * Calculate the number of incomplete todos in the given state.
@@ -25,7 +25,12 @@ export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionC
 			break;
 		case TodoScope.currentFile:
 			const currentFileState = state as CurrentFileSlice;
-			context.workspaceState.update(currentFileState.filePath, state.todos);
+
+			const data = context.workspaceState.get("TodoFilesData") as TodoFilesData;
+			context.workspaceState.update("TodoFilesData", {
+				...data,
+				[currentFileState.filePath]: currentFileState.todos,
+			});
 			break;
 	}
 }
@@ -125,4 +130,19 @@ function sortType2(todos: Todo[]) {
 	});
 
 	return sortedMappedTodos.map((mappedItem) => mappedItem.todo);
+}
+
+/**
+ * Retrieves workspace files with todo records attached.
+ *
+ * @param fileData - the data containing files and their todos
+ * @return An array of objects containing file paths and todo numbers
+ */
+export function getWorkspaceFilesWithRecords(
+	fileData: TodoFilesData
+): Array<{ filePath: string; todoNumber: number }> {
+	return Object.entries(fileData).map(([filePath, todos]) => ({
+		filePath,
+		todoNumber: todos.filter((todo) => !todo.completed).length,
+	}));
 }
