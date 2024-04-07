@@ -15,7 +15,12 @@ import {
 	TodoScope,
 	TodoSlice,
 } from "./todoTypes";
-import { generateUniqueId, getNumberOfTodos, sortTodosWithNotes } from "./todoUtils";
+import {
+	generateUniqueId,
+	getNumberOfNotes,
+	getNumberOfTodos,
+	sortTodosWithNotes,
+} from "./todoUtils";
 import LogChannel from "../utilities/LogChannel";
 
 const todoReducers = {
@@ -23,6 +28,7 @@ const todoReducers = {
 		state.todos = action.payload.data;
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
+		state.numberOfNotes = getNumberOfNotes(state);
 	},
 	addTodo: (state: TodoSlice, action: PayloadAction<{ text: string }>) => {
 		state.todos?.unshift({
@@ -35,6 +41,7 @@ const todoReducers = {
 		});
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
+		state.numberOfNotes = getNumberOfNotes(state);
 	},
 	toggleTodo: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
@@ -45,6 +52,7 @@ const todoReducers = {
 		Object.assign(state.todos, sortTodosWithNotes(state.todos));
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
+		state.numberOfNotes = getNumberOfNotes(state);
 	},
 	editTodo: (state: TodoSlice, action: PayloadAction<{ id: number; newText: string }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
@@ -60,6 +68,7 @@ const todoReducers = {
 		state.todos?.splice(index, 1);
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
+		state.numberOfNotes = getNumberOfNotes(state);
 	},
 	reorderTodo: (state: TodoSlice, action: PayloadAction<{ reorderedTodos: Todo[] }>) => {
 		state.todos = action.payload.reorderedTodos;
@@ -80,6 +89,8 @@ const todoReducers = {
 			Object.assign(state.todos, sortTodosWithNotes(state.todos));
 		}
 		state.lastActionType = action.type;
+		state.numberOfTodos = getNumberOfTodos(state);
+		state.numberOfNotes = getNumberOfNotes(state);
 	},
 };
 
@@ -89,6 +100,7 @@ const userSlice = createSlice({
 		todos: [],
 		lastActionType: "",
 		numberOfTodos: 0,
+		numberOfNotes: 0,
 		scope: TodoScope.user,
 	} as TodoSlice,
 	reducers: todoReducers,
@@ -100,6 +112,7 @@ const workspaceSlice = createSlice({
 		todos: [],
 		lastActionType: "",
 		numberOfTodos: 0,
+		numberOfNotes: 0,
 		scope: TodoScope.workspace,
 	} as TodoSlice,
 	reducers: todoReducers,
@@ -134,6 +147,7 @@ const currentFileSlice = createSlice({
 		todos: [],
 		lastActionType: "",
 		numberOfTodos: 0,
+		numberOfNotes: 0,
 		scope: TodoScope.currentFile,
 	} as CurrentFileSlice,
 	reducers: {
@@ -146,6 +160,7 @@ const currentFileSlice = createSlice({
 			state.todos = action.payload.data;
 			state.lastActionType = action.type;
 			state.numberOfTodos = getNumberOfTodos(state);
+			state.numberOfNotes = getNumberOfNotes(state);
 		},
 	},
 });

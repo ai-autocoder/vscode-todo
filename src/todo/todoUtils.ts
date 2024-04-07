@@ -5,11 +5,21 @@ import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "./t
 /**
  * Calculate the number of incomplete todos in the given state.
  *
- * @param state - The state containing the todos.
- * @return The number of todos in the workspace and for the user.
+ * @param state - The slice state array.
+ * @return The number of todos in the array.
  */
 export function getNumberOfTodos(state: TodoSlice): number {
-	return state?.todos.filter((todo) => !todo.completed).length ?? 0;
+	return state?.todos.filter((todo) => !todo.completed && !todo.isNote).length ?? 0;
+}
+
+/**
+ * Calculate the number of notes in the given state.
+ *
+ * @param state - The slice state array.
+ * @return The number of notes in the array.
+ */
+export function getNumberOfNotes(state: TodoSlice): number {
+	return state?.todos.filter((todo) => todo.isNote).length ?? 0;
 }
 
 /**

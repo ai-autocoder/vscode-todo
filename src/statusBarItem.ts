@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { TodoCount } from "./todo/todoTypes";
+import { StoreState } from "./todo/todoTypes";
 
 let _statusBarItem: vscode.StatusBarItem | undefined;
 
@@ -20,15 +20,29 @@ export function initStatusBarItem(context: vscode.ExtensionContext) {
 }
 
 /**
- * Updates the status bar item with the current number of todos.
+ * Updates the status bar item with the current number of todos and notes.
  *
  * @param {Object} todoCount - An object containing the number of todos.
  */
-export function updateStatusBarItem({ workspace, user, currentFile }: TodoCount) {
+export function updateStatusBarItem(state: StoreState) {
 	if (!_statusBarItem) return;
 
-	_statusBarItem.text = `Todo ${user} / ${workspace} / ${currentFile}`;
+	_statusBarItem.text = `☑️ ${state.user.numberOfTodos}/${state.workspace.numberOfTodos}/${state.currentFile.numberOfTodos} | 📒 ${state.user.numberOfNotes}/${state.workspace.numberOfNotes}/${state.currentFile.numberOfNotes}`;
+
 	_statusBarItem.tooltip = new vscode.MarkdownString(
-		`Open Todos\n- User: ${user}\n- Workspace: ${workspace}\n- Current File: ${currentFile}`
+		`**Todo**☑️
+
+- User: ${state.user.numberOfTodos}
+- Workspace: ${state.workspace.numberOfTodos}
+- Current File: ${state.currentFile.numberOfTodos}
+
+**Notes**📒
+
+- User: ${state.user.numberOfNotes}
+- Workspace: ${state.workspace.numberOfNotes}
+- Current File: ${state.currentFile.numberOfNotes}
+
+View Todos and Notes
+`
 	);
 }

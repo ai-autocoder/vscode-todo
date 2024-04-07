@@ -6,14 +6,9 @@ import createStore, {
 	actionTrackerActions,
 	fileDataInfoActions,
 	userActions,
-	workspaceActions
+	workspaceActions,
 } from "./todo/store";
-import {
-	CurrentFileSlice,
-	Slices,
-	StoreState,
-	TodoSlice
-} from "./todo/todoTypes";
+import { CurrentFileSlice, Slices, StoreState, TodoSlice } from "./todo/todoTypes";
 import { getWorkspaceFilesWithRecords, persist } from "./todo/todoUtils";
 export function activate(context: ExtensionContext) {
 	const store = createStore();
@@ -78,10 +73,6 @@ function handleTodoChange(
 	context: ExtensionContext
 ) {
 	HelloWorldPanel.currentPanel?.updateWebview(sliceState);
-	updateStatusBarItem({
-		user: state.user.numberOfTodos,
-		workspace: state.workspace.numberOfTodos,
-		currentFile: state.currentFile.numberOfTodos,
-	});
+	updateStatusBarItem(state);
 	persist(sliceState as TodoSlice | CurrentFileSlice, context);
 }

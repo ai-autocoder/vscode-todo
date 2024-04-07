@@ -33,6 +33,7 @@ export interface TodoSlice {
 	todos: Todo[];
 	lastActionType: string;
 	numberOfTodos: number;
+	numberOfNotes: number;
 	scope: TodoScope;
 }
 
