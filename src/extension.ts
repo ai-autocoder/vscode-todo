@@ -19,8 +19,6 @@ export function activate(context: ExtensionContext) {
 
 	const statusBarItem = initStatusBarItem(context);
 
-	context.subscriptions.push(openTodoCommand, statusBarItem);
-
 	store.subscribe(() => {
 		const state = store.getState() as StoreState;
 
@@ -44,27 +42,35 @@ export function activate(context: ExtensionContext) {
 		store.dispatch(actionTrackerActions.resetLastSliceName());
 	});
 
-	// Load data in the store
+	// Load workspace slice
 	store.dispatch(
 		workspaceActions.loadData({
 			data: context.workspaceState.get("TodoData") ?? [],
 		})
 	);
+
+	// Load user slice
 	store.dispatch(
 		userActions.loadData({
 			data: context.globalState.get("TodoData") ?? [],
 		})
 	);
 
+	// Load list of files with records
 	store.dispatch(
 		fileDataInfoActions.setWorkspaceFilesWithRecords(
 			getWorkspaceFilesWithRecords(context.workspaceState.get("TodoFilesData") ?? {})
 		)
 	);
 
+	// Load current active editor tab
 	tabChangeHandler(store, context);
 
-	context.subscriptions.push(onDidChangeActiveTextEditorDisposable(store, context));
+	context.subscriptions.push(
+		openTodoCommand,
+		statusBarItem,
+		onDidChangeActiveTextEditorDisposable(store, context)
+	);
 }
 
 function handleTodoChange(
