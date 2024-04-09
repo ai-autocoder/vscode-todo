@@ -26,7 +26,7 @@ export class TodoService {
 	private _config: Config = {
 		taskSortingOptions: "sortType1",
 	};
-	private currentFilePathSource = new BehaviorSubject<string>("No File Selected");
+	private currentFilePathSource = new BehaviorSubject<string>("");
 	private workspaceFilesWithRecordsSource = new BehaviorSubject<
 		{ filePath: string; todoNumber: number }[]
 	>([]);
