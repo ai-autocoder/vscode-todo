@@ -14,6 +14,7 @@ import { MatMenuModule } from "@angular/material/menu";
 import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
 import { MarkdownModule } from "ngx-markdown";
 import { HttpClientModule } from "@angular/common/http";
+import { FileNamePipe } from "./pipes/file-name.pipe";
 
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
@@ -28,6 +29,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		TextArea,
 		NewTodoComponent,
 		AutoAnimateDirective,
+		FileNamePipe,
 	],
 	imports: [
 		BrowserModule,

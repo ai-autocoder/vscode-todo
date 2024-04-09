@@ -1,18 +1,18 @@
 import { Component, OnInit } from "@angular/core";
 import {
 	provideVSCodeDesignSystem,
+	vsCodeBadge,
 	vsCodeButton,
 	vsCodeCheckbox,
 	vsCodeDivider,
-	vsCodeTextArea,
 	vsCodePanelTab,
 	vsCodePanelView,
 	vsCodePanels,
-	vsCodeBadge,
+	vsCodeTextArea,
 } from "@vscode/webview-ui-toolkit";
-import { TodoScope, TodoCount } from "../../../src/todo/todoTypes";
-import { TodoService } from "./todo/todo.service";
 import { Observable } from "rxjs";
+import { TodoCount, TodoScope } from "../../../src/todo/todoTypes";
+import { TodoService } from "./todo/todo.service";
 
 // In order to use the Webview UI Toolkit web components they
 // must be registered with the browser (i.e. webview) using the

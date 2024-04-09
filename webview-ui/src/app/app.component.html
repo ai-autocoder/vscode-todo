@@ -11,9 +11,7 @@
 			}}</vscode-badge>
 		</vscode-panel-tab>
 		<vscode-panel-tab (click)="selectTab(TodoScope.currentFile)" id="tab-3">
-			{{
-				(currentFilePath | async) ? (currentFilePath | async)?.split("\\")?.pop() : "No File Selected"
-			}}
+			{{ currentFilePath | async | fileName }}
 			<vscode-badge [ngStyle]="{ opacity: todoCount.currentFile ? 1 : 0 }">{{
 				todoCount.currentFile
 			}}</vscode-badge>
