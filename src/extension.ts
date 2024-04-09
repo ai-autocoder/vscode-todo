@@ -1,14 +1,16 @@
+import { EnhancedStore } from "@reduxjs/toolkit";
 import { commands, ExtensionContext } from "vscode";
 import { onDidChangeActiveTextEditorDisposable, tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
 import createStore, {
 	actionTrackerActions,
+	currentFileActions,
 	fileDataInfoActions,
 	userActions,
 	workspaceActions,
 } from "./todo/store";
-import { CurrentFileSlice, Slices, StoreState, TodoSlice } from "./todo/todoTypes";
+import { CurrentFileSlice, Slices, StoreState, TodoFilesData, TodoSlice } from "./todo/todoTypes";
 import { getWorkspaceFilesWithRecords, persist } from "./todo/todoUtils";
 export function activate(context: ExtensionContext) {
 	const store = createStore();
@@ -27,19 +29,14 @@ export function activate(context: ExtensionContext) {
 			case Slices.actionTracker:
 				return;
 			case Slices.user:
-				handleTodoChange(state, state.user, context);
-				break;
 			case Slices.workspace:
-				handleTodoChange(state, state.workspace, context);
-				break;
 			case Slices.currentFile:
-				handleTodoChange(state, state.currentFile, context);
+				handleTodoChange(state, state[state.actionTracker.lastSliceName], store, context);
 				break;
 			case Slices.fileDataInfo:
-				HelloWorldPanel.currentPanel?.updateWebview(state.fileDataInfo, Slices.fileDataInfo);
+				handlefileDataInfoChange(state, store, context);
 				break;
 		}
-		store.dispatch(actionTrackerActions.resetLastSliceName());
 	});
 
 	// Load workspace slice
@@ -76,9 +73,32 @@ export function activate(context: ExtensionContext) {
 function handleTodoChange(
 	state: StoreState,
 	sliceState: TodoSlice | CurrentFileSlice,
+	store: EnhancedStore,
 	context: ExtensionContext
 ) {
+	store.dispatch(actionTrackerActions.resetLastSliceName());
 	HelloWorldPanel.currentPanel?.updateWebview(sliceState);
 	updateStatusBarItem(state);
 	persist(sliceState as TodoSlice | CurrentFileSlice, context);
+}
+
+function handlefileDataInfoChange(
+	state: StoreState,
+	store: EnhancedStore,
+	context: ExtensionContext
+) {
+	store.dispatch(actionTrackerActions.resetLastSliceName());
+	if (
+		state.fileDataInfo.editorFocusedFilePath !== "" &&
+		state.fileDataInfo.lastActionType === "fileDataInfo/setCurrentFile"
+	) {
+		const data = context.workspaceState.get("TodoFilesData") as TodoFilesData | undefined;
+		const todos = data?.[state.fileDataInfo.editorFocusedFilePath] || [];
+		store.dispatch(
+			currentFileActions.loadData({
+				filePath: state.fileDataInfo.editorFocusedFilePath,
+				data: todos,
+			})
+		);
+	}
 }

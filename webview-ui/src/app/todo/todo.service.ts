@@ -5,7 +5,13 @@ import {
 	MessageActionsToWebview,
 	messagesFromWebview,
 } from "../../../../src/panels/message";
-import { Todo, TodoCount, TodoScope } from "../../../../src/todo/todoTypes";
+import {
+	CurrentFileSlice,
+	Todo,
+	TodoCount,
+	TodoScope,
+	TodoSlice,
+} from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
 import { Config } from "../../../../src/utilities/config";
 
@@ -20,7 +26,7 @@ export class TodoService {
 	private _config: Config = {
 		taskSortingOptions: "sortType1",
 	};
-	private currentFilePathSource = new BehaviorSubject<string>("");
+	private currentFilePathSource = new BehaviorSubject<string>("No File Selected");
 	private workspaceFilesWithRecordsSource = new BehaviorSubject<
 		{ filePath: string; todoNumber: number }[]
 	>([]);
@@ -42,12 +48,10 @@ export class TodoService {
 				this.handleReloadWebview(data);
 				break;
 			case MessageActionsToWebview.syncTodoData:
-				this.handleSyncTodoData(data);
+				this.handleSyncTodoData(data.payload);
 				break;
 			case MessageActionsToWebview.syncfileDataInfo:
-				if (data.payload.lastActionType === "fileDataInfo/setCurrentFile") {
-					this.handleEditorTabChange(data);
-				} else if (data.payload.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
+				if (data.payload.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
 					this.workspaceFilesWithRecordsSource.next(data.payload.workspaceFilesWithRecords);
 				}
 				break;
@@ -60,45 +64,34 @@ export class TodoService {
 		const { user, workspace, currentFile } = data.payload;
 		this._config = data.config;
 
-		this.updateTodos("user", user.todos, user.numberOfTodos);
-		this.updateTodos("workspace", workspace.todos, workspace.numberOfTodos);
-		this.updateTodos("currentFile", currentFile.todos, currentFile.numberOfTodos);
-		this.userLastAction.next("");
-		this.workspaceLastAction.next("");
-		this.currentFileLastAction.next("");
-	}
-
-	private handleSyncTodoData(data: Message<MessageActionsToWebview.syncTodoData>) {
-		const { payload } = data;
-		const scope =
-			payload.scope === TodoScope.user
-				? "user"
-				: payload.scope === TodoScope.workspace
-					? "workspace"
-					: "currentFile";
-		this.updateTodos(scope, payload.todos, payload.numberOfTodos);
-		this[`${scope}LastAction`].next(payload.lastActionType);
-	}
-
-	private handleEditorTabChange(data: Message<MessageActionsToWebview.syncfileDataInfo>) {
-		const { payload } = data;
-		if (payload.editorFocusedFilePath !== "") {
-			this.currentFilePathSource.next(payload.editorFocusedFilePath);
-			vscode.postMessage(
-				messagesFromWebview.requestData(TodoScope.currentFile, {
-					filePath: payload.editorFocusedFilePath,
-				})
-			);
+		for (const scope of Object.values(TodoScope)) {
+			this.handleSyncTodoData(data.payload[scope]);
 		}
 	}
 
-	private updateTodos(
-		scope: "user" | "workspace" | "currentFile",
-		todos: Todo[],
-		numberOfTodos: number
-	) {
-		this[`_${scope}Todos`] = [...todos];
-		this._todoCount[scope] = numberOfTodos;
+	private handleSyncTodoData(payload: TodoSlice | CurrentFileSlice) {
+		switch (payload.scope) {
+			case TodoScope.user:
+				this._userTodos = payload.todos;
+				this._todoCount.user = payload.numberOfTodos;
+				this.userLastAction.next(payload.lastActionType);
+				break;
+			case TodoScope.workspace:
+				this._workspaceTodos = payload.todos;
+				this._todoCount.workspace = payload.numberOfTodos;
+				this.workspaceLastAction.next(payload.lastActionType);
+				break;
+			case TodoScope.currentFile: {
+				const currentFilePayload = payload as CurrentFileSlice;
+				this._currentFileTodos = currentFilePayload.todos;
+				this._todoCount.currentFile = currentFilePayload.numberOfTodos;
+				this.currentFilePathSource.next(currentFilePayload.filePath);
+				this.currentFileLastAction.next(currentFilePayload.lastActionType);
+				break;
+			}
+			default:
+				throw new Error("Invalid action scope");
+		}
 	}
 
 	get userTodos(): Todo[] {
