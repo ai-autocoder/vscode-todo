@@ -5,7 +5,10 @@
 		(keydown.enter)="addTodo($event)"
 		[autoResize]="true"
 	></text-area>
-	<vscode-button (click)="addTodo($event)" [disabled]="!newTodoText.trim().length"
+	<vscode-button
+		(click)="addTodo($event)"
+		[disabled]="!newTodoText.trim().length || isCurrentFileEmpty"
+		[title]="isCurrentFileEmpty ? 'Please select a file first' : ''"
 		>Add</vscode-button
 	>
 </div>

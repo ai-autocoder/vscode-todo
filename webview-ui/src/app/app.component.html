@@ -30,5 +30,5 @@
 
 	<vscode-divider role="separator"></vscode-divider>
 
-	<new-todo [scope]="scope"></new-todo>
+	<new-todo [scope]="scope" [currentFilePath]="(currentFilePath | async) || ''"></new-todo>
 </main>
