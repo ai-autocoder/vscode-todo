@@ -21,21 +21,29 @@ import { Config } from "../../../../src/utilities/config";
 export class TodoService {
 	private _userTodos: Todo[] = [];
 	private _workspaceTodos: Todo[] = [];
-	private _currentFileTodos: Todo[] = [];
+	private _currentFileSlice: CurrentFileSlice = {
+		filePath: "",
+		todos: [],
+		isPinned: false,
+		scope: TodoScope.currentFile,
+		lastActionType: "",
+		numberOfTodos: 0,
+		numberOfNotes: 0,
+	};
 	private _todoCount: TodoCount = { user: 0, workspace: 0, currentFile: 0 };
 	private _config: Config = {
 		taskSortingOptions: "sortType1",
 	};
-	private currentFilePathSource = new BehaviorSubject<string>("");
-	private workspaceFilesWithRecordsSource = new BehaviorSubject<
+	private _currentFilePathSource = new BehaviorSubject<string>("");
+	private _workspaceFilesWithRecordsSource = new BehaviorSubject<
 		{ filePath: string; todoNumber: number }[]
 	>([]);
 
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
 	currentFileLastAction = new BehaviorSubject<string>("");
-	currentFilePath = this.currentFilePathSource.asObservable();
-	workspaceFilesWithRecords = this.workspaceFilesWithRecordsSource.asObservable();
+	currentFilePath = this._currentFilePathSource.asObservable();
+	workspaceFilesWithRecords = this._workspaceFilesWithRecordsSource.asObservable();
 
 	constructor() {
 		window.addEventListener("message", this.handleMessage.bind(this));
@@ -52,7 +60,7 @@ export class TodoService {
 				break;
 			case MessageActionsToWebview.syncfileDataInfo:
 				if (data.payload.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
-					this.workspaceFilesWithRecordsSource.next(data.payload.workspaceFilesWithRecords);
+					this._workspaceFilesWithRecordsSource.next(data.payload.workspaceFilesWithRecords);
 				}
 				break;
 			default:
@@ -83,9 +91,9 @@ export class TodoService {
 				break;
 			case TodoScope.currentFile: {
 				const currentFilePayload = payload as CurrentFileSlice;
-				this._currentFileTodos = currentFilePayload.todos;
+				this._currentFileSlice = currentFilePayload;
 				this._todoCount.currentFile = currentFilePayload.numberOfTodos;
-				this.currentFilePathSource.next(currentFilePayload.filePath);
+				this._currentFilePathSource.next(currentFilePayload.filePath);
 				this.currentFileLastAction.next(currentFilePayload.lastActionType);
 				break;
 			}
@@ -103,7 +111,7 @@ export class TodoService {
 	}
 
 	get currentFileTodos(): Todo[] {
-		return this._currentFileTodos;
+		return this._currentFileSlice.todos;
 	}
 
 	get todoCount(): TodoCount {
@@ -112,6 +120,10 @@ export class TodoService {
 
 	get config(): Config {
 		return this._config;
+	}
+
+	get isPinned(): boolean {
+		return this._currentFileSlice.isPinned;
 	}
 
 	addTodo(...args: Parameters<typeof messagesFromWebview.addTodo>) {
@@ -140,5 +152,9 @@ export class TodoService {
 
 	toggleTodoNote(...args: Parameters<typeof messagesFromWebview.toggleTodoNote>) {
 		vscode.postMessage(messagesFromWebview.toggleTodoNote(...args));
+	}
+
+	pinFile() {
+		vscode.postMessage(messagesFromWebview.pinFile(TodoScope.currentFile));
 	}
 }

@@ -51,12 +51,13 @@ export type Message<
 				type: T;
 				payload: MessagePayload<T, L>;
 			}
-		: // MessageActionsFromWebview 👇
-			{
-				type: T;
-				scope: L;
-				payload: MessagePayload<T, L>;
-			};
+		: T extends MessageActionsFromWebview.pinFile
+			? { type: T; scope: TodoScope.currentFile }
+			: {
+					type: T;
+					scope: L;
+					payload: MessagePayload<T, L>;
+				};
 
 export const enum MessageActionsFromWebview {
 	addTodo = "addTodo",
@@ -67,6 +68,7 @@ export const enum MessageActionsFromWebview {
 	toggleMarkdown = "toggleMarkdown",
 	toggleTodoNote = "toggleTodoNote",
 	requestData = "requestData",
+	pinFile = "pinFile",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
@@ -153,6 +155,12 @@ export const messagesFromWebview = {
 		type: MessageActionsFromWebview.requestData,
 		scope,
 		payload,
+	}),
+	pinFile: (
+		scope: TodoScope.currentFile
+	): Message<MessageActionsFromWebview.pinFile, TodoScope> => ({
+		type: MessageActionsFromWebview.pinFile,
+		scope,
 	}),
 };
 export const messagesToWebview = {

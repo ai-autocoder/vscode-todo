@@ -238,6 +238,10 @@ export class HelloWorldPanel {
 						this._store.dispatch(storeActions.toggleTodoNote(payload));
 						break;
 					}
+					case MessageActionsFromWebview.pinFile: {
+						this._store.dispatch(currentFileActions.pinFile());
+						break;
+					}
 					default:
 						console.error("Action not found");
 				}

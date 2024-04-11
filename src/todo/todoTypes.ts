@@ -39,6 +39,7 @@ export interface TodoSlice {
 
 export interface CurrentFileSlice extends TodoSlice {
 	filePath: string;
+	isPinned: boolean;
 }
 
 export interface FileDataInfoSlice {

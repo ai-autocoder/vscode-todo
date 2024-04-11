@@ -90,7 +90,8 @@ function handlefileDataInfoChange(
 	store.dispatch(actionTrackerActions.resetLastSliceName());
 	if (
 		state.fileDataInfo.editorFocusedFilePath !== "" &&
-		state.fileDataInfo.lastActionType === "fileDataInfo/setCurrentFile"
+		state.fileDataInfo.lastActionType === "fileDataInfo/setCurrentFile" &&
+		!state.currentFile.isPinned
 	) {
 		const data = context.workspaceState.get("TodoFilesData") as TodoFilesData | undefined;
 		const todos = data?.[state.fileDataInfo.editorFocusedFilePath] || [];

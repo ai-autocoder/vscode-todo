@@ -21,8 +21,27 @@ vscode-panels::part(tabpanel) {
 	transform: translateY(-2px);
 }
 
+.button-pin {
+	opacity: 0;
+	margin-left: 0.5rem;
+
+	&.active {
+		opacity: 1;
+	}
+}
+
+vscode-panel-tab:hover {
+	.button-pin {
+		opacity: 1;
+	}
+}
+
 vscode-panel-tab[aria-selected="true"] {
 	color: var(--vscode-settings-headerForeground);
+
+	.button-pin svg path {
+		fill: var(--vscode-settings-headerForeground);
+	}
 }
 
 vscode-panel-view {

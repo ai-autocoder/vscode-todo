@@ -10,7 +10,7 @@ import {
 	vsCodePanels,
 	vsCodeTextArea,
 } from "@vscode/webview-ui-toolkit";
-import { Observable } from "rxjs";
+import { Observable, Subscription } from "rxjs";
 import { TodoCount, TodoScope } from "../../../src/todo/todoTypes";
 import { TodoService } from "./todo/todo.service";
 
@@ -48,13 +48,15 @@ provideVSCodeDesignSystem().register(
 @Component({
 	selector: "app-root",
 	templateUrl: "./app.component.html",
-	styleUrls: ["./app.component.css"],
+	styleUrls: ["./app.component.scss"],
 })
 export class AppComponent implements OnInit {
 	scope: TodoScope = TodoScope.workspace;
 	TodoScope: typeof TodoScope = TodoScope;
 	todoCount!: TodoCount;
 	currentFilePath!: Observable<string>;
+	private lastActionTypeSubscription!: Subscription;
+	isPinned = false;
 
 	constructor(private todoService: TodoService) {}
 
@@ -62,9 +64,23 @@ export class AppComponent implements OnInit {
 		// Get data
 		this.todoCount = this.todoService.todoCount;
 		this.currentFilePath = this.todoService.currentFilePath;
+		this.lastActionTypeSubscription = this.todoService.currentFileLastAction.subscribe(() => {
+			this.isPinned = this.todoService.isPinned;
+		});
 	}
 
 	selectTab(tab: TodoScope) {
 		this.scope = tab;
+	}
+
+	pinFile(event: MouseEvent) {
+		event.stopPropagation();
+		this.todoService.pinFile();
+	}
+
+	ngOnDestroy(): void {
+		if (this.lastActionTypeSubscription) {
+			this.lastActionTypeSubscription.unsubscribe();
+		}
 	}
 }

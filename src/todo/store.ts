@@ -144,6 +144,7 @@ const currentFileSlice = createSlice({
 	name: "currentFile",
 	initialState: {
 		filePath: "",
+		isPinned: false,
 		todos: [],
 		lastActionType: "",
 		numberOfTodos: 0,
@@ -161,6 +162,10 @@ const currentFileSlice = createSlice({
 			state.lastActionType = action.type;
 			state.numberOfTodos = getNumberOfTodos(state);
 			state.numberOfNotes = getNumberOfNotes(state);
+		},
+		pinFile(state: CurrentFileSlice, action: PayloadAction) {
+			state.isPinned = !state.isPinned;
+			state.lastActionType = action.type;
 		},
 	},
 });
