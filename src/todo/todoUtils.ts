@@ -36,11 +36,19 @@ export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionC
 		case TodoScope.currentFile:
 			const currentFileState = state as CurrentFileSlice;
 
-			const data = context.workspaceState.get("TodoFilesData") as TodoFilesData;
-			context.workspaceState.update("TodoFilesData", {
+			const data = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
+
+			const updatedData = {
 				...data,
 				[currentFileState.filePath]: currentFileState.todos,
-			});
+			};
+
+			// Only keep the entry if the todos array is not empty
+			if (currentFileState.todos.length === 0) {
+				delete updatedData[currentFileState.filePath];
+			}
+
+			context.workspaceState.update("TodoFilesData", updatedData);
 			break;
 	}
 }
