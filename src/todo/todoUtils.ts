@@ -33,23 +33,26 @@ export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionC
 		case TodoScope.workspace:
 			context.workspaceState.update("TodoData", state.todos);
 			break;
-		case TodoScope.currentFile:
+		case TodoScope.currentFile: {
 			const currentFileState = state as CurrentFileSlice;
 
 			const data = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
 
-			const updatedData = {
+			const updatedData: TodoFilesData = {
 				...data,
 				[currentFileState.filePath]: currentFileState.todos,
 			};
 
+			const sortedResult = sortByFileName(updatedData);
+
 			// Only keep the entry if the todos array is not empty
 			if (currentFileState.todos.length === 0) {
-				delete updatedData[currentFileState.filePath];
+				delete sortedResult[currentFileState.filePath];
 			}
 
-			context.workspaceState.update("TodoFilesData", updatedData);
+			context.workspaceState.update("TodoFilesData", sortedResult);
 			break;
+		}
 	}
 }
 
@@ -163,4 +166,33 @@ export function getWorkspaceFilesWithRecords(
 		filePath,
 		todoNumber: todos.filter((todo) => !todo.completed).length,
 	}));
+}
+
+/**
+ * Sorts the keys in the object by file name.
+ *
+ * @param data - The data object to be sorted.
+ * @returns The sorted data object.
+ */
+function sortByFileName(data: TodoFilesData = {}): TodoFilesData {
+	const keys = Object.keys(data).sort((a, b) => {
+		const fileNameA =
+			a
+				.split(/[\\\/]/)
+				.pop()
+				?.toLowerCase() || "";
+		const fileNameB =
+			b
+				.split(/[\\\/]/)
+				.pop()
+				?.toLowerCase() || "";
+		return fileNameA.localeCompare(fileNameB);
+	});
+
+	const sortedData: TodoFilesData = {};
+	for (const key of keys) {
+		sortedData[key] = data[key];
+	}
+
+	return sortedData;
 }
