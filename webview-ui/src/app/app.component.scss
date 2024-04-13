@@ -53,7 +53,7 @@ vscode-panel-view {
 vscode-panels::part(activeIndicator) {
 	z-index: 1;
 	height: 2px;
-	width: 130%;
+	width: calc(100% + 2rem);
 }
 
 new-todo {
