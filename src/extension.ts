@@ -10,7 +10,14 @@ import createStore, {
 	userActions,
 	workspaceActions,
 } from "./todo/store";
-import { CurrentFileSlice, Slices, StoreState, TodoFilesData, TodoSlice } from "./todo/todoTypes";
+import {
+	CurrentFileSlice,
+	Slices,
+	StoreState,
+	TodoFilesData,
+	TodoScope,
+	TodoSlice,
+} from "./todo/todoTypes";
 import { getWorkspaceFilesWithRecords, persist } from "./todo/todoUtils";
 export function activate(context: ExtensionContext) {
 	const store = createStore();
@@ -80,6 +87,14 @@ function handleTodoChange(
 	HelloWorldPanel.currentPanel?.updateWebview(sliceState);
 	updateStatusBarItem(state);
 	persist(sliceState as TodoSlice | CurrentFileSlice, context);
+	if (sliceState.scope === TodoScope.currentFile) {
+		// Update fileDataInfoSlice
+		store.dispatch(
+			fileDataInfoActions.setWorkspaceFilesWithRecords(
+				getWorkspaceFilesWithRecords(context.workspaceState.get("TodoFilesData") ?? {})
+			)
+		);
+	}
 }
 
 function handlefileDataInfoChange(
@@ -101,5 +116,7 @@ function handlefileDataInfoChange(
 				data: todos,
 			})
 		);
+	} else if (state.fileDataInfo.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
+		HelloWorldPanel.currentPanel?.updateWebview(state.fileDataInfo, Slices.fileDataInfo);
 	}
 }

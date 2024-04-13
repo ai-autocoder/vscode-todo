@@ -42,6 +42,7 @@
 			<todo-list [scope]="TodoScope.workspace" *ngIf="scope === TodoScope.workspace"></todo-list>
 		</vscode-panel-view>
 		<vscode-panel-view id="view-3">
+			<file-list></file-list>
 			<todo-list [scope]="TodoScope.currentFile" *ngIf="scope === TodoScope.currentFile"></todo-list>
 		</vscode-panel-view>
 	</vscode-panels>

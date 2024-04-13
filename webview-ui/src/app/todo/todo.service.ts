@@ -7,6 +7,7 @@ import {
 } from "../../../../src/panels/message";
 import {
 	CurrentFileSlice,
+	FileDataInfoSlice,
 	Todo,
 	TodoCount,
 	TodoScope,
@@ -59,9 +60,7 @@ export class TodoService {
 				this.handleSyncTodoData(data.payload);
 				break;
 			case MessageActionsToWebview.syncfileDataInfo:
-				if (data.payload.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
-					this._workspaceFilesWithRecordsSource.next(data.payload.workspaceFilesWithRecords);
-				}
+				this.handleSyncfileDataInfo(data.payload);
 				break;
 			default:
 				console.warn("Unhandled message type:", data.type);
@@ -69,12 +68,12 @@ export class TodoService {
 	}
 
 	private handleReloadWebview(data: Message<MessageActionsToWebview.reloadWebview>) {
-		const { user, workspace, currentFile } = data.payload;
 		this._config = data.config;
 
 		for (const scope of Object.values(TodoScope)) {
 			this.handleSyncTodoData(data.payload[scope]);
 		}
+		this.handleSyncfileDataInfo(data.payload.fileDataInfo);
 	}
 
 	private handleSyncTodoData(payload: TodoSlice | CurrentFileSlice) {
@@ -100,6 +99,10 @@ export class TodoService {
 			default:
 				throw new Error("Invalid action scope");
 		}
+	}
+
+	private handleSyncfileDataInfo(payload: FileDataInfoSlice) {
+		this._workspaceFilesWithRecordsSource.next(payload.workspaceFilesWithRecords);
 	}
 
 	get userTodos(): Todo[] {
@@ -156,5 +159,13 @@ export class TodoService {
 
 	pinFile() {
 		vscode.postMessage(messagesFromWebview.pinFile(TodoScope.currentFile));
+	}
+
+	setCurrentFile(filePath: string) {
+		vscode.postMessage(
+			messagesFromWebview.requestData(TodoScope.currentFile, {
+				filePath,
+			})
+		);
 	}
 }

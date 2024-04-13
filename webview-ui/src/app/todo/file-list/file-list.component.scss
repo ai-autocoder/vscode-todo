@@ -1,0 +1,32 @@
+.file-list-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	width: 25ch;
+	padding-right: 3px;
+	border-right: 2px solid var(--vscode-settings-headerBorder);
+	overflow-y: auto;
+}
+
+.file-list-item {
+	display: flex;
+	align-items: center;
+	gap: calc(var(--design-unit) * 2px);
+	cursor: pointer;
+	color: var(--vscode-list-inactiveSelectionForeground);
+
+	&:hover {
+		color: var(--vscode-settings-settingsHeaderHoverForeground);
+	}
+	&.active {
+		font-weight: bold;
+		color: var(--vscode-settings-headerForeground);
+	}
+}
+
+.file-name {
+	padding: 2px 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}

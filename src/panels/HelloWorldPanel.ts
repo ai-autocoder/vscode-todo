@@ -242,6 +242,30 @@ export class HelloWorldPanel {
 						this._store.dispatch(currentFileActions.pinFile());
 						break;
 					}
+					case MessageActionsFromWebview.requestData: {
+						const { payload: massagePayload } = message as Message<
+							MessageActionsFromWebview.requestData,
+							TodoScope
+						>;
+						if (message.scope === TodoScope.currentFile) {
+							const data = context.workspaceState.get("TodoFilesData") as
+								| {
+										[filePath: string]: Todo[];
+								  }
+								| undefined;
+							const todos = data?.[massagePayload.filePath] || [];
+							const actionPayload = {
+								filePath: massagePayload.filePath,
+								data: todos,
+							};
+							this._store.dispatch(
+								storeActions.loadData(actionPayload as Parameters<typeof currentFileActions.loadData>[0])
+							);
+						} else {
+							console.error("Scope not supported for loadData");
+						}
+						break;
+					}
 					default:
 						console.error("Action not found");
 				}
