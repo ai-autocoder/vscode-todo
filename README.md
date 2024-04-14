@@ -1,38 +1,64 @@
-# VSCode Todo Extension
+<div style="text-align:center">
+
+ <img src="https://github.com/ai-autocoder/vscode-todo/blob/e044e89bdf974a6c6cbc81717be9f44f944fe12f/icon.png?raw=true" width="200" alt="Logo">
+
+# VS Code Todo
+
+**The to-do and note manager for VS Code.**
+
+</div>
+
+<p align="center">
+ <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vscode-todo">
+ <img src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vscode-todo.png?label=VS%20Code%20Todo" alt="Marketplace bagde"></a>
+</p>
 
 ## Introduction
 
-**VSCode Todo** elevates your productivity by integrating an advanced to-do list manager within Visual Studio Code, now featuring **Markdown Support**, **Notes**, and **Code Highlighting**. This extension allows for managing tasks and notes—whether tied to your workspace, the current file, or stored globally—all accessible directly from the VSCode status bar.
+**VS Code Todo** is an advanced to-do list and note manager within Visual Studio Code, now featuring **Markdown Support**, **Notes**, and **Code Highlighting**. This extension allows for managing tasks and notes—whether tied to your workspace, the current file, or stored globally—all accessible directly from the VS Code status bar.
 
 ## Key Features
 
-- **Markdown Support for Todos and Notes**: Create todos and notes with rich markdown formatting, allowing for more organized and readable content.
-- **Syntax Highlighting**: When rendering in markdown, you can include code snippets with syntax highlighting, supported by ngx-markdown for a wide range of programming languages.
-- **Workspace, Global, & File-specific Management**: Keep your tasks and notes organized across different scopes — whether tied to your current workspace, a specific file, or available globally.
-- **Status Bar Integration**: Instantly view and access your task and note count from the status bar, with a hover tooltip providing a detailed breakdown.
-- **Customizable Sorting**: Tailor the sorting logic for your completed tasks to suit your workflow, with options to sort or disable sorting as needed.
-- **Drag-and-Drop Functionality**: Prioritize your tasks and notes with an easy-to-use drag-and-drop interface.
+- **Global, Workspace & File-specific Management**
+- **Markdown Support for Todos and Notes**
+- **Syntax Highlighting**
+- **Customizable Sorting**
+- **Drag-and-Drop Functionality**
+- **Status Bar Integration**
 
-## Installation
+![Image of UI overview](./assets/screenshots/UI-overview.gif)
 
-Find **VSCode Todo** in the VSCode Marketplace. Install with a single click to boost your productivity straight away.
+### Global, Workspace & File-specific Management
 
-## How to Use
+Tasks and notes can be organized across different scopes — whether available globally for the user, tied to your current workspace or a specific file.
 
-A new icon appears in your status bar post-installation, displaying the number of active to-dos. Click it to open the to-do list panel where you can manage your tasks and notes.
+### Markdown Support for Todos and Notes
 
+Create todos and notes with rich markdown formatting, allowing for more organized and readable content.
+
+It is possible to individually switch rendering between **text** and **markdown** in the options menu of each item in the list.
+
+![Image for enable markdown](./assets/screenshots/enable-markdown.gif)
 
 ### Syntax highlight
-To create a note with code highlighting, select markdown and use the following syntax:
-```
-+  ```typescript
+
+When rendering in markdown, you can include code snippets with syntax highlighting.
+
+ This is supported by ngx-markdown and the underlying [PrismJS](https://prismjs.com/#supported-languages) library, which supports hundreds of programming languages.
+
+To create a note with code highlighting, use the standard markdown syntax.
+
+For example, to highlight TypeScript code:
+
+```markdown
+```typescript
     const myProp: string = 'value';
-+  ```
+    console.log(myProp);
+​```
 ```
 
 <details>
 <summary>Supported Syntax Highlighting Languages (click to expand)</summary>
-
 
 | Markup & SGML         | Programming Languages | Scripting & Markup     | Data Format & DB | Systems & Config         | Miscellaneous       |
 | --------------------- | --------------------- | ---------------------- | ---------------- | ------------------------ | ------------------- |
@@ -55,29 +81,31 @@ _Note: This table represents a subset of the languages supported by PrismJS. For
 
 </details>
 
+### Customizable Sorting
 
+You can personalize how the completed tasks are sorted, with two sorting options and the ability to disable sorting as needed.
 
-
-## Configuration Options
-Define how your completed tasks are organized with these sorting options:
+To define the sorting options:
 
 - **sortType1**: Moves completed todos to the bottom, just on top of the first completed todo.
 - **sortType2**: Similar to Type 1, but groups completed todos with notes, useful for maintaining contextual relationships.
-- **disabled**: Completed todos remain in place, allowing for manual organization.
+- **disabled**: Completed todos remain in place, allowing full manual control of the order.
   
 The default sorting option is **sortType1**.
 
-```
+```json
 "vscodeTodo.taskSortingOptions": "sortType1"
 ```
 
-## Screenshots
+### Status Bar Integration
 
-<!-- [Interface screenshots] -->
+View and access your task and note count from the status bar, with a hover tooltip providing a detailed breakdown.
+
+![UI status bar](./assets/screenshots/statusBar.png)
 
 ## Contributing
 
-Contributions are welcome! Please submit pull requests, report bugs, or suggest enhancements via the [GitHub repository](#).
+Contributions are welcome! Please submit pull requests, report bugs, or suggest enhancements via the [GitHub repository](https://github.com/ai-autocoder/vscode-todo).
 
 ## License
 
@@ -85,5 +113,4 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Support
 
-For support, feature requests, or bug reporting, please visit the [GitHub issues page](#).
-
+For support, feature requests, or bug reporting, please visit the [GitHub issues page](https://github.com/ai-autocoder/vscode-todo/issues).
