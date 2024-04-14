@@ -1,6 +1,6 @@
 {
 	"name": "vscode-todo",
-	"displayName": "VSCode Todo",
+	"displayName": "VS Code Todo",
 	"publisher": "FrancescoAnzalone",
 	"description": "The to-do and note manager for VS Code",
 	"icon": "icon.png",
@@ -27,12 +27,12 @@
 		"commands": [
 			{
 				"command": "vscode-todo.openTodo",
-				"title": "Open Todo list",
-				"category": "VSCode Todo"
+				"title": "Open Todo",
+				"category": "VS Code Todo"
 			}
 		],
 		"configuration": {
-			"title": "VSCode Todo",
+			"title": "VS Code Todo",
 			"properties": {
 				"vscodeTodo.taskSortingOptions": {
 					"description": "Controls how completed tasks are reordered in the list.",
