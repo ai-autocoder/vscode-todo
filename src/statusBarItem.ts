@@ -26,21 +26,23 @@ export function initStatusBarItem(context: vscode.ExtensionContext) {
  */
 export function updateStatusBarItem(state: StoreState) {
 	if (!_statusBarItem) return;
+	const currentFileTodos = `${state.currentFile.filePath === "" ? "-" : state.currentFile.numberOfTodos}`;
+	const currentFileNotes = `${state.currentFile.filePath === "" ? "-" : state.currentFile.numberOfNotes}`;
 
-	_statusBarItem.text = `☑️ ${state.user.numberOfTodos}/${state.workspace.numberOfTodos}/${state.currentFile.numberOfTodos} | 📒 ${state.user.numberOfNotes}/${state.workspace.numberOfNotes}/${state.currentFile.numberOfNotes}`;
+	_statusBarItem.text = `☑️ ${state.user.numberOfTodos}/${state.workspace.numberOfTodos}/${currentFileTodos} | 📒 ${state.user.numberOfNotes}/${state.workspace.numberOfNotes}/${currentFileNotes}`;
 
 	_statusBarItem.tooltip = new vscode.MarkdownString(
 		`**Todo**☑️
 
 - User: ${state.user.numberOfTodos}
 - Workspace: ${state.workspace.numberOfTodos}
-- Current File: ${state.currentFile.numberOfTodos}
+- Current File: ${currentFileTodos}
 
 **Notes**📒
 
 - User: ${state.user.numberOfNotes}
 - Workspace: ${state.workspace.numberOfNotes}
-- Current File: ${state.currentFile.numberOfNotes}
+- Current File: ${currentFileNotes}
 
 View Todos and Notes
 `
