@@ -2,7 +2,7 @@
 	"name": "vscode-todo",
 	"displayName": "VSCode Todo",
 	"publisher": "FrancescoAnzalone",
-	"description": "Manage workspace and global todos directly from the VSCode status bar.",
+	"description": "The to-do and note manager for VS Code",
 	"icon": "icon.png",
 	"version": "0.0.1",
 	"license": "MIT",
