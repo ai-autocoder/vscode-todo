@@ -37,4 +37,4 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
-assets/**
+assets/hi-res/**
