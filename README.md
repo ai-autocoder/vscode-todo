@@ -9,8 +9,8 @@ VS Code Todo
 <h3 align="center">The to-do and note manager for VS Code.</h3>
 
 <p align="center">
- <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vscode-todo">
- <img src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vscode-todo.png?label=VS%20Code%20Todo" alt="Marketplace bagde"></a>
+ <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
+ <img src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vsc-todo.png?label=VS%20Code%20Todo" alt="Marketplace bagde"></a>
 </p>
 
 ## Introduction

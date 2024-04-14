@@ -1,5 +1,5 @@
 {
-	"name": "vscode-todo",
+	"name": "vsc-todo",
 	"displayName": "VS Code Todo",
 	"publisher": "FrancescoAnzalone",
 	"description": "The to-do and note manager for VS Code",
@@ -26,7 +26,7 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "vscode-todo.openTodo",
+				"command": "vsc-todo.openTodo",
 				"title": "Open Todo",
 				"category": "VS Code Todo"
 			}

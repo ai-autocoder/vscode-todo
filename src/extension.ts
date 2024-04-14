@@ -22,7 +22,7 @@ import { getWorkspaceFilesWithRecords, persist } from "./todo/todoUtils";
 export function activate(context: ExtensionContext) {
 	const store = createStore();
 
-	const openTodoCommand = commands.registerCommand("vscode-todo.openTodo", () => {
+	const openTodoCommand = commands.registerCommand("vsc-todo.openTodo", () => {
 		HelloWorldPanel.render(context, store);
 	});
 
