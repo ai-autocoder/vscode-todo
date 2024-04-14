@@ -1,12 +1,12 @@
-<div style="text-align:center">
+<h1 align="center">
 
- <img src="https://github.com/ai-autocoder/vscode-todo/blob/e044e89bdf974a6c6cbc81717be9f44f944fe12f/icon.png?raw=true" width="200" alt="Logo">
+<img src="https://github.com/ai-autocoder/vscode-todo/blob/e044e89bdf974a6c6cbc81717be9f44f944fe12f/icon.png?raw=true" width="200" alt="Logo">
 
-# VS Code Todo
+VS Code Todo
 
-**The to-do and note manager for VS Code.**
+</h1>
 
-</div>
+<h3 align="center">The to-do and note manager for VS Code.</h3>
 
 <p align="center">
  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vscode-todo">
