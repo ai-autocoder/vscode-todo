@@ -164,7 +164,7 @@ export function getWorkspaceFilesWithRecords(
 ): Array<{ filePath: string; todoNumber: number }> {
 	return Object.entries(fileData).map(([filePath, todos]) => ({
 		filePath,
-		todoNumber: todos.filter((todo) => !todo.completed).length,
+		todoNumber: todos.filter((todo) => !todo.completed && !todo.isNote).length,
 	}));
 }
 
