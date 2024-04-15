@@ -69,10 +69,16 @@ export class TodoService {
 
 	private handleReloadWebview(data: Message<MessageActionsToWebview.reloadWebview>) {
 		this._config = data.config;
-
-		for (const scope of Object.values(TodoScope)) {
-			this.handleSyncTodoData(data.payload[scope]);
-		}
+		this._userTodos = data.payload.user.todos;
+		this._todoCount.user = data.payload.user.numberOfTodos;
+		this._workspaceTodos = data.payload.workspace.todos;
+		this._todoCount.workspace = data.payload.workspace.numberOfTodos;
+		this._currentFileSlice = data.payload.currentFile;
+		this._todoCount.currentFile = data.payload.currentFile.numberOfTodos;
+		this._currentFilePathSource.next(data.payload.currentFile.filePath);
+		this.userLastAction.next("");
+		this.workspaceLastAction.next("");
+		this.currentFileLastAction.next("");
 		this.handleSyncfileDataInfo(data.payload.fileDataInfo);
 	}
 
