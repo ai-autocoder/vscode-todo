@@ -8,7 +8,6 @@ import {
 	vsCodePanelTab,
 	vsCodePanelView,
 	vsCodePanels,
-	vsCodeTextArea,
 } from "@vscode/webview-ui-toolkit";
 import { Observable, Subscription } from "rxjs";
 import { TodoCount, TodoScope } from "../../../src/todo/todoTypes";
@@ -24,7 +23,6 @@ provideVSCodeDesignSystem().register(
 	vsCodeButton(),
 	vsCodeCheckbox(),
 	vsCodeDivider(),
-	vsCodeTextArea(),
 	vsCodePanelTab(),
 	vsCodePanelView(),
 	vsCodePanels(),

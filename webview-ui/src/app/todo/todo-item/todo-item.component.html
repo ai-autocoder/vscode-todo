@@ -27,14 +27,14 @@
 		<vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
 	</div>
 	<div class="content">
-		<text-area
+		<autosize-text-area
 			*ngIf="isEditable"
 			id="text-area-{{ todo.id }}"
 			class="todo-text"
 			[(value)]="todo.text"
-			[autoResize]="true"
+			[autofocus]="true"
 		>
-		</text-area>
+		</autosize-text-area>
 		<!-- prettier-ignore -->
 		<div
 			(click)="edit()"

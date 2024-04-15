@@ -23,7 +23,7 @@ export class NewTodoComponent implements OnChanges {
 
 	addTodo($event: Event) {
 		$event.preventDefault();
-		if (!this.newTodoText.trim().length) return;
+		if (!this.newTodoText.trim().length || this.isCurrentFileEmpty) return;
 		this.todoService.addTodo(this.scope, { text: this.newTodoText.trim() });
 		this.newTodoText = "";
 	}

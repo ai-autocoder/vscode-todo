@@ -3,7 +3,7 @@ import { CUSTOM_ELEMENTS_SCHEMA, NgModule } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { BrowserModule } from "@angular/platform-browser";
 import { AppComponent } from "./app.component";
-import { TextArea } from "./shared/text-area.component";
+import { AutosizeTextArea } from "./shared/autosize-textarea.component";
 import { TodoLabel } from "./shared/todo-label.component";
 import { NewTodoComponent } from "./todo/new-todo/new-todo.component";
 import { TodoList } from "./todo/todo-list/todo-list.component";
@@ -16,6 +16,7 @@ import { MarkdownModule } from "ngx-markdown";
 import { HttpClientModule } from "@angular/common/http";
 import { FileNamePipe } from "./pipes/file-name.pipe";
 import { FileList } from "./todo/file-list/file-list.component";
+import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
 
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
@@ -27,11 +28,11 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		TodoLabel,
 		TodoList,
 		TodoItemComponent,
-		TextArea,
 		NewTodoComponent,
 		AutoAnimateDirective,
 		FileNamePipe,
 		FileList,
+		AutosizeTextArea,
 	],
 	imports: [
 		BrowserModule,
@@ -40,6 +41,8 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		MatSnackBarModule,
 		BrowserAnimationsModule,
 		MatMenuModule,
+		TextFieldModule,
+		CdkTextareaAutosize,
 		HttpClientModule, // HttpClientModule is required for ngx-markdown
 		MarkdownModule.forRoot(),
 	],

@@ -107,7 +107,6 @@ markdown > *:only-child {
 	}
 }
 
-/* VS Code textarea */
-new-todo vscode-text-area::part(control) {
+new-todo autosize-text-area textarea {
 	max-height: 80vh;
 }

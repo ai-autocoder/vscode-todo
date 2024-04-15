@@ -1,10 +1,9 @@
 <div class="new-todo-container">
-	<text-area
+	<autosize-text-area
 		[placeholder]="'New todo: Enter | Line break: Shift+Enter'"
 		[(value)]="newTodoText"
 		(keydown.enter)="addTodo($event)"
-		[autoResize]="true"
-	></text-area>
+	></autosize-text-area>
 	<vscode-button
 		(click)="addTodo($event)"
 		[disabled]="!newTodoText.trim().length || isCurrentFileEmpty"
