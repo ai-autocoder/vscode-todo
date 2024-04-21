@@ -4,10 +4,13 @@
 	[cdkDropListSortPredicate]="sortPredicate"
 	[cdkDropListAutoScrollStep]="8"
 	auto-animate
-	[options]="autoAnimateOptions"
+	[autoAnimateOptions]="{ duration: 300 }"
+	[autoAnimateEnabled]="isAutoAnimateEnabled"
 >
 	<div
 		*ngFor="let todo of todos; trackBy: trackById"
+		[@leaveAnimation]
+		[@.disabled]="!isLeaveAnimationEnabled"
 		#dragItem
 		cdkDrag
 		[cdkDragData]="todo"

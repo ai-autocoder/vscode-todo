@@ -11,30 +11,39 @@ import { Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 import { MatSnackBar } from "@angular/material/snack-bar";
+import { animate, style, transition, trigger } from "@angular/animations";
 
 @Component({
 	selector: "todo-list",
 	templateUrl: "./todo-list.component.html",
 	styleUrls: ["./todo-list.component.scss"],
 	changeDetection: ChangeDetectionStrategy.OnPush,
+	animations: [
+		trigger("leaveAnimation", [
+			transition(":leave", [
+				animate(
+					300,
+					style({
+						transform: "scale(.5)",
+						opacity: 0,
+						easing: "ease-out",
+					})
+				),
+			]),
+		]),
+	],
 })
 export class TodoList implements OnInit, AfterViewInit {
 	@Input()
 	scope!: TodoScope;
 	todos: Todo[] = [];
 	todoCount = 0;
-	isAnimationEnabled = false;
+	isAutoAnimateEnabled = false;
+	isLeaveAnimationEnabled = false;
 	isInitialized = false;
 	private lastActionTypeSubscription!: Subscription;
-	autoAnimateOptions = {
-		duration: 0,
-	};
 
-	autoAnimateEnabledMap: { [key: string]: boolean } = {
-		addTodo: true,
-		deleteTodo: true,
-		toggleTodo: true,
-	};
+	autoAnimateEnabledActions: string[] = ["addTodo", "toggleTodo"];
 
 	constructor(
 		private todoService: TodoService,
@@ -70,11 +79,19 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	handleAnimations(actionType: string): void {
 		actionType = actionType.split("/")[1];
-		if (this.autoAnimateEnabledMap.hasOwnProperty(actionType) && this.isInitialized) {
-			this.autoAnimateOptions.duration = 300;
+		// auto animate
+		if (this.isInitialized) {
+			this.isAutoAnimateEnabled = this.autoAnimateEnabledActions.includes(actionType);
 		} else {
-			this.autoAnimateOptions.duration = 0;
+			this.isAutoAnimateEnabled = false;
 		}
+		// leave animation
+		if (actionType === "loadData") {
+			this.isLeaveAnimationEnabled = false;
+		} else {
+			this.isLeaveAnimationEnabled = true;
+		}
+
 		this.cdRef.detectChanges();
 	}
 
@@ -103,8 +120,7 @@ export class TodoList implements OnInit, AfterViewInit {
 	}
 
 	dragStarted() {
-		this.autoAnimateOptions.duration = 0;
-		this.cdRef.detectChanges();
+		this.isAutoAnimateEnabled = false;
 	}
 
 	/**
