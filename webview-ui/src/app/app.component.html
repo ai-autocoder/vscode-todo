@@ -42,8 +42,30 @@
 			<todo-list [scope]="TodoScope.workspace" *ngIf="scope === TodoScope.workspace"></todo-list>
 		</vscode-panel-view>
 		<vscode-panel-view id="view-3">
-			<file-list></file-list>
-			<todo-list [scope]="TodoScope.currentFile" *ngIf="scope === TodoScope.currentFile"></todo-list>
+			<as-split
+				class="split-view-container"
+				direction="horizontal"
+				unit="pixel"
+				gutterSize="2"
+				restrictMove="true"
+				useTransition="true"
+				#mySplit
+			>
+				<div
+					*asSplitGutter="let isDragged = isDragged"
+					class="custom-shade-gutter"
+					[class.dragged]="isDragged"
+					(dblclick)="onGutterDoubleClick($event)"
+				>
+					<div class="custom-shade-gutter-icon"></div>
+				</div>
+				<as-split-area [size]="175" [minSize]="2" [maxSize]="450">
+					<file-list></file-list>
+				</as-split-area>
+				<as-split-area [size]="'*'">
+					<todo-list [scope]="TodoScope.currentFile" *ngIf="scope === TodoScope.currentFile"></todo-list>
+				</as-split-area>
+			</as-split>
 		</vscode-panel-view>
 	</vscode-panels>
 

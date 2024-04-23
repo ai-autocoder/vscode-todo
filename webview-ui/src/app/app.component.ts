@@ -1,4 +1,4 @@
-import { Component, OnInit } from "@angular/core";
+import { Component, OnInit, ViewChild } from "@angular/core";
 import {
 	provideVSCodeDesignSystem,
 	vsCodeBadge,
@@ -9,6 +9,7 @@ import {
 	vsCodePanelView,
 	vsCodePanels,
 } from "@vscode/webview-ui-toolkit";
+import { SplitComponent } from "angular-split";
 import { Observable, Subscription } from "rxjs";
 import { TodoCount, TodoScope } from "../../../src/todo/todoTypes";
 import { TodoService } from "./todo/todo.service";
@@ -55,6 +56,8 @@ export class AppComponent implements OnInit {
 	currentFilePath!: Observable<string>;
 	private lastActionTypeSubscription!: Subscription;
 	isPinned = false;
+	@ViewChild("mySplit") mySplitEl!: SplitComponent;
+	angularSplitSub!: Subscription;
 
 	constructor(private todoService: TodoService) {}
 
@@ -74,6 +77,16 @@ export class AppComponent implements OnInit {
 	pinFile(event: MouseEvent) {
 		event.stopPropagation();
 		this.todoService.pinFile();
+	}
+
+	onGutterDoubleClick(event: any) {
+		let fileListAreaSize = this.mySplitEl.getVisibleAreaSizes()[0] as number;
+		if (fileListAreaSize != 175) {
+			fileListAreaSize = 175;
+		} else {
+			fileListAreaSize = 2;
+		}
+		this.mySplitEl.setVisibleAreaSizes([fileListAreaSize, "*"]);
 	}
 
 	ngOnDestroy(): void {

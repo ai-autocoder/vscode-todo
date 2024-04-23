@@ -17,6 +17,7 @@ import { HttpClientModule } from "@angular/common/http";
 import { FileNamePipe } from "./pipes/file-name.pipe";
 import { FileList } from "./todo/file-list/file-list.component";
 import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
+import { AngularSplitModule } from "angular-split";
 
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
@@ -45,6 +46,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		CdkTextareaAutosize,
 		HttpClientModule, // HttpClientModule is required for ngx-markdown
 		MarkdownModule.forRoot(),
+		AngularSplitModule,
 	],
 	providers: [],
 	bootstrap: [AppComponent],

@@ -60,3 +60,37 @@ new-todo {
 	display: flex;
 	width: 100%;
 }
+
+// #region angular-split
+.custom-shade-gutter {
+	width: 100%;
+	height: 100%;
+	background-color: var(--vscode-settings-headerBorder);
+	position: relative;
+}
+
+.custom-shade-gutter-icon {
+	height: 100%;
+	width: 100%;
+	background-color: var(--vscode-sash-hoverBorder);
+	transition: opacity 0.15s 0s;
+	opacity: 0;
+	position: absolute;
+	cursor: ew-resize;
+
+	.dragged &,
+	&:hover {
+		opacity: 1;
+		transition: opacity 0.3s 0.3s;
+	}
+
+	$shadeSize: 1.5px;
+
+	.as-horizontal & {
+		width: 1 + ($shadeSize * 2);
+		left: -$shadeSize;
+		right: $shadeSize;
+	}
+}
+
+// #endregion
