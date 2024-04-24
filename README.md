@@ -19,8 +19,8 @@ VS Code Todo
 
 ## Key Features
 
-- **Global, Workspace & File-specific Management**
-- **Markdown Support for Todos and Notes**
+- **Global, Workspace & File-specific Scopes Management**
+- **Markdown Support**
 - **Syntax Highlighting**
 - **Customizable Sorting**
 - **Drag-and-Drop Functionality**
@@ -30,7 +30,12 @@ VS Code Todo
 
 ### Global, Workspace & File-specific Management
 
-Tasks and notes can be organized across different scopes — whether available globally for the user, tied to your current workspace or a specific file.
+Tasks and notes are organized across three different scopes, each with its respective tab:
+
+1. **Global Tab**: Data accessible for the user across workspaces.
+2. **Workspace Tab**: Data tied to the current workspace.
+3. **File-specific Tab**: Data associated with a **specific file** within the current workspace. The file displayed in this tab is **automatically updated** to reflect the **most recently focused file** in the editor. However, you can **pin** the tab to a specific file, preventing it from changing when you switch focus to other files.
+Additionally, you can **manually select** and display data for any file that already has an associated record from the list on the left-hand side.
 
 ### Markdown Support for Todos and Notes
 
