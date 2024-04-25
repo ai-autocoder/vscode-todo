@@ -1,18 +1,10 @@
 <main>
 	<vscode-panels activeid="tab-2">
-		<vscode-panel-tab
-			(click)="selectTab(TodoScope.user)"
-			id="tab-1"
-			[title]="'Data accessible globally for this user'"
-		>
+		<vscode-panel-tab (click)="selectTab(TodoScope.user)" id="tab-1" [title]="'Global User Data'">
 			User
 			<vscode-badge [ngStyle]="{ opacity: todoCount.user ? 1 : 0 }">{{ todoCount.user }}</vscode-badge>
 		</vscode-panel-tab>
-		<vscode-panel-tab
-			(click)="selectTab(TodoScope.workspace)"
-			id="tab-2"
-			[title]="'Data accessible within this workspace only'"
-		>
+		<vscode-panel-tab (click)="selectTab(TodoScope.workspace)" id="tab-2" [title]="'Workspace Data'">
 			Workspace
 			<vscode-badge [ngStyle]="{ opacity: todoCount.workspace ? 1 : 0 }">{{
 				todoCount.workspace
@@ -22,10 +14,8 @@
 			(click)="selectTab(TodoScope.currentFile)"
 			id="tab-3"
 			[title]="
-				'Data tied to the currently selected file, accessible within this workspace only\n' +
-				'[' +
-				((currentFilePath | async) || 'No File Selected') +
-				']'
+				'File-Specific Data, accessible within this workspace\n' +
+				((currentFilePath | async) || 'No File Selected')
 			"
 		>
 			{{ (currentFilePath | async | fileName) || "No File Selected" }}
