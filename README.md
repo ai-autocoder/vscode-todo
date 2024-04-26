@@ -19,12 +19,13 @@ VS Code Todo
 
 ## Key Features
 
-- **Global, Workspace & File-specific Scopes Management**
+- **Global, Workspace, and File-specific Scopes Management**
 - **Markdown Support**
-- **Syntax Highlighting**
+- **Code Syntax Highlighting**
 - **Customizable Sorting**
 - **Drag-and-Drop Functionality**
 - **Status Bar Integration**
+- **Built-in search** (Ctrl+F on Windows, ⌘F on macOS)
 
 ![Image of UI overview](./assets/screenshots/UI-overview.gif)
 
