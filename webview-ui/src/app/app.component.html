@@ -28,7 +28,7 @@
 				']'
 			"
 		>
-			{{ (currentFilePath | async | fileName) || "No File Selected" }}
+			File - {{ (currentFilePath | async | fileName) || "No File Selected" }}
 			<vscode-badge [ngStyle]="{ opacity: todoCount.currentFile ? 1 : 0 }">{{
 				todoCount.currentFile
 			}}</vscode-badge>
