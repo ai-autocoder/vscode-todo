@@ -92,5 +92,13 @@ new-todo {
 		right: $shadeSize;
 	}
 }
-
 // #endregion
+
+.file-area {
+	display: flex;
+	flex-direction: column;
+}
+
+.toggle-file-list-container {
+	padding-bottom: 0.5rem;
+}

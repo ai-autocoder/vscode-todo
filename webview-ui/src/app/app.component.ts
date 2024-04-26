@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild } from "@angular/core";
+import { AfterViewInit, ChangeDetectorRef, Component, OnInit, ViewChild } from "@angular/core";
 import {
 	provideVSCodeDesignSystem,
 	vsCodeBadge,
@@ -49,7 +49,7 @@ provideVSCodeDesignSystem().register(
 	templateUrl: "./app.component.html",
 	styleUrls: ["./app.component.scss"],
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, AfterViewInit {
 	scope: TodoScope = TodoScope.workspace;
 	TodoScope: typeof TodoScope = TodoScope;
 	todoCount!: TodoCount;
@@ -57,9 +57,15 @@ export class AppComponent implements OnInit {
 	private lastActionTypeSubscription!: Subscription;
 	isPinned = false;
 	@ViewChild("mySplit") mySplitEl!: SplitComponent;
-	angularSplitSub!: Subscription;
+	angularSplitSubscription!: Subscription;
+	isFileListExpanded = false;
+	fileListViewWidth = 175;
+	fileListViewMinWidth = 30;
 
-	constructor(private todoService: TodoService) {}
+	constructor(
+		private todoService: TodoService,
+		private cdRef: ChangeDetectorRef
+	) {}
 
 	ngOnInit(): void {
 		// Get data
@@ -67,6 +73,17 @@ export class AppComponent implements OnInit {
 		this.currentFilePath = this.todoService.currentFilePath;
 		this.lastActionTypeSubscription = this.todoService.currentFileLastAction.subscribe(() => {
 			this.isPinned = this.todoService.isPinned;
+		});
+	}
+
+	ngAfterViewInit() {
+		this.angularSplitSubscription = this.mySplitEl.dragProgress$.subscribe((a) => {
+			if (a.sizes[0] == this.fileListViewMinWidth) {
+				this.isFileListExpanded = false;
+			} else {
+				this.isFileListExpanded = true;
+			}
+			this.cdRef.detectChanges();
 		});
 	}
 
@@ -79,19 +96,35 @@ export class AppComponent implements OnInit {
 		this.todoService.pinFile();
 	}
 
-	onGutterDoubleClick(event: any) {
-		let fileListAreaSize = this.mySplitEl.getVisibleAreaSizes()[0] as number;
-		if (fileListAreaSize != 175) {
-			fileListAreaSize = 175;
-		} else {
-			fileListAreaSize = 2;
+	toggleFileList(event: MouseEvent) {
+		if (this.isFileListExpanded) {
+			this.fileListViewWidth = this.mySplitEl.getVisibleAreaSizes()[0] as number;
 		}
-		this.mySplitEl.setVisibleAreaSizes([fileListAreaSize, "*"]);
+		event.stopPropagation();
+		this.isFileListExpanded = !this.isFileListExpanded;
+		if (this.isFileListExpanded) {
+			const width =
+				this.fileListViewWidth === this.fileListViewMinWidth
+					? this.fileListViewWidth + 1
+					: this.fileListViewWidth;
+			this.mySplitEl.setVisibleAreaSizes([width, "*"]);
+		} else {
+			this.mySplitEl.setVisibleAreaSizes([this.fileListViewMinWidth, "*"]);
+		}
+	}
+
+	onGutterDoubleClick(event: any) {
+		this.fileListViewWidth = 175;
+		this.isFileListExpanded = true;
+		this.mySplitEl.setVisibleAreaSizes([175, "*"]);
 	}
 
 	ngOnDestroy(): void {
 		if (this.lastActionTypeSubscription) {
 			this.lastActionTypeSubscription.unsubscribe();
+		}
+		if (this.angularSplitSubscription) {
+			this.angularSplitSubscription.unsubscribe();
 		}
 	}
 }
