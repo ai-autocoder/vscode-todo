@@ -2,7 +2,7 @@ main {
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
-	padding: 0.25rem;
+	padding: 0.25rem 0.125rem;
 }
 
 vscode-panels,
@@ -92,5 +92,13 @@ new-todo {
 		right: $shadeSize;
 	}
 }
-
 // #endregion
+
+.file-area {
+	display: flex;
+	flex-direction: column;
+}
+
+.toggle-file-list-container {
+	padding-bottom: 0.5rem;
+}
