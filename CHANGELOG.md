@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.1.2]
+
+- Added toggle file list button in file tab
+- UI optimizations
+
 ## [1.1.1]
 
 - Added informative tooltips to the tabs
