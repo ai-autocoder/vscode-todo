@@ -76,12 +76,11 @@ export function activate(context: ExtensionContext) {
 
 	// Load current active editor tab
 	tabChangeHandler(store, context);
+	const onDidChangeActiveTextEditorSubscription = vscode.window.onDidChangeActiveTextEditor(() => {
+		tabChangeHandler(store, context);
+	});
 
-	context.subscriptions.push(
-		...commands,
-		statusBarItem,
-		onDidChangeActiveTextEditorDisposable(store, context)
-	);
+	context.subscriptions.push(...commands, statusBarItem, onDidChangeActiveTextEditorSubscription);
 }
 
 function handleTodoChange(

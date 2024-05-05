@@ -16,18 +16,3 @@ export const tabChangeHandler = (store: EnhancedStore, context: vscode.Extension
 	const currentFile = vscode.window.activeTextEditor?.document.fileName || "";
 	store.dispatch(fileDataInfoActions.setCurrentFile(currentFile));
 };
-
-/**
- * Creates a disposable for handling changes to the active text editor.
- *
- * @param store - The store for managing application state
- * @param context - The extension context for the current VS Code environment
- * @return {vscode.Disposable} A disposable for handling changes to the active text editor
- */
-export const onDidChangeActiveTextEditorDisposable = (
-	store: EnhancedStore,
-	context: vscode.ExtensionContext
-) =>
-	vscode.window.onDidChangeActiveTextEditor(() => {
-		tabChangeHandler(store, context);
-	});
