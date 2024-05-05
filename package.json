@@ -29,6 +29,11 @@
 				"command": "vsc-todo.openTodo",
 				"title": "Open Todo",
 				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.exportDataToJSON",
+				"title": "Export data to JSON",
+				"category": "VS Code Todo"
 			}
 		],
 		"configuration": {

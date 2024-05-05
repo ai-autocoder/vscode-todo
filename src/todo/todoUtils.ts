@@ -1,6 +1,7 @@
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
 import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "./todoTypes";
+import * as vscode from "vscode";
 
 /**
  * Calculate the number of incomplete todos in the given state.
@@ -195,4 +196,16 @@ function sortByFileName(data: TodoFilesData = {}): TodoFilesData {
 	}
 
 	return sortedData;
+}
+
+export function getWorkspacePath() {
+	// Check if there is any workspace folder open
+	if (!vscode.workspace.workspaceFolders) {
+		return null; // No workspace open
+	}
+
+	// Retrieve the path of the first workspace folder
+	const workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+
+	return workspacePath;
 }

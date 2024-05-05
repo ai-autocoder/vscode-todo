@@ -65,3 +65,15 @@ export interface ActionTrackerState {
 export interface TodoFilesData {
 	[filePath: string]: Todo[];
 }
+
+export interface ExportImportData {
+	user?: Todo[];
+	workspace?: Todo[];
+	files?: TodoFilesData;
+}
+
+export enum ExportImportScopes {
+	user = "User",
+	workspace = "Workspace",
+	files = "File specific (All files)",
+}

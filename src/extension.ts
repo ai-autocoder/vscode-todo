@@ -1,8 +1,10 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
-import { commands, ExtensionContext } from "vscode";
-import { onDidChangeActiveTextEditorDisposable, tabChangeHandler } from "./editorHandler";
+import * as vscode from "vscode";
+import { ExtensionContext } from "vscode";
+import { tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
+import { exportData, ExportFormats } from "./todo/exporter";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,
@@ -12,6 +14,7 @@ import createStore, {
 } from "./todo/store";
 import {
 	CurrentFileSlice,
+	ExportImportScopes,
 	Slices,
 	StoreState,
 	TodoFilesData,
@@ -19,12 +22,16 @@ import {
 	TodoSlice,
 } from "./todo/todoTypes";
 import { getWorkspaceFilesWithRecords, persist } from "./todo/todoUtils";
+
 export function activate(context: ExtensionContext) {
 	const store = createStore();
 
-	const openTodoCommand = commands.registerCommand("vsc-todo.openTodo", () => {
-		HelloWorldPanel.render(context, store);
-	});
+	const commands = [
+		vscode.commands.registerCommand("vsc-todo.openTodo", () =>
+			HelloWorldPanel.render(context, store)
+		),
+		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () => exportCommand(context)),
+	];
 
 	const statusBarItem = initStatusBarItem(context);
 
@@ -71,7 +78,7 @@ export function activate(context: ExtensionContext) {
 	tabChangeHandler(store, context);
 
 	context.subscriptions.push(
-		openTodoCommand,
+		...commands,
 		statusBarItem,
 		onDidChangeActiveTextEditorDisposable(store, context)
 	);
@@ -119,4 +126,18 @@ function handlefileDataInfoChange(
 	} else if (state.fileDataInfo.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
 		HelloWorldPanel.currentPanel?.updateWebview(state.fileDataInfo, Slices.fileDataInfo);
 	}
+}
+
+async function exportCommand(context: ExtensionContext) {
+	const scope = (await vscode.window.showQuickPick(Object.values(ExportImportScopes), {
+		placeHolder: "Choose the data to export",
+		canPickMany: true,
+	})) as ExportImportScopes[] | undefined;
+
+	if (!scope) {
+		vscode.window.showInformationMessage("Export cancelled.");
+		return;
+	}
+
+	exportData(scope, ExportFormats.JSON, context);
 }
