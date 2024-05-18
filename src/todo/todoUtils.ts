@@ -64,15 +64,13 @@ export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionC
  * @param {TodoScope} scope - Scope of the todo (user or workspace).
  * @return {number} Prefixed unique ID within safe integer range.
  */
-export function generateUniqueId(state: TodoSlice, scope: TodoScope): number {
+export function generateUniqueId(state: TodoSlice): number {
 	const todos = state.todos;
 	let newId: number;
 	const maxRandom = Number.MAX_SAFE_INTEGER / 10;
 
 	do {
-		const randomPart = Math.floor(Math.random() * maxRandom);
-		// Prefix the random part with '1' or '2' based on the scope
-		newId = parseInt(`${scope === TodoScope.user ? 1 : 2}${randomPart}`);
+		newId = Math.floor(Math.random() * maxRandom);
 	} while (todos.some((todo) => todo.id === newId));
 
 	return newId;
