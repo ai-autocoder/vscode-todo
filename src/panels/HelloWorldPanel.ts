@@ -92,10 +92,10 @@ export class HelloWorldPanel {
 				{
 					// Enable JavaScript in the webview
 					enableScripts: true,
-					// Restrict the webview to only load resources from the `out` and `webview-ui/build` directories
+					// Restrict the webview to only load resources from the `out` and `webview-ui/build/browser` directories
 					localResourceRoots: [
 						Uri.joinPath(extensionUri, "out"),
-						Uri.joinPath(extensionUri, "webview-ui/build"),
+						Uri.joinPath(extensionUri, "webview-ui/build/browser"),
 					],
 					retainContextWhenHidden: true,
 					enableFindWidget: true,
@@ -163,11 +163,10 @@ export class HelloWorldPanel {
 	 */
 	private _getWebviewContent(webview: Webview, extensionUri: Uri) {
 		// The CSS file from the Angular build output
-		const stylesUri = getUri(webview, extensionUri, ["webview-ui", "build", "styles.css"]);
+		const stylesUri = getUri(webview, extensionUri, ["webview-ui", "build", "browser", "styles.css"]);
 		// The JS files from the Angular build output
-		const runtimeUri = getUri(webview, extensionUri, ["webview-ui", "build", "runtime.js"]);
-		const polyfillsUri = getUri(webview, extensionUri, ["webview-ui", "build", "polyfills.js"]);
-		const scriptUri = getUri(webview, extensionUri, ["webview-ui", "build", "main.js"]);
+		const polyfillsUri = getUri(webview, extensionUri, ["webview-ui", "build", "browser", "polyfills.js"]);
+		const scriptUri = getUri(webview, extensionUri, ["webview-ui", "build", "browser", "main.js"]);
 		const nonce = getNonce();
 		const themeKind = getCurrentThemeKind();
 
@@ -184,7 +183,6 @@ export class HelloWorldPanel {
         </head>
         <body class="${themeKind}">
           <app-root></app-root>
-          <script type="module" nonce="${nonce}" src="${runtimeUri}"></script>
           <script type="module" nonce="${nonce}" src="${polyfillsUri}"></script>
           <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
         </body>

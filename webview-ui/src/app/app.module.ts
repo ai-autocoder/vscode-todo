@@ -13,7 +13,6 @@ import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { MatMenuModule } from "@angular/material/menu";
 import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
 import { MarkdownModule } from "ngx-markdown";
-import { HttpClientModule } from "@angular/common/http";
 import { FileNamePipe } from "./pipes/file-name.pipe";
 import { FileList } from "./todo/file-list/file-list.component";
 import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
@@ -44,7 +43,6 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		MatMenuModule,
 		TextFieldModule,
 		CdkTextareaAutosize,
-		HttpClientModule, // HttpClientModule is required for ngx-markdown
 		MarkdownModule.forRoot(),
 		AngularSplitModule,
 	],
