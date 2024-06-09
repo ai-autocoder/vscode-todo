@@ -1,5 +1,11 @@
 # Change Log
 
+## [1.2.0]
+
+- Added Import/Export (JSON format)
+- Updated Angular to version 18
+- Updated dependencies
+
 ## [1.1.2]
 
 - Added toggle file list button in file tab
