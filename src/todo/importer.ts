@@ -5,12 +5,11 @@ import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import LogChannel from "../utilities/LogChannel";
 import { currentFileActions, fileDataInfoActions, userActions, workspaceActions } from "./store";
-import { ExportImportData, StoreState, Todo, TodoFilesData, TodoSlice } from "./todoTypes";
+import { ExportImportData, StoreState, Todo, TodoFilesData } from "./todoTypes";
 import {
 	generateUniqueId,
 	getWorkspaceFilesWithRecords,
 	isEqual,
-	persist,
 	sortByFileName,
 } from "./todoUtils";
 import assert = require("node:assert");

@@ -1,7 +1,7 @@
+import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
 import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "./todoTypes";
-import * as vscode from "vscode";
 
 /**
  * Calculate the number of incomplete todos in the given state.
