@@ -32,7 +32,7 @@ const todoReducers = {
 	},
 	addTodo: (state: TodoSlice, action: PayloadAction<{ text: string }>) => {
 		state.todos?.unshift({
-			id: generateUniqueId(state),
+			id: generateUniqueId(state.todos),
 			text: action.payload.text,
 			completed: false,
 			creationDate: new Date().toISOString(),

@@ -64,8 +64,7 @@ export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionC
  * @param {TodoScope} scope - Scope of the todo (user or workspace).
  * @return {number} Prefixed unique ID within safe integer range.
  */
-export function generateUniqueId(state: TodoSlice): number {
-	const todos = state.todos;
+export function generateUniqueId(todos: Todo[]): number {
 	let newId: number;
 	const maxRandom = Number.MAX_SAFE_INTEGER / 10;
 
@@ -173,7 +172,7 @@ export function getWorkspaceFilesWithRecords(
  * @param data - The data object to be sorted.
  * @returns The sorted data object.
  */
-function sortByFileName(data: TodoFilesData = {}): TodoFilesData {
+export function sortByFileName(data: TodoFilesData = {}): TodoFilesData {
 	const keys = Object.keys(data).sort((a, b) => {
 		const fileNameA =
 			a
@@ -206,4 +205,8 @@ export function getWorkspacePath() {
 	const workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
 
 	return workspacePath;
+}
+
+export function isEqual(a: Object, b: Object) {
+	return JSON.stringify(a) === JSON.stringify(b);
 }

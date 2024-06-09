@@ -34,6 +34,11 @@
 				"command": "vsc-todo.exportDataToJSON",
 				"title": "Export data to JSON",
 				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.importDataFromJSON",
+				"title": "Import data from JSON",
+				"category": "VS Code Todo"
 			}
 		],
 		"configuration": {

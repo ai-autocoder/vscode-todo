@@ -5,6 +5,7 @@ import { tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
 import { exportData, ExportFormats } from "./todo/exporter";
+import { importCommand, ImportFormats } from "./todo/importer";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,
@@ -30,13 +31,18 @@ export function activate(context: ExtensionContext) {
 		vscode.commands.registerCommand("vsc-todo.openTodo", () =>
 			HelloWorldPanel.render(context, store)
 		),
-		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () => exportCommand(context)),
+		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () =>
+			exportCommand(context, ExportFormats.JSON)
+		),
+		vscode.commands.registerCommand("vsc-todo.importDataFromJSON", () =>
+			importCommand(context, ImportFormats.JSON, store)
+		),
 	];
 
 	const statusBarItem = initStatusBarItem(context);
 
 	store.subscribe(() => {
-		const state = store.getState() as StoreState;
+		const state = store.getState();
 
 		switch (state.actionTracker.lastSliceName) {
 			case Slices.unset:
@@ -127,7 +133,7 @@ function handlefileDataInfoChange(
 	}
 }
 
-async function exportCommand(context: ExtensionContext) {
+async function exportCommand(context: ExtensionContext, format: ExportFormats) {
 	const scope = (await vscode.window.showQuickPick(Object.values(ExportImportScopes), {
 		placeHolder: "Choose the data to export",
 		canPickMany: true,
@@ -138,5 +144,5 @@ async function exportCommand(context: ExtensionContext) {
 		return;
 	}
 
-	exportData(scope, ExportFormats.JSON, context);
+	exportData(scope, format, context);
 }

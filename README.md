@@ -26,6 +26,7 @@ VS Code Todo
 - **Drag-and-Drop Functionality**
 - **Status Bar Integration**
 - **Built-in search** (Ctrl+F on Windows, ⌘F on macOS)
+- **Import and Export** (JSON format)
 
 ![Image of UI overview](./assets/screenshots/UI-overview.gif)
 
@@ -108,6 +109,87 @@ The default sorting option is **sortType1**.
 View and access your task and note count from the status bar, with a hover tooltip providing a detailed breakdown.
 
 ![UI status bar](./assets/screenshots/statusBar.png)
+
+### Import from JSON file
+
+Use **Command palette**: `Import data from JSON`
+
+**Requirements:**
+
+- JSON file must be in the workspace root folder.
+
+**Behavior:**
+
+- Existing data is not deleted.
+- If `id` matches an existing record, the provided values will override the existing ones.
+- Otherwise, a new record is added.
+- `text` property is required (and the `file path` for file-specific records).
+- Other properties are optional.
+
+The JSON file must be in the root folder of the workspace to show in the file picker.
+Importing data will not delete the old data. If 'id' is provided and it matches record already present, the values provided will override the old values without creating a new record. In all other cases a new record will be added. Only 'text' property is required (and file path for file-specific records), other values are optional.
+
+<details>
+<summary>Example (click to expand)</summary>
+
+```json
+{
+  "user": [
+    { /* if the id matches an existing record, the provided values will override the existing ones. */
+      "id": 1234567890123456,
+      "text": "Complete the project documentation",
+      "completed": false,
+      "isMarkdown": true,
+      "isNote": false,
+      "creationDate": "2024-05-19T12:34:56.789Z"
+    },
+    { /* if the id is not provide or does not match an existing record, a new record is added. */
+      "text": "Review pull requests",
+    }
+  ],
+  "workspace": [
+    {
+      "id": 3456789012345678,
+      "text": "Set up new workspace",
+      "completed": false,
+      "isMarkdown": false,
+      "isNote": true,
+      "creationDate": "2024-05-20T10:00:00.789Z"
+    }
+  ],
+  "files": {
+    "c:\\Users\\username\\Documents\\project\\README.md": [
+      {
+        "id": 4567890123456789,
+        "text": "Add installation instructions",
+        "completed": false,
+        "isMarkdown": true,
+        "isNote": false,
+        "creationDate": "2024-05-18T14:22:33.456Z"
+      }
+    ],
+    "c:\\Users\\username\\Documents\\project\\src\\main.js": [
+      {
+        "id": 5678901234567890,
+        "text": "Refactor main function",
+        "completed": true,
+        "isMarkdown": false,
+        "isNote": false,
+        "creationDate": "2024-05-17T16:00:00.789Z",
+        "completionDate": "2024-05-17T18:30:00.123Z"
+      }
+    ]
+  }
+}
+```
+
+</details>
+
+### Export to JSON file
+
+Use **Command palette**: `Export data to JSON`
+
+The JSON file will appear on the root folder of the workspace.
 
 ## Contributing
 
