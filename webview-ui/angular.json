@@ -36,7 +36,10 @@
 							"src/styles.css"
 						],
 						"scripts": [],
-						"browser": "src/main.ts"
+						"browser": "src/main.ts",
+						"allowedCommonJsDependencies": [
+							"prismjs"
+						]
 					},
 					"configurations": {
 						"production": {
