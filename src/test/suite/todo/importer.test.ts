@@ -1,8 +1,8 @@
 import * as assert from "assert";
 import { tests } from "../../../todo/importer";
 
-describe("isTodoArray()", () => {
-	it("return true if at least one element in array has text property", () => {
+suite("isTodoArray()", () => {
+	test("return true if at least one element in array has text property", () => {
 		const validTodoArray = [
 			{
 				id: 1282947365473357,
@@ -49,7 +49,7 @@ describe("isTodoArray()", () => {
 		];
 		assert.strictEqual(tests.isTodoArray(validTodoArray), true);
 	});
-	it("return false if missing text property in all elements", () => {
+	test("return false if missing text property in all elements", () => {
 		const invalidTodoArray = [
 			{ completed: true, isMarkdown: false, isNote: false },
 			{
@@ -62,18 +62,18 @@ describe("isTodoArray()", () => {
 		];
 		assert.strictEqual(tests.isTodoArray(invalidTodoArray), false);
 	});
-	it("return false if empty array", () => {
+	test("return false if empty array", () => {
 		const invalidTodoArray = [{}];
 		assert.strictEqual(tests.isTodoArray(invalidTodoArray), false);
 	});
-	it("return false if array has no objects", () => {
+	test("return false if array has no objects", () => {
 		const invalidTodoArray = ["text"];
 		assert.strictEqual(tests.isTodoArray(invalidTodoArray), false);
 	});
 });
 
-describe("isTodoFilesData()", () => {
-	it("returns true if at least one element in the object is valid", () => {
+suite("isTodoFilesData()", () => {
+	test("returns true if at least one element in the object is valid", () => {
 		const files = {
 			"c:\\Users\\test\\fileName.txt": [
 				{
@@ -100,12 +100,12 @@ describe("isTodoFilesData()", () => {
 		assert.strictEqual(tests.isTodoFilesData(files), true);
 	});
 
-	it("return false if empty object", () => {
+	test("return false if empty object", () => {
 		const files = {};
 		assert.strictEqual(tests.isTodoFilesData(files), false);
 	});
 
-	it("return false if the path is not valid", () => {
+	test("return false if the path is not valid", () => {
 		const files = {
 			"": [
 				{
@@ -122,8 +122,8 @@ describe("isTodoFilesData()", () => {
 	});
 });
 
-describe("filterValidFilesData()", () => {
-	it("filters records where the path is empty string and if the todo is not valid", () => {
+suite("filterValidFilesData()", () => {
+	test("filters records where the path is empty string and if the todo is not valid", () => {
 		const files = {
 			"c:\\Users\\someFile.txt": [
 				{
@@ -172,8 +172,8 @@ describe("filterValidFilesData()", () => {
 	});
 });
 
-describe("isExportImportData()", () => {
-	it("returns true if contains valid data", () => {
+suite("isExportImportData()", () => {
+	test("returns true if contains valid data", () => {
 		const validData = {
 			user: [],
 			workspace: [
