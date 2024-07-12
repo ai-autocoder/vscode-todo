@@ -91,7 +91,7 @@
 		"mocha": "^10.4.0",
 		"prettier": "^3.2.5",
 		"typescript": "^5.4.5",
-		"@vscode/test-cli": "^0.0.9",
+		"@vscode/test-cli": "^0.0.10",
 		"@vscode/test-electron": "^2.3.10"
 	},
 	"dependencies": {
