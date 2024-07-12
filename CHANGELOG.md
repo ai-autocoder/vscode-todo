@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.3.0]
+
+- File-associated data is now preserved during move and rename operations, and automatically removed upon file deletion
+- Updated dependencies
+
 ## [1.2.0]
 
 - Added Import/Export (JSON format)
