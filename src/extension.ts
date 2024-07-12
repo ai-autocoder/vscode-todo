@@ -22,7 +22,12 @@ import {
 	TodoScope,
 	TodoSlice,
 } from "./todo/todoTypes";
-import { getWorkspaceFilesWithRecords, persist } from "./todo/todoUtils";
+import {
+	getWorkspaceFilesWithRecords,
+	persist,
+	removeDataForDeletedFile,
+	updateDataForRenamedFile,
+} from "./todo/todoUtils";
 
 export function activate(context: ExtensionContext) {
 	const store = createStore();
@@ -80,13 +85,31 @@ export function activate(context: ExtensionContext) {
 		)
 	);
 
-	// Load current active editor tab
+	// Load current active editor tab and listen for changes
 	tabChangeHandler(store, context);
 	const onDidChangeActiveTextEditorSubscription = vscode.window.onDidChangeActiveTextEditor(() => {
 		tabChangeHandler(store, context);
 	});
 
-	context.subscriptions.push(...commands, statusBarItem, onDidChangeActiveTextEditorSubscription);
+	const onDidRenameFilesSubscription = vscode.workspace.onDidRenameFiles((event) => {
+		for (const { oldUri, newUri } of event.files) {
+			updateDataForRenamedFile({ oldPath: oldUri.fsPath, newPath: newUri.fsPath, context, store });
+		}
+	});
+
+	const onDidDeleteFilesSubscription = vscode.workspace.onDidDeleteFiles((event) => {
+		for (const deletedUri of event.files) {
+			removeDataForDeletedFile({ filePath: deletedUri.fsPath, context, store });
+		}
+	});
+
+	context.subscriptions.push(
+		...commands,
+		statusBarItem,
+		onDidChangeActiveTextEditorSubscription,
+		onDidRenameFilesSubscription,
+		onDidDeleteFilesSubscription
+	);
 }
 
 function handleTodoChange(

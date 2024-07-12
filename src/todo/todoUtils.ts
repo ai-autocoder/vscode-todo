@@ -1,6 +1,8 @@
+import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
+import { currentFileActions, fileDataInfoActions } from "./store";
 import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "./todoTypes";
 
 /**
@@ -209,4 +211,66 @@ export function getWorkspacePath() {
 
 export function isEqual(a: Object, b: Object) {
 	return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function updateDataForRenamedFile({
+	context,
+	oldPath,
+	newPath,
+	store,
+}: {
+	context: ExtensionContext;
+	oldPath: string;
+	newPath: string;
+	store: EnhancedStore;
+}) {
+	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
+	if (!previousData[oldPath]) return;
+
+	const state = store.getState();
+	const { [oldPath]: renamedFileData, ...restOfData } = previousData;
+	const newData: TodoFilesData = { ...restOfData, [newPath]: renamedFileData };
+	const sortedNewData = sortByFileName(newData);
+	context.workspaceState.update("TodoFilesData", sortedNewData);
+	store.dispatch(
+		fileDataInfoActions.setWorkspaceFilesWithRecords(
+			getWorkspaceFilesWithRecords(sortedNewData || {})
+		)
+	);
+	store.dispatch(
+		currentFileActions.loadData({
+			filePath: state.fileDataInfo.editorFocusedFilePath,
+			data: sortedNewData[state.fileDataInfo.editorFocusedFilePath] || [],
+		})
+	);
+}
+
+export function removeDataForDeletedFile({
+	filePath,
+	context,
+	store,
+}: {
+	filePath: string;
+	context: ExtensionContext;
+	store: EnhancedStore;
+}) {
+	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
+
+	if (!previousData[filePath]) return;
+
+	const state = store.getState();
+	const { [filePath]: deletedFileData, ...restOfData } = previousData;
+	const newData: TodoFilesData = { ...restOfData };
+	context.workspaceState.update("TodoFilesData", newData);
+	store.dispatch(
+		fileDataInfoActions.setWorkspaceFilesWithRecords(getWorkspaceFilesWithRecords(newData || {}))
+	);
+	if (state.currentFile.filePath === filePath) {
+		store.dispatch(
+			currentFileActions.loadData({
+				filePath: state.fileDataInfo.editorFocusedFilePath,
+				data: newData[state.fileDataInfo.editorFocusedFilePath] || [],
+			})
+		);
+	}
 }
