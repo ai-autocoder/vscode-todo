@@ -274,3 +274,10 @@ export function removeDataForDeletedFile({
 		);
 	}
 }
+
+export function assertNever(x: never, message?: string): never {
+	const err = new Error(message ?? 'Unexpected value. Should have been never.');
+	//Cut off first line of the stack so that it points to the assertNever call
+	err.stack = err.stack?.split('\n').slice(1).join('\n');
+	throw err;
+}
