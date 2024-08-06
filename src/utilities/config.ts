@@ -15,7 +15,7 @@ export function getConfig(): Config {
 	let createPosition: any = config.get("createPosition", "bottom");
 
 	const taskSortingOptionsEnum = contributes.configuration.properties["vscodeTodo.taskSortingOptions"]["enum"];
-	const createPositionEnum = contributes.configuration.properties["vscodeTodo.taskSortingOptions"]["enum"];
+	const createPositionEnum = contributes.configuration.properties["vscodeTodo.createPosition"]["enum"];
 
 	// Validate the taskSortingOptions value
 	if (!taskSortingOptionsEnum.includes(taskSortingOptions)) {
