@@ -16,12 +16,14 @@ import {
 	TodoSlice,
 } from "./todoTypes";
 import {
+	assertNever,
 	generateUniqueId,
 	getNumberOfNotes,
 	getNumberOfTodos,
 	sortTodosWithNotes,
 } from "./todoUtils";
 import LogChannel from "../utilities/LogChannel";
+import { getConfig } from "../utilities/config";
 
 const todoReducers = {
 	loadData: (state: TodoSlice, action: PayloadAction<{ data: Todo[] }>) => {
@@ -31,14 +33,29 @@ const todoReducers = {
 		state.numberOfNotes = getNumberOfNotes(state);
 	},
 	addTodo: (state: TodoSlice, action: PayloadAction<{ text: string }>) => {
-		state.todos?.unshift({
+		const { createPosition, createMarkdownByDefault } = getConfig();
+		
+		const newTodo = {
 			id: generateUniqueId(state.todos),
 			text: action.payload.text,
 			completed: false,
 			creationDate: new Date().toISOString(),
-			isMarkdown: false,
+			isMarkdown: createMarkdownByDefault,
 			isNote: false,
-		});
+		};
+
+		switch (createPosition) {
+			case "top":
+				state.todos?.unshift(newTodo);
+				break;
+			case "bottom":
+				state.todos?.push(newTodo);
+				break;
+			default:
+				LogChannel.log("Invalid createPosition value: " + createPosition);
+				assertNever(createPosition);
+		}
+
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
 		state.numberOfNotes = getNumberOfNotes(state);

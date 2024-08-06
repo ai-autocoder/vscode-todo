@@ -58,6 +58,24 @@
 						"Sorting Disabled: Completed todos remain in place"
 					],
 					"default": "sortType1"
+				},
+				"vscodeTodo.createMarkdownByDefault": {
+					"description": "Create new tasks with markdown enabled.",
+					"type": "boolean",
+					"default": false
+				},
+				"vscodeTodo.createPosition": {
+					"description": "New tasks position.",
+					"type": "string",
+					"enum": [
+						"top",
+						"bottom"
+					],
+					"enumDescriptions": [
+						"Top: Create new tasks before old ones.",
+						"Bottom: Create new tasks after old ones."
+					],
+					"default": "top"
 				}
 			}
 		}
