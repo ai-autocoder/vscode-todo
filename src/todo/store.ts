@@ -50,6 +50,7 @@ const todoReducers = {
 				break;
 			case "bottom":
 				state.todos?.push(newTodo);
+				Object.assign(state.todos, sortTodosWithNotes(state.todos));
 				break;
 			default:
 				LogChannel.log("Invalid createPosition value: " + createPosition);
