@@ -34,6 +34,8 @@ export class TodoService {
 	private _todoCount: TodoCount = { user: 0, workspace: 0, currentFile: 0 };
 	private _config: Config = {
 		taskSortingOptions: "sortType1",
+		createMarkdownByDefault: false,
+		createPosition: "top"
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<
