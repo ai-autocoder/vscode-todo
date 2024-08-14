@@ -1,4 +1,4 @@
-import { EnhancedStore } from "@reduxjs/toolkit/dist/configureStore";
+import { EnhancedStore } from "@reduxjs/toolkit";
 import {
 	Disposable,
 	ExtensionContext,
