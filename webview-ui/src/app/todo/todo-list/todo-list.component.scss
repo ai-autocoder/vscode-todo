@@ -22,10 +22,11 @@
 }
 
 .cdk-drag-placeholder {
-	> * {
-		opacity: 0;
-	}
 	border: 1px solid var(--vscode-list-hoverBackground);
 	max-height: 10vh;
 	overflow: hidden;
+
+	> * {
+		opacity: 0;
+	}
 }
