@@ -1,5 +1,12 @@
 # Change Log
 
+## [1.4.0]
+
+- Add configuration "createMarkdownByDefault" to create new tasks with markdown enabled (contributed by @ilya-gs)
+- Add configuration "createPosition" to set if new tasks should be placed at the top or bottom of the list (contributed by @ilya-gs)
+- Minor bugfixes
+- Updated dependencies
+
 ## [1.3.0]
 
 - File-associated data is now preserved during move and rename operations, and automatically removed upon file deletion
