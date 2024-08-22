@@ -75,5 +75,5 @@ export interface ExportImportData {
 export enum ExportImportScopes {
 	user = "User",
 	workspace = "Workspace",
-	files = "Files",
+	files = "Files (all)",
 }
