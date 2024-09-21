@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { tests } from "../../../todo/importer";
 
-suite("isTodoArray()", () => {
+suite("isTodoPartialInput()", () => {
 	test("return true if at least one element in array has text property", () => {
 		const validTodoArray = [
 			{
@@ -47,7 +47,7 @@ suite("isTodoArray()", () => {
 			{},
 			{ completed: true, isMarkdown: false, isNote: false },
 		];
-		assert.strictEqual(tests.isTodoArray(validTodoArray), true);
+		assert.strictEqual(tests.isTodoPartialInput(validTodoArray), true);
 	});
 	test("return false if missing text property in all elements", () => {
 		const invalidTodoArray = [
@@ -60,19 +60,19 @@ suite("isTodoArray()", () => {
 				creationDate: "2024-05-18T16:31:02.448Z",
 			},
 		];
-		assert.strictEqual(tests.isTodoArray(invalidTodoArray), false);
+		assert.strictEqual(tests.isTodoPartialInput(invalidTodoArray), false);
 	});
 	test("return false if empty array", () => {
 		const invalidTodoArray = [{}];
-		assert.strictEqual(tests.isTodoArray(invalidTodoArray), false);
+		assert.strictEqual(tests.isTodoPartialInput(invalidTodoArray), false);
 	});
 	test("return false if array has no objects", () => {
 		const invalidTodoArray = ["text"];
-		assert.strictEqual(tests.isTodoArray(invalidTodoArray), false);
+		assert.strictEqual(tests.isTodoPartialInput(invalidTodoArray), false);
 	});
 });
 
-suite("isTodoFilesData()", () => {
+suite("isTodoFilesDataPartialInput()", () => {
 	test("returns true if at least one element in the object is valid", () => {
 		const files = {
 			"c:\\Users\\test\\fileName.txt": [
@@ -97,12 +97,12 @@ suite("isTodoFilesData()", () => {
 			],
 			"": [],
 		};
-		assert.strictEqual(tests.isTodoFilesData(files), true);
+		assert.strictEqual(tests.isTodoFilesDataPartialInput(files), true);
 	});
 
 	test("return false if empty object", () => {
 		const files = {};
-		assert.strictEqual(tests.isTodoFilesData(files), false);
+		assert.strictEqual(tests.isTodoFilesDataPartialInput(files), false);
 	});
 
 	test("return false if the path is not valid", () => {
@@ -118,7 +118,7 @@ suite("isTodoFilesData()", () => {
 				},
 			],
 		};
-		assert.strictEqual(tests.isTodoFilesData(files), false);
+		assert.strictEqual(tests.isTodoFilesDataPartialInput(files), false);
 	});
 });
 
@@ -172,7 +172,7 @@ suite("filterValidFilesData()", () => {
 	});
 });
 
-suite("isExportImportData()", () => {
+suite("isImportObject()", () => {
 	test("returns true if contains valid data", () => {
 		const validData = {
 			user: [],
@@ -217,6 +217,6 @@ suite("isExportImportData()", () => {
 				],
 			},
 		};
-		assert.strictEqual(tests.isExportImportData(validData), true);
+		assert.strictEqual(tests.isImportObject(validData), true);
 	});
 });

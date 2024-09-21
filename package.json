@@ -44,6 +44,11 @@
 				"command": "vsc-todo.importDataFromJSON",
 				"title": "Import from JSON",
 				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.importDataFromMarkdown",
+				"title": "Import from Markdown",
+				"category": "VS Code Todo"
 			}
 		],
 		"configuration": {

@@ -3,7 +3,14 @@ import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
 import { currentFileActions, fileDataInfoActions } from "./store";
-import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "./todoTypes";
+import {
+	CurrentFileSlice,
+	Todo,
+	TodoFilesData,
+	TodoPartialInput,
+	TodoScope,
+	TodoSlice,
+} from "./todoTypes";
 
 /**
  * Calculate the number of incomplete todos in the given state.
@@ -60,13 +67,12 @@ export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionC
 }
 
 /**
- * Generates a unique ID for a todo, prefixed based on the todo scope ('1' for user, '2' for workspace).
+ * Generates a unique ID that does not already exist in the provided array of todos.
  *
- * @param {TodoSlice} state - State containing todos.
- * @param {TodoScope} scope - Scope of the todo (user or workspace).
- * @return {number} Prefixed unique ID within safe integer range.
+ * @param todos - The array of todos to check for existing IDs.
+ * @return A unique ID that is not already in use.
  */
-export function generateUniqueId(todos: Todo[]): number {
+export function generateUniqueId(todos: Todo[] | TodoPartialInput[]): number {
 	let newId: number;
 	const maxRandom = Number.MAX_SAFE_INTEGER / 10;
 
@@ -276,8 +282,8 @@ export function removeDataForDeletedFile({
 }
 
 export function assertNever(x: never, message?: string): never {
-	const err = new Error(message ?? 'Unexpected value. Should have been never.');
+	const err = new Error(message ?? "Unexpected value. Should have been never.");
 	//Cut off first line of the stack so that it points to the assertNever call
-	err.stack = err.stack?.split('\n').slice(1).join('\n');
+	err.stack = err.stack?.split("\n").slice(1).join("\n");
 	throw err;
 }

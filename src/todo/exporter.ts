@@ -3,7 +3,7 @@ import fs = require("fs");
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import LogChannel from "../utilities/LogChannel";
-import { ExportImportData, ExportImportScopes, Todo, TodoFilesData } from "./todoTypes";
+import { ExportImportScopes, ExportObject, Todo } from "./todoTypes";
 import { getWorkspacePath } from "./todoUtils";
 
 export enum ExportFormats {
@@ -15,8 +15,6 @@ export async function exportCommand(context: ExtensionContext, format: ExportFor
 	const scope = (await vscode.window.showQuickPick(Object.values(ExportImportScopes), {
 		placeHolder: "Choose the data to export",
 		canPickMany: true,
-		onDidSelectItem(item) {
-		},
 	})) as ExportImportScopes[] | undefined;
 
 	if (!scope) {
@@ -54,7 +52,7 @@ export function exportData(
 	writeDataToFile(filePath, formattedData);
 }
 
-function formatData(data: ExportImportData, format: ExportFormats) {
+function formatData(data: ExportObject, format: ExportFormats) {
 	switch (format) {
 		case ExportFormats.JSON:
 			return JSON.stringify(data, null, 2);
@@ -68,8 +66,8 @@ function formatData(data: ExportImportData, format: ExportFormats) {
 function getDataToExport(
 	scopeSelection: ExportImportScopes[],
 	context: ExtensionContext
-): ExportImportData {
-	const data: ExportImportData = {};
+): ExportObject {
+	const data: ExportObject = {};
 
 	if (scopeSelection.includes(ExportImportScopes.user)) {
 		data.user = context.globalState.get("TodoData") || [];
@@ -105,7 +103,7 @@ function writeDataToFile(filePath: string, formattedData: string) {
 	LogChannel.log(`Data exported successfully to ${filePath}`);
 }
 
-function formatMarkdown(data: ExportImportData) {
+function formatMarkdown(data: ExportObject) {
 	const formatItems = (items?: Array<Todo>) => {
 		return (
 			items

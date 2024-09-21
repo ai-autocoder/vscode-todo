@@ -44,6 +44,9 @@ export function activate(context: ExtensionContext) {
 		vscode.commands.registerCommand("vsc-todo.importDataFromJSON", () =>
 			importCommand(context, ImportFormats.JSON, store)
 		),
+		vscode.commands.registerCommand("vsc-todo.importDataFromMarkdown", () =>
+			importCommand(context, ImportFormats.MARKDOWN, store)
+		),
 	];
 
 	const statusBarItem = initStatusBarItem(context);
