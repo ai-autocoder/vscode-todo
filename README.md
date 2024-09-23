@@ -26,7 +26,7 @@ VS Code Todo
 - **Drag-and-Drop Functionality**
 - **Status Bar Integration**
 - **Built-in search** (Ctrl+F on Windows, ⌘F on macOS)
-- **Import and Export** (JSON format)
+- **Import and Export** (JSON / Markdown format)
 
 ![Image of UI overview](./assets/screenshots/UI-overview.gif)
 
@@ -110,27 +110,26 @@ View and access your task and note count from the status bar, with a hover toolt
 
 ![UI status bar](./assets/screenshots/statusBar.png)
 
-### Import from JSON file
+### Import from JSON / Markdown
 
-Use **Command palette**: `Import data from JSON`
+Use **Command palette**:
+
+- `Import data from JSON` or
+- `Import data from Markdown`
 
 **Requirements:**
 
-- JSON file must be in the workspace root folder.
+- The file to import must be in the workspace root folder.
 
 **Behavior:**
 
-- Existing data is not deleted.
-- If `id` matches an existing record, the provided values will override the existing ones.
-- Otherwise, a new record is added.
-- `text` property is required (and the `file path` for file-specific records).
-- Other properties are optional.
+#### JSON
 
-The JSON file must be in the root folder of the workspace to show in the file picker.
-Importing data will not delete the old data. If 'id' is provided and it matches record already present, the values provided will override the old values without creating a new record. In all other cases a new record will be added. Only 'text' property is required (and file path for file-specific records), other values are optional.
+- If an `id` matches an existing record, the provided values will override the existing ones. Otherwise, a new record will be added.
+- `text` is the only required property (and the `file path` for file-specific records).
 
 <details>
-<summary>Example (click to expand)</summary>
+<summary>JSON example (click to expand)</summary>
 
 ```json
 {
@@ -143,7 +142,8 @@ Importing data will not delete the old data. If 'id' is provided and it matches 
       "isNote": false,
       "creationDate": "2024-05-19T12:34:56.789Z"
     },
-    { /* if the id is not provide or does not match an existing record, a new record is added. */
+    { 
+      /* if the id is not provided or does not match an existing record, a new record is added. */
       "text": "Review pull requests",
     }
   ],
@@ -185,11 +185,18 @@ Importing data will not delete the old data. If 'id' is provided and it matches 
 
 </details>
 
-### Export to JSON file
+#### Markdown
 
-Use **Command palette**: `Export data to JSON`
+- Imported records will be added to the existing ones.
 
-The JSON file will appear on the root folder of the workspace.
+### Export to JSON / Markdown
+
+You can export data by using the **Command palette**:
+
+- Select  `Export data to JSON` or
+- Select  `Export data to Markdown`
+
+The exported file will be saved in the root folder of your workspace.
 
 ## Contributing
 
