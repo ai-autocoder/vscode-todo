@@ -4,7 +4,7 @@ import { ExtensionContext } from "vscode";
 import { tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
-import { exportData, ExportFormats } from "./todo/exporter";
+import { exportCommand, ExportFormats } from "./todo/exporter";
 import { importCommand, ImportFormats } from "./todo/importer";
 import createStore, {
 	actionTrackerActions,
@@ -15,7 +15,6 @@ import createStore, {
 } from "./todo/store";
 import {
 	CurrentFileSlice,
-	ExportImportScopes,
 	Slices,
 	StoreState,
 	TodoFilesData,
@@ -37,10 +36,16 @@ export function activate(context: ExtensionContext) {
 			HelloWorldPanel.render(context, store)
 		),
 		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () =>
-			exportCommand(context, ExportFormats.JSON)
+			exportCommand(context, ExportFormats.JSON, store)
+		),
+		vscode.commands.registerCommand("vsc-todo.exportDataToMarkdown", () =>
+			exportCommand(context, ExportFormats.MARKDOWN, store)
 		),
 		vscode.commands.registerCommand("vsc-todo.importDataFromJSON", () =>
 			importCommand(context, ImportFormats.JSON, store)
+		),
+		vscode.commands.registerCommand("vsc-todo.importDataFromMarkdown", () =>
+			importCommand(context, ImportFormats.MARKDOWN, store)
 		),
 	];
 
@@ -154,18 +159,4 @@ function handlefileDataInfoChange(
 	} else if (state.fileDataInfo.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
 		HelloWorldPanel.currentPanel?.updateWebview(state.fileDataInfo, Slices.fileDataInfo);
 	}
-}
-
-async function exportCommand(context: ExtensionContext, format: ExportFormats) {
-	const scope = (await vscode.window.showQuickPick(Object.values(ExportImportScopes), {
-		placeHolder: "Choose the data to export",
-		canPickMany: true,
-	})) as ExportImportScopes[] | undefined;
-
-	if (!scope) {
-		vscode.window.showInformationMessage("Export cancelled.");
-		return;
-	}
-
-	exportData(scope, format, context);
 }
