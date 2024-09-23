@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.5.0]
+
+- Import/Export functionality for Markdown format.
+- Option to export data for 'current file' only
+
 ## [1.4.0]
 
 - Add configuration "createMarkdownByDefault" to create new tasks with markdown enabled (contributed by @ilya-gs)
