@@ -19,7 +19,7 @@ import {
 	StoreState,
 	TodoFilesData,
 	TodoScope,
-	TodoSlice
+	TodoSlice,
 } from "./todo/todoTypes";
 import {
 	getWorkspaceFilesWithRecords,
@@ -36,10 +36,10 @@ export function activate(context: ExtensionContext) {
 			HelloWorldPanel.render(context, store)
 		),
 		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () =>
-			exportCommand(context, ExportFormats.JSON)
+			exportCommand(context, ExportFormats.JSON, store)
 		),
 		vscode.commands.registerCommand("vsc-todo.exportDataToMarkdown", () =>
-			exportCommand(context, ExportFormats.MARKDOWN)
+			exportCommand(context, ExportFormats.MARKDOWN, store)
 		),
 		vscode.commands.registerCommand("vsc-todo.importDataFromJSON", () =>
 			importCommand(context, ImportFormats.JSON, store)

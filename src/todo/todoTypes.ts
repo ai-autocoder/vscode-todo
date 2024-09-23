@@ -83,10 +83,11 @@ export interface ImportObject {
 	files?: TodoFilesDataPartialInput;
 }
 
-export enum ExportImportScopes {
+export enum ExportScopes {
 	user = "User",
 	workspace = "Workspace",
 	files = "Files (all)",
+	currentFile = "File",
 }
 
 export enum MarkdownImportScopes {

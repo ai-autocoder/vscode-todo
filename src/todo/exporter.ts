@@ -1,9 +1,10 @@
 import path = require("node:path");
 import fs = require("fs");
+import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import LogChannel from "../utilities/LogChannel";
-import { ExportImportScopes, ExportObject, Todo } from "./todoTypes";
+import { ExportObject, ExportScopes, StoreState, Todo, TodoFilesData } from "./todoTypes";
 import { getWorkspacePath } from "./todoUtils";
 
 export enum ExportFormats {
@@ -11,32 +12,37 @@ export enum ExportFormats {
 	MARKDOWN = "md",
 }
 
-export async function exportCommand(context: ExtensionContext, format: ExportFormats) {
-	const scope = (await vscode.window.showQuickPick(Object.values(ExportImportScopes), {
-		placeHolder: "Choose the data to export",
-		canPickMany: true,
-	})) as ExportImportScopes[] | undefined;
+export async function exportCommand(
+	context: ExtensionContext,
+	format: ExportFormats,
+	store: EnhancedStore<StoreState>
+) {
+	const scopes = await getExportScopes(store);
 
-	if (!scope) {
+	if (!scopes || scopes.length === 0) {
 		vscode.window.showInformationMessage("Export cancelled.");
 		return;
 	}
 
-	exportData(scope, format, context);
+	exportData({ scopes, format, context });
 }
 
-export function exportData(
-	scopeSelection: ExportImportScopes[],
+export function exportData({
+	scopes,
 	format = ExportFormats.JSON,
-	context: ExtensionContext
-) {
+	context,
+}: {
+	scopes: ScopesSelection;
+	format: ExportFormats;
+	context: ExtensionContext;
+}) {
 	const rootDir = getWorkspacePath();
 	const isWorkspaceOpen = rootDir !== null;
 	if (!isWorkspaceOpen) {
 		vscode.window.showErrorMessage("No workspace open, export aborted");
 		return;
 	}
-	const data = getDataToExport(scopeSelection, context);
+	const data = getDataToExport(scopes, context);
 	if (!data) {
 		vscode.window.showErrorMessage("No data to export, export aborted");
 		return;
@@ -63,22 +69,30 @@ function formatData(data: ExportObject, format: ExportFormats) {
 	}
 }
 
-function getDataToExport(
-	scopeSelection: ExportImportScopes[],
-	context: ExtensionContext
-): ExportObject {
+function getDataToExport(scopeSelection: ScopesSelection, context: ExtensionContext): ExportObject {
 	const data: ExportObject = {};
 
-	if (scopeSelection.includes(ExportImportScopes.user)) {
+	if (scopeSelection.some((scope) => scope.label === ExportScopes.user)) {
 		data.user = context.globalState.get("TodoData") || [];
 	}
 
-	if (scopeSelection.includes(ExportImportScopes.workspace)) {
+	if (scopeSelection.some((scope) => scope.label === ExportScopes.workspace)) {
 		data.workspace = context.workspaceState.get("TodoData") || [];
 	}
 
-	if (scopeSelection.includes(ExportImportScopes.files)) {
+	if (scopeSelection.some((scope) => scope.label === ExportScopes.files)) {
 		data.files = context.workspaceState.get("TodoFilesData") || {};
+	} else if (scopeSelection.some((scope) => scope.label === ExportScopes.currentFile)) {
+		const currentFilePath = scopeSelection.find((scope) => scope.label === ExportScopes.currentFile)
+			?.description as string;
+		const filesData = context.workspaceState.get("TodoFilesData") as TodoFilesData;
+		if (
+			currentFilePath &&
+			Array.isArray(filesData[currentFilePath]) &&
+			filesData[currentFilePath].length > 0
+		) {
+		}
+		data.files = { [currentFilePath]: filesData[currentFilePath] };
 	}
 
 	return data;
@@ -133,3 +147,42 @@ function formatMarkdown(data: ExportObject) {
 
 	return text;
 }
+async function getExportScopes(
+	store: EnhancedStore<StoreState>
+): Promise<ScopesSelection | undefined> {
+	const state = store.getState();
+	const filePath = state.currentFile.filePath;
+	const currentFileName = filePath ? path.basename(filePath) : "No File Selected";
+	const quickPickOptions = Object.values(ExportScopes).map((scope) =>
+		scope === ExportScopes.currentFile
+			? { label: scope, description: currentFileName || "No File Selected" }
+			: { label: scope }
+	);
+
+	let selection = await vscode.window.showQuickPick(quickPickOptions, {
+		placeHolder: "Choose which data to export",
+		canPickMany: true,
+	});
+
+	const scopes = selection
+		?.map((scope) => {
+			if (scope.label === ExportScopes.currentFile) {
+				return scope.description !== "No File Selected" ? { ...scope, description: filePath } : null;
+			}
+			return scope;
+		})
+		.filter((scope) => scope !== null);
+
+	return scopes;
+}
+
+type ScopesSelection = (
+	| {
+			label: ExportScopes;
+			description: string;
+	  }
+	| {
+			label: ExportScopes;
+			description?: undefined;
+	  }
+)[];
