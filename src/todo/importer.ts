@@ -31,7 +31,7 @@ async function importCommand(
 	format: ImportFormats,
 	store: EnhancedStore<StoreState>
 ) {
-	const selectedFile = await selectImportFile(format);
+	const selectedFile = await getImportFile(format);
 	if (!selectedFile || !selectedFile.description?.trim()) {
 		vscode.window.showInformationMessage("File selection cancelled.");
 		return;
@@ -102,7 +102,7 @@ async function importCommand(
 	}
 }
 
-async function selectImportFile(format: ImportFormats): Promise<vscode.QuickPickItem | undefined> {
+async function getImportFile(format: ImportFormats): Promise<vscode.QuickPickItem | undefined> {
 	const files = await vscode.workspace.findFiles(`*.{${format}}`, "**/node_modules/**");
 	if (files.length === 0) {
 		vscode.window.showInformationMessage("No files found in the workspace.");
@@ -129,9 +129,9 @@ async function importData(
 		return null;
 	}
 
-	let scope;
+	let scope: MarkdownImportScopes | undefined;
 	if (format === ImportFormats.MARKDOWN) {
-		scope = await selectImportScope(state);
+		scope = await getImportScope(state);
 		if (!scope) {
 			vscode.window.showInformationMessage("Import cancelled.");
 			return;
@@ -357,7 +357,7 @@ function parseMarkdown(data: string, scope: MarkdownImportScopes, state: StoreSt
 	return {};
 }
 
-async function selectImportScope(state: StoreState) {
+async function getImportScope(state: StoreState) {
 	const currentFileName = state.currentFile.filePath
 		? path.basename(state.currentFile.filePath)
 		: "No File Selected";
