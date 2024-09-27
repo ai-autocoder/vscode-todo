@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.5.1]
+
+- Import/Export: Removed empty newline between checklist items for improved formatting
+- Enhanced import functionality: Added support for more checklist syntaxes and improved newline handling in markdown
+
 ## [1.5.0]
 
 - Import/Export functionality for Markdown format.
