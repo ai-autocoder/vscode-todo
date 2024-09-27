@@ -320,37 +320,70 @@ function filterValidFilesData(rawImportData: TodoFilesDataPartialInput): TodoFil
  * @return An object containing todos based on the given scope.
  */
 function parseMarkdown(data: string, scope: MarkdownImportScopes, state: StoreState): ImportObject {
-	const lines = data.split("\n\n");
-	const todos = [];
+	const lines = data.split("\n");
+	const records = [];
+	let currentRecord = null;
 	const filePath = state.currentFile.filePath;
+	const isTodo = (line: string) => /^\s*[-+*] \[[ xX]\] |\s*\d+. \[[ xX]\] /gm.test(line);
+	const isCompleted = (line: string) => /^\s*[-+*] \[[xX]\] |\s*\d+. \[[xX]\] /gm.test(line);
+	const getText = (line: string) => line.replace(/^\s*[-+*] \[[ xX]\] |\s*\d+. \[[ xX]\] /gm, "");
 
-	for (const line of lines) {
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+
 		if (line.trim() === "") {
-			continue; // Skip empty lines
+			if (currentRecord !== null) {
+				records.push(currentRecord);
+				currentRecord = null;
+			}
+			continue;
 		}
-		const isNote = !line.trim().startsWith("- [");
-		const isCompleted = line.trim().startsWith("- [x]");
-		const text = line.replace(/^\s*-\s*\[\s*(?:x|X)?\s*\]\s*/, "").trim(); // Remove the todo marking at the beginning of the line, if any
-		if (!text) {
-			continue; // Skip empty lines
+
+		if (isTodo(line)) {
+			if (currentRecord !== null) {
+				records.push(currentRecord);
+			}
+			currentRecord = {
+				text: getText(line),
+				isNote: false,
+				completed: isCompleted(line),
+				isMarkdown: true,
+			};
+		} else {
+			if (currentRecord === null) {
+				currentRecord = { text: line, isNote: true, completed: false, isMarkdown: true };
+			} else {
+				currentRecord.text += "\n" + line;
+			}
 		}
-		const currentTodo: TodoPartialInput = { text, isNote, completed: isCompleted, isMarkdown: true };
-		todos.push(currentTodo);
 	}
+
+	if (currentRecord !== null) {
+		records.push(currentRecord);
+	}
+
+	return buildImportObject(records as TodoPartialInput[], scope, filePath);
+}
+
+function buildImportObject(
+	records: TodoPartialInput[],
+	scope: MarkdownImportScopes,
+	filePath: string
+): ImportObject {
 	if (scope === MarkdownImportScopes.user) {
 		return {
-			user: todos,
+			user: records,
 		};
 	}
 	if (scope === MarkdownImportScopes.workspace) {
 		return {
-			workspace: todos,
+			workspace: records,
 		};
 	}
 	if (scope === MarkdownImportScopes.currentFile) {
 		return {
 			files: {
-				[filePath]: todos,
+				[filePath]: records,
 			},
 		};
 	}
