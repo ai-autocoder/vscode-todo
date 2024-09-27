@@ -119,14 +119,35 @@ function writeDataToFile(filePath: string, formattedData: string) {
 
 function formatMarkdown(data: ExportObject) {
 	const formatItems = (items?: Array<Todo>) => {
-		return (
-			items
-				?.map((item) => {
-					if (item.isNote) return item.text;
-					return `- [${item.completed ? "x" : " "}] ${item.text}`;
-				})
-				.join("\n\n") || ""
-		);
+		if (!items || items.length === 0) return "";
+
+		let result = "";
+		let prevIsNote = false;
+
+		items.forEach((item, index) => {
+			const currentIsNote = item.isNote;
+
+			// Determine the separator
+			if (index > 0) {
+				if (currentIsNote || prevIsNote) {
+					result += "\n\n";
+				} else {
+					// Both items are checklist items, add a single newline
+					result += "\n";
+				}
+			}
+
+			// Format the current item
+			if (currentIsNote) {
+				result += item.text;
+			} else {
+				result += `- [${item.completed ? "x" : " "}] ${item.text}`;
+			}
+
+			prevIsNote = currentIsNote;
+		});
+
+		return result;
 	};
 
 	let text = "";
@@ -143,6 +164,10 @@ function formatMarkdown(data: ExportObject) {
 				text += (text ? "\n\n" : "") + formatItems(files[key]);
 			}
 		});
+	}
+
+	if (text.trim()) {
+		text += "\n";
 	}
 
 	return text;
