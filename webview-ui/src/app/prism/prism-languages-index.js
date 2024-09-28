@@ -1,7 +1,4 @@
-/** These foundational PrismJS language components are imported first due to dependencies required by other language components.
- * Importing them upfront prevents "undefined" errors related to trying to extend or use these languages before they are initialized.
- * This manual import list complements the auto-generated prism-languages.ts, ensuring all languages are available without import order issues.
- */
+// Foundational PrismJS language components that other languages depend on.
 import "prismjs/components/prism-c.min.js";
 import "prismjs/components/prism-cpp.min.js";
 import "prismjs/components/prism-clike.min.js";
