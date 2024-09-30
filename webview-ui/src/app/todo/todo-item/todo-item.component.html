@@ -1,6 +1,11 @@
 <div
 	class="todo-container"
-	[ngClass]="{ 'dragging': dragging, 'note': todo.isNote, 'edit-mode': isEditable }"
+	[ngClass]="{
+		'dragging': dragging,
+		'note': todo.isNote,
+		'edit-mode': isEditable,
+		'menu-open': isActionMenuOpen,
+	}"
 >
 	<!-- Button dragger -->
 	<div class="icon-button-container drag-handle-container">
@@ -73,6 +78,9 @@
 			appearance="icon"
 			class="icon-button"
 			[matMenuTriggerFor]="actionMenu"
+			(menuOpened)="onActionMenuOpened()"
+			(menuClosed)="onActionMenuClosed()"
+			[ngClass]="{ 'menu-open': isActionMenuOpen }"
 			aria-label="Open menu"
 			title="Menu"
 		>

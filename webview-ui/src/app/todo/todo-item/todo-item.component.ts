@@ -14,6 +14,7 @@ export class TodoItemComponent {
 	isEditable = false;
 	footerActive?: boolean;
 	previousText!: string;
+	isActionMenuOpen = false;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
 
@@ -22,6 +23,14 @@ export class TodoItemComponent {
 		private renderer: Renderer2,
 		private elRef: ElementRef
 	) {}
+
+	onActionMenuOpened() {
+		this.isActionMenuOpen = true;
+	}
+
+	onActionMenuClosed() {
+		this.isActionMenuOpen = false;
+	}
 
 	saveEdit() {
 		this.todoService.editTodo(this.scope, { id: this.todo.id, newText: this.todo.text.trim() });

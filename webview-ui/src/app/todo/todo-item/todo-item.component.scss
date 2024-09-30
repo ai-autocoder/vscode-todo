@@ -11,6 +11,14 @@
 		align-items: flex-start;
 	}
 
+	&.menu-open {
+		background-color: var(--vscode-menu-background);
+
+		.icon-button-container {
+			opacity: 1;
+		}
+	}
+
 	&.note {
 		grid-template-columns: 40px calc(100% - 80px) 40px;
 		background-color: var(--note-background-color);
@@ -32,6 +40,10 @@
 
 	.icon-button {
 		margin: calc(var(--design-unit) * 1px) 0;
+
+		&.menu-open {
+			background: var(--button-icon-hover-background);
+		}
 	}
 
 	.content {
