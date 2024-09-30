@@ -24,7 +24,7 @@ import {
 		`
 			textarea {
 				box-sizing: content-box;
-				overflow: auto;
+				overflow: hidden;
 				color: var(--input-foreground);
 				background: var(--input-background);
 				border-radius: calc(var(--corner-radius-round) * 1px);
