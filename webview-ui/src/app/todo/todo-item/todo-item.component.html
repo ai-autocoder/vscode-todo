@@ -93,15 +93,50 @@
 				</svg>
 			</span>
 		</vscode-button>
+
 		<!-- Action menu -->
 		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
-			<button mat-menu-item (click)="toggleMarkdown()" aria-label="Toggle text / markdown">
-				{{ todo.isMarkdown ? "Text" : "Markdown" }}
+			<fieldset>
+				<legend>View Mode</legend>
+				<button
+					mat-menu-item
+					[class.selected]="!todo.isMarkdown"
+					(click)="setIsMarkdown($event, false)"
+					aria-label="View as text"
+				>
+					Text
+				</button>
+				<button
+					mat-menu-item
+					[class.selected]="todo.isMarkdown"
+					(click)="setIsMarkdown($event, true)"
+					aria-label="View as Markdown"
+				>
+					Markdown
+				</button>
+			</fieldset>
+			<fieldset>
+				<legend>Item Type</legend>
+				<button
+					mat-menu-item
+					[class.selected]="todo.isNote"
+					(click)="setIsNote($event, true)"
+					aria-label="Select Note"
+				>
+					Note
+				</button>
+				<button
+					mat-menu-item
+					[class.selected]="!todo.isNote"
+					(click)="setIsNote($event, false)"
+					aria-label="Select Todo"
+				>
+					Todo
+				</button>
+			</fieldset>
+			<button mat-menu-item class="danger" (click)="onDelete(todo)" aria-label="Delete item">
+				Delete
 			</button>
-			<button mat-menu-item (click)="toggleTodoNote()" aria-label="Toggle todo / note">
-				{{ todo.isNote ? "Todo" : "Note" }}
-			</button>
-			<button mat-menu-item (click)="onDelete(todo)" aria-label="Delete item">Delete</button>
 		</mat-menu>
 	</div>
 </div>

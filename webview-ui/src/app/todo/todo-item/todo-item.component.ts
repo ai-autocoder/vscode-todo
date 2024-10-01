@@ -64,11 +64,15 @@ export class TodoItemComponent {
 		}, 0);
 	}
 
-	toggleMarkdown() {
+	setIsMarkdown(event: MouseEvent, isMarkdown: boolean) {
+		event.stopPropagation();
+		if (this.todo.isMarkdown === isMarkdown) return;
 		this.todoService.toggleMarkdown(this.scope, { id: this.todo.id });
 	}
 
-	toggleTodoNote() {
+	setIsNote(event: MouseEvent, isNote: boolean) {
+		event.stopPropagation();
+		if (this.todo.isNote === isNote) return;
 		this.todoService.toggleTodoNote(this.scope, { id: this.todo.id });
 	}
 

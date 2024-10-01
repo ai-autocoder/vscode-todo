@@ -74,6 +74,13 @@ markdown > *:only-child {
 .mat-mdc-menu-item {
 	border-radius: 4px;
 	min-height: 30px !important;
+	text-align: center !important;
+	--mat-menu-item-hover-state-layer-color: var(--button-primary-hover-background);
+
+	&.selected {
+		background-color: var(--vscode-menu-selectionBackground);
+		color: var(--vscode-menu-selectionForeground);
+	}
 }
 
 /* Drag and drop -> */
@@ -113,4 +120,25 @@ markdown > *:only-child {
 
 new-todo autosize-text-area textarea {
 	max-height: 80vh;
+}
+
+fieldset {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	padding: 5px;
+	margin: 0 0 5px 0;
+	border: 1px solid var(--vscode-menu-border);
+	border-radius: var(--mat-menu-container-shape);
+
+	legend {
+		color: var(--vscode-list-deemphasizedForeground);
+	}
+}
+
+.danger {
+	background: hsl(0, 49%, 37%) !important;
+	&:hover {
+		background: hsl(0, 49%, 47%) !important;
+	}
 }
