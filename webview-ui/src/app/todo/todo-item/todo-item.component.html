@@ -97,25 +97,6 @@
 		<!-- Action menu -->
 		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
 			<fieldset>
-				<legend>View Mode</legend>
-				<button
-					mat-menu-item
-					[class.selected]="!todo.isMarkdown"
-					(click)="setIsMarkdown($event, false)"
-					aria-label="View as text"
-				>
-					Text
-				</button>
-				<button
-					mat-menu-item
-					[class.selected]="todo.isMarkdown"
-					(click)="setIsMarkdown($event, true)"
-					aria-label="View as Markdown"
-				>
-					Markdown
-				</button>
-			</fieldset>
-			<fieldset>
 				<legend>Item Type</legend>
 				<button
 					mat-menu-item
@@ -132,6 +113,25 @@
 					aria-label="Select Todo"
 				>
 					Todo
+				</button>
+			</fieldset>
+			<fieldset>
+				<legend>View Mode</legend>
+				<button
+					mat-menu-item
+					[class.selected]="!todo.isMarkdown"
+					(click)="setIsMarkdown($event, false)"
+					aria-label="View as text"
+				>
+					Text
+				</button>
+				<button
+					mat-menu-item
+					[class.selected]="todo.isMarkdown"
+					(click)="setIsMarkdown($event, true)"
+					aria-label="View as Markdown"
+				>
+					Markdown
 				</button>
 			</fieldset>
 			<button mat-menu-item class="danger" (click)="onDelete(todo)" aria-label="Delete item">
