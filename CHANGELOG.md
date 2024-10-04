@@ -1,5 +1,14 @@
 # Change Log
 
+## [1.6.0]
+
+- Redesigned the action menu for improved usability
+- Added copy button functionality in markdown code blocks
+- Added config setting to toggle line numbers in markdown code blocks
+- Fixed styling issues when the action menu is open
+- Resolved unneeded scrollbar in auto-resizable textarea
+- Updated dependencies
+
 ## [1.5.1]
 
 - Import/Export: Removed empty newline between checklist items for improved formatting
