@@ -53,6 +53,18 @@ export class TodoItemComponent {
 		if (event && (event.target as HTMLElement).tagName.toLowerCase() === "a") {
 			return;
 		}
+		// If clicked on a vscode-button (or any descendant) don't edit
+		if (event) {
+			const path = event.composedPath();
+			for (const element of path) {
+				if (
+					(element as HTMLElement).tagName &&
+					(element as HTMLElement).tagName.toLowerCase() === "vscode-button"
+				) {
+					return;
+				}
+			}
+		}
 		this.previousText = this.todo.text;
 		this.isEditable = true;
 		setTimeout(() => {

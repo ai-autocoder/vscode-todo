@@ -35,7 +35,9 @@
 							"node_modules/prismjs/plugins/line-numbers/prism-line-numbers.css",
 							"src/styles.css"
 						],
-						"scripts": [],
+						"scripts": [
+							"node_modules/clipboard/dist/clipboard.min.js"
+						],
 						"browser": "src/main.ts",
 						"allowedCommonJsDependencies": [
 							"prismjs"
@@ -107,7 +109,9 @@
 							"node_modules/prismjs/plugins/line-numbers/prism-line-numbers.css",
 							"src/styles.css"
 						],
-						"scripts": []
+						"scripts": [
+							"node_modules/clipboard/dist/clipboard.min.js"
+						]
 					}
 				}
 			}

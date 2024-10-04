@@ -12,11 +12,12 @@ import { MatSnackBarModule } from "@angular/material/snack-bar";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { MatMenuModule } from "@angular/material/menu";
 import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
-import { MarkdownModule } from "ngx-markdown";
+import { CLIPBOARD_OPTIONS, MarkdownModule } from "ngx-markdown";
 import { FileNamePipe } from "./pipes/file-name.pipe";
 import { FileList } from "./todo/file-list/file-list.component";
 import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
 import { AngularSplitModule } from "angular-split";
+import { ClipboardButtonComponent } from "./shared/clipboard-button.component";
 
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
@@ -43,7 +44,14 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		MatMenuModule,
 		TextFieldModule,
 		CdkTextareaAutosize,
-		MarkdownModule.forRoot(),
+		MarkdownModule.forRoot({
+			clipboardOptions: {
+				provide: CLIPBOARD_OPTIONS,
+				useValue: {
+					buttonComponent: ClipboardButtonComponent,
+				},
+			},
+		}),
 		AngularSplitModule,
 	],
 	providers: [],

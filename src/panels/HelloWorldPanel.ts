@@ -165,8 +165,24 @@ export class HelloWorldPanel {
 		// The CSS file from the Angular build output
 		const stylesUri = getUri(webview, extensionUri, ["webview-ui", "build", "browser", "styles.css"]);
 		// The JS files from the Angular build output
-		const polyfillsUri = getUri(webview, extensionUri, ["webview-ui", "build", "browser", "polyfills.js"]);
-		const scriptUri = getUri(webview, extensionUri, ["webview-ui", "build", "browser", "main.js"]);
+		const polyfillsUri = getUri(webview, extensionUri, [
+			"webview-ui",
+			"build",
+			"browser",
+			"polyfills.js",
+		]);
+		const mainScriptUri = getUri(webview, extensionUri, [
+			"webview-ui",
+			"build",
+			"browser",
+			"main.js",
+		]);
+		const scriptsUri = getUri(webview, extensionUri, [
+			"webview-ui",
+			"build",
+			"browser",
+			"scripts.js",
+		]);
 		const nonce = getNonce();
 		const themeKind = getCurrentThemeKind();
 
@@ -184,7 +200,8 @@ export class HelloWorldPanel {
         <body class="${themeKind}">
           <app-root></app-root>
           <script type="module" nonce="${nonce}" src="${polyfillsUri}"></script>
-          <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
+          <script nonce="${nonce}" src="${scriptsUri}"></script>
+          <script type="module" nonce="${nonce}" src="${mainScriptUri}"></script>
         </body>
       </html>
     `;

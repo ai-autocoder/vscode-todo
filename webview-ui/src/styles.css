@@ -51,6 +51,10 @@ markdown > *:only-child {
 	margin-bottom: 0;
 }
 
+markdown pre {
+	padding: 1em 65px 1em !important;
+}
+
 /* Overrides for Angular Material theme -> */
 
 /* Menu */
