@@ -86,6 +86,11 @@
 						"Bottom: Create new tasks after old ones."
 					],
 					"default": "top"
+				},
+				"vscodeTodo.enableLineNumbers": {
+					"description": "Enable or disable line numbers in markdown code blocks.",
+					"type": "boolean",
+					"default": false
 				}
 			}
 		}

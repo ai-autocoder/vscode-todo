@@ -52,8 +52,11 @@ markdown > *:only-child {
 }
 
 markdown pre {
-	padding: 1em 67px 1em !important;
+	padding: 1em 67px 1em 1em !important;
 	margin: 2px 0 !important;
+	&.line-numbers {
+		padding-left: 3em !important;
+	}
 }
 
 .markdown-clipboard-toolbar {

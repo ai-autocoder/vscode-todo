@@ -35,7 +35,8 @@ export class TodoService {
 	private _config: Config = {
 		taskSortingOptions: "sortType1",
 		createMarkdownByDefault: false,
-		createPosition: "top"
+		createPosition: "top",
+		enableLineNumbers: false,
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<

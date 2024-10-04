@@ -1,4 +1,12 @@
-import { Component, ElementRef, EventEmitter, Input, Output, Renderer2 } from "@angular/core";
+import {
+	Component,
+	ElementRef,
+	EventEmitter,
+	Input,
+	OnInit,
+	Output,
+	Renderer2,
+} from "@angular/core";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
@@ -7,7 +15,7 @@ import { TodoService } from "../todo.service";
 	templateUrl: "./todo-item.component.html",
 	styleUrls: ["./todo-item.component.scss"],
 })
-export class TodoItemComponent {
+export class TodoItemComponent implements OnInit {
 	@Input() todo!: Todo;
 	@Input() scope!: TodoScope;
 	@Input() dragging = false;
@@ -15,6 +23,7 @@ export class TodoItemComponent {
 	footerActive?: boolean;
 	previousText!: string;
 	isActionMenuOpen = false;
+	enableLineNumbers: boolean = false;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
 
@@ -23,6 +32,10 @@ export class TodoItemComponent {
 		private renderer: Renderer2,
 		private elRef: ElementRef
 	) {}
+
+	ngOnInit() {
+		this.enableLineNumbers = this.todoService.config.enableLineNumbers;
+	}
 
 	onActionMenuOpened() {
 		this.isActionMenuOpen = true;
