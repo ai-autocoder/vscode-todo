@@ -34,7 +34,7 @@ const todoReducers = {
 	},
 	addTodo: (state: TodoSlice, action: PayloadAction<{ text: string }>) => {
 		const { createPosition, createMarkdownByDefault } = getConfig();
-		
+
 		const newTodo = {
 			id: generateUniqueId(state.todos),
 			text: action.payload.text,
@@ -84,6 +84,32 @@ const todoReducers = {
 		if (index === undefined || index === -1) return;
 
 		state.todos?.splice(index, 1);
+		state.lastActionType = action.type;
+		state.numberOfTodos = getNumberOfTodos(state);
+		state.numberOfNotes = getNumberOfNotes(state);
+	},
+
+	undoDelete: (
+		state: TodoSlice,
+		action: PayloadAction<{
+			id: number;
+			text: string;
+			completed: boolean;
+			creationDate: string;
+			isMarkdown: boolean;
+			isNote: boolean;
+			itemPosition: number;
+		}>
+	) => {
+		const restoredItem = {
+			id: generateUniqueId(state.todos),
+			text: action.payload.text,
+			completed: action.payload.completed,
+			creationDate: action.payload.creationDate,
+			isMarkdown: action.payload.isMarkdown,
+			isNote: action.payload.isNote,
+		};
+		state.todos?.splice(action.payload.itemPosition, 0, restoredItem);
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
 		state.numberOfNotes = getNumberOfNotes(state);

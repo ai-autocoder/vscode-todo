@@ -13,6 +13,7 @@ type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.editTodo
 	| MessageActionsFromWebview.toggleTodo
 	| MessageActionsFromWebview.deleteTodo
+	| MessageActionsFromWebview.undoDelete
 	| MessageActionsFromWebview.reorderTodo
 	| MessageActionsFromWebview.toggleMarkdown
 	| MessageActionsFromWebview.toggleTodoNote
@@ -64,6 +65,7 @@ export const enum MessageActionsFromWebview {
 	editTodo = "editTodo",
 	toggleTodo = "toggleTodo",
 	deleteTodo = "deleteTodo",
+	undoDelete = "undoDelete",
 	reorderTodo = "reorderTodo",
 	toggleMarkdown = "toggleMarkdown",
 	toggleTodoNote = "toggleTodoNote",
@@ -115,6 +117,16 @@ export const messagesFromWebview = {
 			: Parameters<typeof workspaceActions.deleteTodo>[0]
 	): Message<MessageActionsFromWebview.deleteTodo, TodoScope> => ({
 		type: MessageActionsFromWebview.deleteTodo,
+		scope,
+		payload,
+	}),
+	undoDelete: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.undoDelete>[0]
+			: Parameters<typeof workspaceActions.undoDelete>[0]
+	): Message<MessageActionsFromWebview.undoDelete, TodoScope> => ({
+		type: MessageActionsFromWebview.undoDelete,
 		scope,
 		payload,
 	}),

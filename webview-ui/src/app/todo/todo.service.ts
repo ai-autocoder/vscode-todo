@@ -146,6 +146,10 @@ export class TodoService {
 		vscode.postMessage(messagesFromWebview.deleteTodo(...args));
 	}
 
+	undoDelete(...args: Parameters<typeof messagesFromWebview.undoDelete>) {
+		vscode.postMessage(messagesFromWebview.undoDelete(...args));
+	}
+
 	toggleTodo(...args: Parameters<typeof messagesFromWebview.toggleTodo>) {
 		vscode.postMessage(messagesFromWebview.toggleTodo(...args));
 	}

@@ -228,6 +228,11 @@ export class HelloWorldPanel {
 						this._store.dispatch(storeActions.deleteTodo(payload));
 						break;
 					}
+					case MessageActionsFromWebview.undoDelete: {
+						const { payload } = message as Message<MessageActionsFromWebview.undoDelete, TodoScope>;
+						this._store.dispatch(storeActions.undoDelete(payload));
+						break;
+					}
 					case MessageActionsFromWebview.toggleTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleTodo, TodoScope>;
 						this._store.dispatch(storeActions.toggleTodo(payload));

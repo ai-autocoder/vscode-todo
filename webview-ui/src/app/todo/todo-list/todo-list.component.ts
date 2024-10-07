@@ -222,14 +222,16 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	handleDelete(todo: Todo) {
 		const deletedItem = todo;
+		const itemPosition = this.todos.indexOf(todo);
 		this.todoService.deleteTodo(this.scope, { id: todo.id });
-		// Snackbar with undo
+		// Snackbar with 'UNDO' button
 		const snackBarRef = this.snackBar.open("Todo deleted", "UNDO", {
 			duration: 5000,
 		});
 		snackBarRef.onAction().subscribe(() => {
-			this.todoService.addTodo(this.scope, {
-				text: deletedItem.text,
+			this.todoService.undoDelete(this.scope, {
+				...deletedItem,
+				itemPosition,
 			});
 		});
 	}
