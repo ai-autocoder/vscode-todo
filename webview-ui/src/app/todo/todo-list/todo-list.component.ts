@@ -1,3 +1,4 @@
+import { animate, style, transition, trigger } from "@angular/animations";
 import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
 import {
 	AfterViewInit,
@@ -7,11 +8,10 @@ import {
 	Input,
 	OnInit,
 } from "@angular/core";
-import { Subscription } from "rxjs";
+import { MatSnackBar } from "@angular/material/snack-bar";
+import { firstValueFrom, Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
-import { MatSnackBar } from "@angular/material/snack-bar";
-import { animate, style, transition, trigger } from "@angular/animations";
 
 @Component({
 	selector: "todo-list",
@@ -43,7 +43,7 @@ export class TodoList implements OnInit, AfterViewInit {
 	isInitialized = false;
 	private lastActionTypeSubscription!: Subscription;
 
-	autoAnimateEnabledActions: string[] = ["addTodo", "toggleTodo"];
+	autoAnimateEnabledActions: string[] = ["addTodo", "toggleTodo", "undoDelete"];
 
 	constructor(
 		private todoService: TodoService,
@@ -220,7 +220,11 @@ export class TodoList implements OnInit, AfterViewInit {
 		return todo.id;
 	}
 
-	handleDelete(todo: Todo) {
+	async handleDelete(todo: Todo) {
+		let currentFilePath = null;
+		if (this.scope === TodoScope.currentFile) {
+			currentFilePath = await firstValueFrom(this.todoService.currentFilePath);
+		}
 		const deletedItem = todo;
 		const itemPosition = this.todos.indexOf(todo);
 		this.todoService.deleteTodo(this.scope, { id: todo.id });
@@ -232,6 +236,7 @@ export class TodoList implements OnInit, AfterViewInit {
 			this.todoService.undoDelete(this.scope, {
 				...deletedItem,
 				itemPosition,
+				currentFilePath,
 			});
 		});
 	}

@@ -14,6 +14,7 @@ import {
 	FileDataInfoSlice,
 	Slices,
 	Todo,
+	TodoFilesData,
 	TodoScope,
 	TodoSlice,
 } from "../todo/todoTypes";
@@ -230,6 +231,23 @@ export class HelloWorldPanel {
 					}
 					case MessageActionsFromWebview.undoDelete: {
 						const { payload } = message as Message<MessageActionsFromWebview.undoDelete, TodoScope>;
+						const { currentFilePath } = payload;
+
+						if (
+							message.scope === TodoScope.currentFile &&
+							currentFilePath &&
+							this._store.getState().currentFilePath !== currentFilePath
+						) {
+							const data = context.workspaceState.get<TodoFilesData>("TodoFilesData");
+							const todos = data?.[currentFilePath] ?? [];
+
+							this._store.dispatch(
+								currentFileActions.loadData({
+									filePath: currentFilePath,
+									data: todos,
+								})
+							);
+						}
 						this._store.dispatch(storeActions.undoDelete(payload));
 						break;
 					}

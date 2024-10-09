@@ -13,7 +13,6 @@ type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.editTodo
 	| MessageActionsFromWebview.toggleTodo
 	| MessageActionsFromWebview.deleteTodo
-	| MessageActionsFromWebview.undoDelete
 	| MessageActionsFromWebview.reorderTodo
 	| MessageActionsFromWebview.toggleMarkdown
 	| MessageActionsFromWebview.toggleTodoNote
@@ -26,17 +25,28 @@ type MessagePayload<T, L> = T extends
 						? (typeof currentFileActions)[T]
 						: never
 		>[0]
-	: T extends MessageActionsFromWebview.requestData
-		? L extends TodoScope.currentFile
-			? { filePath: string }
-			: never
-		: T extends MessageActionsToWebview.syncTodoData
-			? TodoSlice | CurrentFileSlice
-			: T extends MessageActionsToWebview.syncfileDataInfo
-				? FileDataInfoSlice
-				: T extends MessageActionsToWebview.reloadWebview
-					? StoreState
-					: never;
+	: T extends MessageActionsFromWebview.undoDelete
+		? {
+				id: number;
+				text: string;
+				completed: boolean;
+				creationDate: string;
+				isMarkdown: boolean;
+				isNote: boolean;
+				itemPosition: number;
+				currentFilePath?: string | null;
+			}
+		: T extends MessageActionsFromWebview.requestData
+			? L extends TodoScope.currentFile
+				? { filePath: string }
+				: never
+			: T extends MessageActionsToWebview.syncTodoData
+				? TodoSlice | CurrentFileSlice
+				: T extends MessageActionsToWebview.syncfileDataInfo
+					? FileDataInfoSlice
+					: T extends MessageActionsToWebview.reloadWebview
+						? StoreState
+						: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -122,10 +132,12 @@ export const messagesFromWebview = {
 	}),
 	undoDelete: <L extends TodoScope>(
 		scope: L,
-		payload: L extends TodoScope.user
-			? Parameters<typeof userActions.undoDelete>[0]
-			: Parameters<typeof workspaceActions.undoDelete>[0]
-	): Message<MessageActionsFromWebview.undoDelete, TodoScope> => ({
+		payload: L extends TodoScope.currentFile
+			? Parameters<typeof currentFileActions.undoDelete>[0] & { currentFilePath: string | null }
+			: L extends TodoScope.user
+				? Parameters<typeof userActions.undoDelete>[0]
+				: Parameters<typeof workspaceActions.undoDelete>[0]
+	): Message<MessageActionsFromWebview.undoDelete, L> => ({
 		type: MessageActionsFromWebview.undoDelete,
 		scope,
 		payload,
