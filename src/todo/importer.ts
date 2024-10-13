@@ -4,7 +4,12 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import LogChannel from "../utilities/LogChannel";
-import { currentFileActions, fileDataInfoActions, userActions, workspaceActions } from "./store";
+import {
+	currentFileActions,
+	editorFocusAndRecordsActions,
+	userActions,
+	workspaceActions,
+} from "./store";
 import {
 	ImportObject,
 	MarkdownImportScopes,
@@ -83,14 +88,14 @@ async function importCommand(
 			context.workspaceState.update("TodoFilesData", sortedResult);
 			// Update the store
 			store.dispatch(
-				fileDataInfoActions.setWorkspaceFilesWithRecords(
+				editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
 					getWorkspaceFilesWithRecords(sortedResult || {})
 				)
 			);
 			store.dispatch(
 				currentFileActions.loadData({
-					filePath: state.fileDataInfo.editorFocusedFilePath,
-					data: sortedResult[state.fileDataInfo.editorFocusedFilePath] || [],
+					filePath: state.editorFocusAndRecords.editorFocusedFilePath,
+					data: sortedResult[state.editorFocusAndRecords.editorFocusedFilePath] || [],
 				})
 			);
 			vscode.window.showInformationMessage("Files data imported");

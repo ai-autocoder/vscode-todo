@@ -9,7 +9,7 @@ import { importCommand, ImportFormats } from "./todo/importer";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,
-	fileDataInfoActions,
+	editorFocusAndRecordsActions,
 	userActions,
 	workspaceActions,
 } from "./todo/store";
@@ -63,8 +63,8 @@ export function activate(context: ExtensionContext) {
 			case Slices.currentFile:
 				handleTodoChange(state, state[state.actionTracker.lastSliceName], store, context);
 				break;
-			case Slices.fileDataInfo:
-				handlefileDataInfoChange(state, store, context);
+			case Slices.editorFocusAndRecords:
+				handleEditorFocusAndRecordsChange(state, store, context);
 				break;
 		}
 	});
@@ -85,7 +85,7 @@ export function activate(context: ExtensionContext) {
 
 	// Load list of files with records
 	store.dispatch(
-		fileDataInfoActions.setWorkspaceFilesWithRecords(
+		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
 			getWorkspaceFilesWithRecords(context.workspaceState.get("TodoFilesData") ?? {})
 		)
 	);
@@ -128,35 +128,41 @@ function handleTodoChange(
 	updateStatusBarItem(state);
 	persist(sliceState as TodoSlice | CurrentFileSlice, context);
 	if (sliceState.scope === TodoScope.currentFile) {
-		// Update fileDataInfoSlice
+		// Update editorFocusAndRecordsSlice
 		store.dispatch(
-			fileDataInfoActions.setWorkspaceFilesWithRecords(
+			editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
 				getWorkspaceFilesWithRecords(context.workspaceState.get("TodoFilesData") ?? {})
 			)
 		);
 	}
 }
 
-function handlefileDataInfoChange(
+function handleEditorFocusAndRecordsChange(
 	state: StoreState,
 	store: EnhancedStore,
 	context: ExtensionContext
 ) {
 	store.dispatch(actionTrackerActions.resetLastSliceName());
 	if (
-		state.fileDataInfo.editorFocusedFilePath !== "" &&
-		state.fileDataInfo.lastActionType === "fileDataInfo/setCurrentFile" &&
+		state.editorFocusAndRecords.editorFocusedFilePath !== "" &&
+		state.editorFocusAndRecords.lastActionType === `${Slices.editorFocusAndRecords}/setCurrentFile` &&
 		!state.currentFile.isPinned
 	) {
 		const data = context.workspaceState.get("TodoFilesData") as TodoFilesData | undefined;
-		const todos = data?.[state.fileDataInfo.editorFocusedFilePath] || [];
+		const todos = data?.[state.editorFocusAndRecords.editorFocusedFilePath] || [];
 		store.dispatch(
 			currentFileActions.loadData({
-				filePath: state.fileDataInfo.editorFocusedFilePath,
+				filePath: state.editorFocusAndRecords.editorFocusedFilePath,
 				data: todos,
 			})
 		);
-	} else if (state.fileDataInfo.lastActionType === "fileDataInfo/setWorkspaceFilesWithRecords") {
-		HelloWorldPanel.currentPanel?.updateWebview(state.fileDataInfo, Slices.fileDataInfo);
+	} else if (
+		state.editorFocusAndRecords.lastActionType ===
+		"editorFocusAndRecords/setWorkspaceFilesWithRecords"
+	) {
+		HelloWorldPanel.currentPanel?.updateWebview(
+			state.editorFocusAndRecords,
+			Slices.editorFocusAndRecords
+		);
 	}
 }

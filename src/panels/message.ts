@@ -1,7 +1,7 @@
 import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
 	CurrentFileSlice,
-	FileDataInfoSlice,
+	EditorFocusAndRecordsSlice,
 	StoreState,
 	TodoScope,
 	TodoSlice,
@@ -42,8 +42,8 @@ type MessagePayload<T, L> = T extends
 				: never
 			: T extends MessageActionsToWebview.syncTodoData
 				? TodoSlice | CurrentFileSlice
-				: T extends MessageActionsToWebview.syncfileDataInfo
-					? FileDataInfoSlice
+				: T extends MessageActionsToWebview.syncEditorFocusAndRecords
+					? EditorFocusAndRecordsSlice
 					: T extends MessageActionsToWebview.reloadWebview
 						? StoreState
 						: never;
@@ -57,7 +57,9 @@ export type Message<
 			payload: MessagePayload<T, L>;
 			config: Config;
 		}
-	: T extends MessageActionsToWebview.syncTodoData | MessageActionsToWebview.syncfileDataInfo
+	: T extends
+				| MessageActionsToWebview.syncTodoData
+				| MessageActionsToWebview.syncEditorFocusAndRecords
 		? {
 				type: T;
 				payload: MessagePayload<T, L>;
@@ -85,7 +87,7 @@ export const enum MessageActionsFromWebview {
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
 	syncTodoData = "syncTodoData",
-	syncfileDataInfo = "syncfileDataInfo",
+	syncEditorFocusAndRecords = "syncEditorFocusAndRecords",
 }
 
 // Message creators from Webview to Extension
@@ -203,10 +205,10 @@ export const messagesToWebview = {
 		type: MessageActionsToWebview.syncTodoData,
 		payload,
 	}),
-	syncFileDataInfo: (
-		payload: FileDataInfoSlice
-	): Message<MessageActionsToWebview.syncfileDataInfo> => ({
-		type: MessageActionsToWebview.syncfileDataInfo,
+	syncEditorFocusAndRecords: (
+		payload: EditorFocusAndRecordsSlice
+	): Message<MessageActionsToWebview.syncEditorFocusAndRecords> => ({
+		type: MessageActionsToWebview.syncEditorFocusAndRecords,
 		payload,
 	}),
 };

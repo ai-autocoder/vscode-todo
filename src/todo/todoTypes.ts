@@ -1,3 +1,5 @@
+import { RootState } from "./store";
+
 export interface Todo {
 	id: number;
 	text: string;
@@ -19,7 +21,7 @@ export enum Slices {
 	user = "user",
 	workspace = "workspace",
 	currentFile = "currentFile",
-	fileDataInfo = "fileDataInfo",
+	editorFocusAndRecords = "editorFocusAndRecords",
 	actionTracker = "actionTracker",
 }
 
@@ -42,20 +44,13 @@ export interface CurrentFileSlice extends TodoSlice {
 	isPinned: boolean;
 }
 
-export interface FileDataInfoSlice {
+export interface EditorFocusAndRecordsSlice {
 	editorFocusedFilePath: string;
 	workspaceFilesWithRecords: Array<{ filePath: string; todoNumber: number }> | [];
 	lastActionType: string;
 }
 
-export interface StoreState {
-	user: TodoSlice;
-	workspace: TodoSlice;
-	currentFile: CurrentFileSlice;
-	fileDataInfo: FileDataInfoSlice;
-	actionTracker: ActionTrackerState;
-	[key: string]: TodoSlice | ActionTrackerState | CurrentFileSlice | FileDataInfoSlice;
-}
+export interface StoreState extends RootState {}
 
 // Middleware
 export interface ActionTrackerState {

@@ -11,7 +11,7 @@ import {
 import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
 	CurrentFileSlice,
-	FileDataInfoSlice,
+	EditorFocusAndRecordsSlice,
 	Slices,
 	Todo,
 	TodoFilesData,
@@ -123,12 +123,12 @@ export class HelloWorldPanel {
 	 * Defaults to `user / workspace / currentFile` slices.
 	 */
 	public updateWebview(
-		newSliceState: TodoSlice | FileDataInfoSlice | CurrentFileSlice,
+		newSliceState: TodoSlice | EditorFocusAndRecordsSlice | CurrentFileSlice,
 		sliceType?: Slices
 	) {
 		const message =
-			sliceType === Slices.fileDataInfo
-				? messagesToWebview.syncFileDataInfo(newSliceState as FileDataInfoSlice)
+			sliceType === Slices.editorFocusAndRecords
+				? messagesToWebview.syncEditorFocusAndRecords(newSliceState as EditorFocusAndRecordsSlice)
 				: messagesToWebview.syncTodoData(newSliceState as TodoSlice | CurrentFileSlice);
 		this._panel.webview.postMessage(message);
 	}

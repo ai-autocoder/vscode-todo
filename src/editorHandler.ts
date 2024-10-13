@@ -1,6 +1,6 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
-import { fileDataInfoActions } from "./todo/store";
+import { editorFocusAndRecordsActions } from "./todo/store";
 
 /**
  * Handles the tab change event.
@@ -14,5 +14,5 @@ import { fileDataInfoActions } from "./todo/store";
  */
 export const tabChangeHandler = (store: EnhancedStore, context: vscode.ExtensionContext) => {
 	const currentFile = vscode.window.activeTextEditor?.document.fileName || "";
-	store.dispatch(fileDataInfoActions.setCurrentFile(currentFile));
+	store.dispatch(editorFocusAndRecordsActions.setCurrentFile(currentFile));
 };

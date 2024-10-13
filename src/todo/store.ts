@@ -6,10 +6,12 @@ import {
 	MiddlewareAPI,
 	PayloadAction,
 } from "@reduxjs/toolkit";
+import LogChannel from "../utilities/LogChannel";
+import { getConfig } from "../utilities/config";
 import {
 	ActionTrackerState,
 	CurrentFileSlice,
-	FileDataInfoSlice,
+	EditorFocusAndRecordsSlice,
 	Slices,
 	Todo,
 	TodoScope,
@@ -22,8 +24,6 @@ import {
 	getNumberOfTodos,
 	sortTodosWithNotes,
 } from "./todoUtils";
-import LogChannel from "../utilities/LogChannel";
-import { getConfig } from "../utilities/config";
 
 const todoReducers = {
 	loadData: (state: TodoSlice, action: PayloadAction<{ data: Todo[] }>) => {
@@ -162,13 +162,13 @@ const workspaceSlice = createSlice({
 	reducers: todoReducers,
 });
 
-const fileDataInfoSlice = createSlice({
-	name: "fileDataInfo",
+const editorFocusAndRecordsSlice = createSlice({
+	name: "editorFocusAndRecords",
 	initialState: {
 		editorFocusedFilePath: "",
 		workspaceFilesWithRecords: [],
 		lastActionType: "",
-	} as FileDataInfoSlice,
+	} as EditorFocusAndRecordsSlice,
 	reducers: {
 		setCurrentFile: (state, action: PayloadAction<string>) => {
 			state.editorFocusedFilePath = action.payload;
@@ -233,10 +233,12 @@ const actionTrackerSlice = createSlice({
 const rootReducer = combineReducers({
 	user: userSlice.reducer,
 	workspace: workspaceSlice.reducer,
-	fileDataInfo: fileDataInfoSlice.reducer,
+	editorFocusAndRecords: editorFocusAndRecordsSlice.reducer,
 	currentFile: currentFileSlice.reducer,
 	actionTracker: actionTrackerSlice.reducer,
 });
+
+export type RootState = ReturnType<typeof rootReducer>;
 
 // Configure the store with the combined reducer
 export default function () {
@@ -248,7 +250,7 @@ export default function () {
 
 export const userActions = userSlice.actions;
 export const workspaceActions = workspaceSlice.actions;
-export const fileDataInfoActions = fileDataInfoSlice.actions;
+export const editorFocusAndRecordsActions = editorFocusAndRecordsSlice.actions;
 export const currentFileActions = currentFileSlice.actions;
 export const actionTrackerActions = actionTrackerSlice.actions;
 

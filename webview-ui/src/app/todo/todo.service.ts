@@ -7,7 +7,7 @@ import {
 } from "../../../../src/panels/message";
 import {
 	CurrentFileSlice,
-	FileDataInfoSlice,
+	EditorFocusAndRecordsSlice,
 	Todo,
 	TodoCount,
 	TodoScope,
@@ -62,8 +62,8 @@ export class TodoService {
 			case MessageActionsToWebview.syncTodoData:
 				this.handleSyncTodoData(data.payload);
 				break;
-			case MessageActionsToWebview.syncfileDataInfo:
-				this.handleSyncfileDataInfo(data.payload);
+			case MessageActionsToWebview.syncEditorFocusAndRecords:
+				this.handleSyncEditorFocusAndRecords(data.payload);
 				break;
 			default:
 				console.warn("Unhandled message type:", data.type);
@@ -82,7 +82,7 @@ export class TodoService {
 		this.userLastAction.next("");
 		this.workspaceLastAction.next("");
 		this.currentFileLastAction.next("");
-		this.handleSyncfileDataInfo(data.payload.fileDataInfo);
+		this.handleSyncEditorFocusAndRecords(data.payload.editorFocusAndRecords);
 	}
 
 	private handleSyncTodoData(payload: TodoSlice | CurrentFileSlice) {
@@ -110,7 +110,7 @@ export class TodoService {
 		}
 	}
 
-	private handleSyncfileDataInfo(payload: FileDataInfoSlice) {
+	private handleSyncEditorFocusAndRecords(payload: EditorFocusAndRecordsSlice) {
 		this._workspaceFilesWithRecordsSource.next(payload.workspaceFilesWithRecords);
 	}
 

@@ -2,9 +2,10 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
-import { currentFileActions, fileDataInfoActions } from "./store";
+import { currentFileActions, editorFocusAndRecordsActions } from "./store";
 import {
 	CurrentFileSlice,
+	StoreState,
 	Todo,
 	TodoFilesData,
 	TodoPartialInput,
@@ -239,13 +240,13 @@ export function updateDataForRenamedFile({
 	const sortedNewData = sortByFileName(newData);
 	context.workspaceState.update("TodoFilesData", sortedNewData);
 	store.dispatch(
-		fileDataInfoActions.setWorkspaceFilesWithRecords(
+		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
 			getWorkspaceFilesWithRecords(sortedNewData || {})
 		)
 	);
 	store.dispatch(
 		currentFileActions.loadData({
-			filePath: state.fileDataInfo.editorFocusedFilePath,
+			filePath: state.editorFocusAndRecords.editorFocusedFilePath,
 			data: sortedNewData[state.fileDataInfo.editorFocusedFilePath] || [],
 		})
 	);
@@ -264,18 +265,20 @@ export function removeDataForDeletedFile({
 
 	if (!previousData[filePath]) return;
 
-	const state = store.getState();
+	const state: StoreState = store.getState();
 	const { [filePath]: deletedFileData, ...restOfData } = previousData;
 	const newData: TodoFilesData = { ...restOfData };
 	context.workspaceState.update("TodoFilesData", newData);
 	store.dispatch(
-		fileDataInfoActions.setWorkspaceFilesWithRecords(getWorkspaceFilesWithRecords(newData || {}))
+		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
+			getWorkspaceFilesWithRecords(newData || {})
+		)
 	);
 	if (state.currentFile.filePath === filePath) {
 		store.dispatch(
 			currentFileActions.loadData({
-				filePath: state.fileDataInfo.editorFocusedFilePath,
-				data: newData[state.fileDataInfo.editorFocusedFilePath] || [],
+				filePath: state.editorFocusAndRecords.editorFocusedFilePath,
+				data: newData[state.editorFocusAndRecords.editorFocusedFilePath] || [],
 			})
 		);
 	}
