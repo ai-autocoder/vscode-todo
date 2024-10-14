@@ -18,6 +18,7 @@ import { FileList } from "./todo/file-list/file-list.component";
 import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
 import { AngularSplitModule } from "angular-split";
 import { ClipboardButtonComponent } from "./shared/clipboard-button.component";
+import { IconComponent } from "./shared/icon/icon.component";
 
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
@@ -53,6 +54,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 			},
 		}),
 		AngularSplitModule,
+		IconComponent,
 	],
 	providers: [],
 	bootstrap: [AppComponent],
