@@ -314,7 +314,7 @@ export class HelloWorldPanel {
 						if (payload.format === ExportFormats.JSON) {
 							commands.executeCommand("vsc-todo.exportDataToJSON");
 						} else if (payload.format === ExportFormats.MARKDOWN) {
-							commands.executeCommand("vsc-todo.exportDataToJSON");
+							commands.executeCommand("vsc-todo.exportDataToMarkdown");
 						}
 						break;
 					}
