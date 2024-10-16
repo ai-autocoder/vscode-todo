@@ -1,3 +1,5 @@
+import { ExportFormats } from "../todo/todoTypes";
+import { ImportFormats } from "../todo/todoTypes";
 import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
 	CurrentFileSlice,
@@ -40,13 +42,17 @@ type MessagePayload<T, L> = T extends
 			? L extends TodoScope.currentFile
 				? { filePath: string }
 				: never
-			: T extends MessageActionsToWebview.syncTodoData
-				? TodoSlice | CurrentFileSlice
-				: T extends MessageActionsToWebview.syncEditorFocusAndRecords
-					? EditorFocusAndRecordsSlice
-					: T extends MessageActionsToWebview.reloadWebview
-						? StoreState
-						: never;
+			: T extends MessageActionsFromWebview.export
+				? { format: ExportFormats }
+				: T extends MessageActionsFromWebview.import
+					? { format: ImportFormats }
+					: T extends MessageActionsToWebview.syncTodoData
+						? TodoSlice | CurrentFileSlice
+						: T extends MessageActionsToWebview.syncEditorFocusAndRecords
+							? EditorFocusAndRecordsSlice
+							: T extends MessageActionsToWebview.reloadWebview
+								? StoreState
+								: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -66,11 +72,16 @@ export type Message<
 			}
 		: T extends MessageActionsFromWebview.pinFile
 			? { type: T; scope: TodoScope.currentFile }
-			: {
-					type: T;
-					scope: L;
-					payload: MessagePayload<T, L>;
-				};
+			: T extends MessageActionsFromWebview.export | MessageActionsFromWebview.import
+				? {
+						type: T;
+						payload: MessagePayload<T, L>;
+					}
+				: {
+						type: T;
+						scope: L;
+						payload: MessagePayload<T, L>;
+					};
 
 export const enum MessageActionsFromWebview {
 	addTodo = "addTodo",
@@ -83,6 +94,8 @@ export const enum MessageActionsFromWebview {
 	toggleTodoNote = "toggleTodoNote",
 	requestData = "requestData",
 	pinFile = "pinFile",
+	export = "export",
+	import = "import",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
@@ -187,6 +200,14 @@ export const messagesFromWebview = {
 	): Message<MessageActionsFromWebview.pinFile, TodoScope> => ({
 		type: MessageActionsFromWebview.pinFile,
 		scope,
+	}),
+	export: (format: ExportFormats): Message<MessageActionsFromWebview.export> => ({
+		type: MessageActionsFromWebview.export,
+		payload: { format },
+	}),
+	import: (format: ImportFormats): Message<MessageActionsFromWebview.import> => ({
+		type: MessageActionsFromWebview.import,
+		payload: { format },
 	}),
 };
 export const messagesToWebview = {

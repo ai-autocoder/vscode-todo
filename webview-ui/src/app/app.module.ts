@@ -19,7 +19,7 @@ import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
 import { AngularSplitModule } from "angular-split";
 import { ClipboardButtonComponent } from "./shared/clipboard-button.component";
 import { IconComponent } from "./shared/icon/icon.component";
-
+import { HeaderComponent } from "./header/header.component";
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
@@ -35,6 +35,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		FileNamePipe,
 		FileList,
 		AutosizeTextArea,
+		HeaderComponent,
 	],
 	imports: [
 		BrowserModule,

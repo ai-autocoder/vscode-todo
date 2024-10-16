@@ -90,3 +90,11 @@ export enum MarkdownImportScopes {
 	workspace = "Workspace",
 	currentFile = "File",
 }
+export enum ExportFormats {
+	JSON = "json",
+	MARKDOWN = "md",
+}
+export enum ImportFormats {
+	JSON = "json",
+	MARKDOWN = "md",
+}

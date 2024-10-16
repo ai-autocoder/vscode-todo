@@ -1,0 +1,12 @@
+.header-container {
+	position: absolute;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	width: 100%;
+	padding: 5.5px 0;
+}
+.menu-open {
+	background-color: var(--vscode-menu-background);
+}

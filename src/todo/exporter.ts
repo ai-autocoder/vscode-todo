@@ -4,13 +4,15 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import LogChannel from "../utilities/LogChannel";
-import { ExportObject, ExportScopes, StoreState, Todo, TodoFilesData } from "./todoTypes";
+import {
+	ExportFormats,
+	ExportObject,
+	ExportScopes,
+	StoreState,
+	Todo,
+	TodoFilesData,
+} from "./todoTypes";
 import { getWorkspacePath } from "./todoUtils";
-
-export enum ExportFormats {
-	JSON = "json",
-	MARKDOWN = "md",
-}
 
 export async function exportCommand(
 	context: ExtensionContext,

@@ -12,6 +12,8 @@ import {
 	TodoCount,
 	TodoScope,
 	TodoSlice,
+	ExportFormats,
+	ImportFormats,
 } from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
 import { Config } from "../../../../src/utilities/config";
@@ -180,5 +182,13 @@ export class TodoService {
 				filePath,
 			})
 		);
+	}
+
+	import(format: ImportFormats) {
+		vscode.postMessage(messagesFromWebview.import(format));
+	}
+
+	export(format: ExportFormats) {
+		vscode.postMessage(messagesFromWebview.export(format));
 	}
 }

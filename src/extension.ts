@@ -4,8 +4,10 @@ import { ExtensionContext } from "vscode";
 import { tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
-import { exportCommand, ExportFormats } from "./todo/exporter";
-import { importCommand, ImportFormats } from "./todo/importer";
+import { exportCommand } from "./todo/exporter";
+import { ExportFormats } from "./todo/todoTypes";
+import { importCommand } from "./todo/importer";
+import { ImportFormats } from "./todo/todoTypes";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,

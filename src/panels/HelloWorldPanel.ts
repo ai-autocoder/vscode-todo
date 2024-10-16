@@ -7,6 +7,7 @@ import {
 	Webview,
 	WebviewPanel,
 	window,
+	commands,
 } from "vscode";
 import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
@@ -23,6 +24,9 @@ import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
+import { ExportFormats } from "../todo/todoTypes";
+import { ImportFormats } from "../todo/todoTypes";
+
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
  *
@@ -217,16 +221,17 @@ export class HelloWorldPanel {
 	private _setWebviewMessageListener(webview: Webview, context: ExtensionContext) {
 		webview.onDidReceiveMessage(
 			(message: Message<MessageActionsFromWebview, TodoScope>) => {
-				const storeActions = this.getStoreActions(message.scope);
+				const storeActions =
+					"scope" in message && message.scope ? this.getStoreActions(message.scope) : undefined;
 				switch (message.type) {
 					case MessageActionsFromWebview.addTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.addTodo, TodoScope>;
-						this._store.dispatch(storeActions.addTodo(payload));
+						this._store.dispatch(storeActions!.addTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.deleteTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.deleteTodo, TodoScope>;
-						this._store.dispatch(storeActions.deleteTodo(payload));
+						this._store.dispatch(storeActions!.deleteTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.undoDelete: {
@@ -248,32 +253,32 @@ export class HelloWorldPanel {
 								})
 							);
 						}
-						this._store.dispatch(storeActions.undoDelete(payload));
+						this._store.dispatch(storeActions!.undoDelete(payload));
 						break;
 					}
 					case MessageActionsFromWebview.toggleTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleTodo, TodoScope>;
-						this._store.dispatch(storeActions.toggleTodo(payload));
+						this._store.dispatch(storeActions!.toggleTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.editTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.editTodo, TodoScope>;
-						this._store.dispatch(storeActions.editTodo(payload));
+						this._store.dispatch(storeActions!.editTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.reorderTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.reorderTodo, TodoScope>;
-						this._store.dispatch(storeActions.reorderTodo(payload));
+						this._store.dispatch(storeActions!.reorderTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.toggleMarkdown: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleMarkdown, TodoScope>;
-						this._store.dispatch(storeActions.toggleMarkdown(payload));
+						this._store.dispatch(storeActions!.toggleMarkdown(payload));
 						break;
 					}
 					case MessageActionsFromWebview.toggleTodoNote: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleTodoNote, TodoScope>;
-						this._store.dispatch(storeActions.toggleTodoNote(payload));
+						this._store.dispatch(storeActions!.toggleTodoNote(payload));
 						break;
 					}
 					case MessageActionsFromWebview.pinFile: {
@@ -297,10 +302,28 @@ export class HelloWorldPanel {
 								data: todos,
 							};
 							this._store.dispatch(
-								storeActions.loadData(actionPayload as Parameters<typeof currentFileActions.loadData>[0])
+								storeActions!.loadData(actionPayload as Parameters<typeof currentFileActions.loadData>[0])
 							);
 						} else {
 							console.error("Scope not supported for loadData");
+						}
+						break;
+					}
+					case MessageActionsFromWebview.export: {
+						const { payload } = message as Message<MessageActionsFromWebview.export>;
+						if (payload.format === ExportFormats.JSON) {
+							commands.executeCommand("vsc-todo.exportDataToJSON");
+						} else if (payload.format === ExportFormats.MARKDOWN) {
+							commands.executeCommand("vsc-todo.exportDataToJSON");
+						}
+						break;
+					}
+					case MessageActionsFromWebview.import: {
+						const { payload } = message as Message<MessageActionsFromWebview.import>;
+						if (payload.format === ImportFormats.JSON) {
+							commands.executeCommand("vsc-todo.importDataFromJSON");
+						} else if (payload.format === ImportFormats.MARKDOWN) {
+							commands.executeCommand("vsc-todo.importDataFromMarkdown");
 						}
 						break;
 					}

@@ -11,6 +11,7 @@ import {
 	workspaceActions,
 } from "./store";
 import {
+	ImportFormats,
 	ImportObject,
 	MarkdownImportScopes,
 	StoreState,
@@ -25,11 +26,6 @@ import {
 	isEqual,
 	sortByFileName,
 } from "./todoUtils";
-
-enum ImportFormats {
-	JSON = "json",
-	MARKDOWN = "md",
-}
 
 async function importCommand(
 	context: ExtensionContext,
@@ -427,4 +423,4 @@ if (process.env.NODE_ENV !== "test") {
 	tests = {};
 }
 
-export { importCommand, ImportFormats, tests };
+export { importCommand, tests };
