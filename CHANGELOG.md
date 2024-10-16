@@ -1,5 +1,12 @@
 # Change Log
 
+## [1.7.0]
+
+- Improved menu styling and layout
+- Added import and export buttons
+- Enhanced 'Undo' feature to retain all data and position after deletion
+- Fixed bug where restored items were placed in incorrect file lists
+
 ## [1.6.0]
 
 - Redesigned the action menu for improved usability
