@@ -86,7 +86,7 @@
 		<!-- Action menu -->
 		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
 			<fieldset>
-				<legend>Item Type</legend>
+				<legend>Type</legend>
 				<button
 					mat-menu-item
 					[class.selected]="todo.isNote"
@@ -105,7 +105,7 @@
 				</button>
 			</fieldset>
 			<fieldset>
-				<legend>View Mode</legend>
+				<legend>View as</legend>
 				<button
 					mat-menu-item
 					[class.selected]="!todo.isMarkdown"
@@ -123,6 +123,7 @@
 					Markdown
 				</button>
 			</fieldset>
+			<mat-divider></mat-divider>
 			<button mat-menu-item class="danger" (click)="onDelete(todo)" aria-label="Delete item">
 				Delete
 			</button>

@@ -11,6 +11,7 @@ import { AutoAnimateDirective } from "./utilities/animate";
 import { MatSnackBarModule } from "@angular/material/snack-bar";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { MatMenuModule } from "@angular/material/menu";
+import { MatDividerModule } from "@angular/material/divider";
 import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
 import { CLIPBOARD_OPTIONS, MarkdownModule } from "ngx-markdown";
 import { FileNamePipe } from "./pipes/file-name.pipe";
@@ -44,6 +45,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		MatSnackBarModule,
 		BrowserAnimationsModule,
 		MatMenuModule,
+		MatDividerModule,
 		TextFieldModule,
 		CdkTextareaAutosize,
 		MarkdownModule.forRoot({
