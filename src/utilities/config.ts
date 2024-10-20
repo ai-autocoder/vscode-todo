@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { contributes } from "../../package.json";
+import LogChannel from "../utilities/LogChannel";
 
 export type Config = {
 	taskSortingOptions: "sortType1" | "sortType2" | "disabled";
@@ -38,4 +39,16 @@ export function getConfig(): Config {
 		createPosition,
 		enableLineNumbers,
 	};
+}
+
+export function setConfig<K extends keyof Config>(section: K, value: Config[K]): void {
+	const config = vscode.workspace.getConfiguration("vscodeTodo");
+	config.update(section, value, vscode.ConfigurationTarget.Workspace).then(
+		() => {
+			LogChannel.log(`Configuration '${section}' updated successfully.`);
+		},
+		(err) => {
+			LogChannel.log(`Failed to update configuration '${section}': ${err}`);
+		}
+	);
 }
