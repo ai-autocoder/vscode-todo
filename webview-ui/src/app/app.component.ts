@@ -54,6 +54,8 @@ export class AppComponent implements OnInit, AfterViewInit {
 	TodoScope: typeof TodoScope = TodoScope;
 	todoCount!: TodoCount;
 	currentFilePath!: Observable<string>;
+	enableWideView!: Observable<boolean>;
+	enableWideViewAnimation!: Observable<boolean>;
 	private lastActionTypeSubscription!: Subscription;
 	isPinned = false;
 	@ViewChild("mySplit") mySplitEl!: SplitComponent;
@@ -71,6 +73,8 @@ export class AppComponent implements OnInit, AfterViewInit {
 		// Get data
 		this.todoCount = this.todoService.todoCount;
 		this.currentFilePath = this.todoService.currentFilePath;
+		this.enableWideView = this.todoService.enableWideView;
+		this.enableWideViewAnimation = this.todoService.enableWideViewAnimation;
 		this.lastActionTypeSubscription = this.todoService.currentFileLastAction.subscribe(() => {
 			this.isPinned = this.todoService.isPinned;
 		});

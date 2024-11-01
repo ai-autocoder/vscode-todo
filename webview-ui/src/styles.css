@@ -26,6 +26,14 @@ main {
 	margin: 0 auto;
 }
 
+main.wide-view-animation {
+	transition: max-width 0.3s ease-in-out;
+}
+
+main.wide-view {
+	max-width: 100%;
+}
+
 /* Markdown -> */
 
 markdown > h1,

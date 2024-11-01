@@ -19,7 +19,7 @@ import {
 	TodoScope,
 	TodoSlice,
 } from "../todo/todoTypes";
-import { getConfig } from "../utilities/config";
+import { getConfig, setConfig } from "../utilities/config";
 import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
@@ -325,6 +325,11 @@ export class HelloWorldPanel {
 						} else if (payload.format === ImportFormats.MARKDOWN) {
 							commands.executeCommand("vsc-todo.importDataFromMarkdown");
 						}
+						break;
+					}
+					case MessageActionsFromWebview.setWideViewEnabled: {
+						const { payload } = message;
+						setConfig("enableWideView", payload.isEnabled);
 						break;
 					}
 					default:

@@ -1,5 +1,28 @@
 <div class="header-container">
 	<vscode-button
+		*ngIf="!(enableWideView | async)"
+		appearance="icon"
+		[aria-label]="'Wide View'"
+		[title]="'Wide View'"
+		(click)="setWideViewEnabled(true)"
+	>
+		<span>
+			<app-icon name="wide-view"></app-icon>
+		</span>
+	</vscode-button>
+	<vscode-button
+		*ngIf="enableWideView | async"
+		appearance="icon"
+		[aria-label]="'Normal View'"
+		[title]="'Normal View'"
+		(click)="setWideViewEnabled(false)"
+	>
+		<span>
+			<app-icon name="normal-view"></app-icon>
+		</span>
+	</vscode-button>
+
+	<vscode-button
 		appearance="icon"
 		[matMenuTriggerFor]="importMenu"
 		[aria-label]="'Import'"

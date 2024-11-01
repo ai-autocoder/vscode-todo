@@ -91,6 +91,11 @@
 					"description": "Enable or disable line numbers in markdown code blocks.",
 					"type": "boolean",
 					"default": false
+				},
+				"vscodeTodo.enableWideView": {
+					"description": "Enable wide view mode in the webview.",
+					"type": "boolean",
+					"default": false
 				}
 			}
 		}

@@ -7,6 +7,7 @@ export type Config = {
 	createMarkdownByDefault: boolean;
 	createPosition: "top" | "bottom";
 	enableLineNumbers: boolean;
+	enableWideView: boolean;
 };
 
 export function getConfig(): Config {
@@ -33,11 +34,14 @@ export function getConfig(): Config {
 		createPosition = contributes.configuration.properties["vscodeTodo.createPosition"]["default"];
 	}
 
+	const enableWideView: boolean = config.get("enableWideView", false);
+
 	return {
 		taskSortingOptions,
 		createMarkdownByDefault,
 		createPosition,
 		enableLineNumbers,
+		enableWideView,
 	};
 }
 

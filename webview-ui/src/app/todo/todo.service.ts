@@ -39,12 +39,18 @@ export class TodoService {
 		createMarkdownByDefault: false,
 		createPosition: "top",
 		enableLineNumbers: false,
+		enableWideView: false,
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<
 		{ filePath: string; todoNumber: number }[]
 	>([]);
+	private _enableWideViewSource = new BehaviorSubject<boolean>(this._config.enableWideView);
 
+	private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
+
+	enableWideView = this._enableWideViewSource.asObservable();
+	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
 	currentFileLastAction = new BehaviorSubject<string>("");
@@ -81,6 +87,7 @@ export class TodoService {
 		this._currentFileSlice = data.payload.currentFile;
 		this._todoCount.currentFile = data.payload.currentFile.numberOfTodos;
 		this._currentFilePathSource.next(data.payload.currentFile.filePath);
+		this._enableWideViewSource.next(this._config.enableWideView);
 		this.userLastAction.next("");
 		this.workspaceLastAction.next("");
 		this.currentFileLastAction.next("");
@@ -190,5 +197,12 @@ export class TodoService {
 
 	export(format: ExportFormats) {
 		vscode.postMessage(messagesFromWebview.export(format));
+	}
+
+	setWideViewEnabled(isEnabled: boolean) {
+		this._enableWideViewAnimation.next(true);
+		this._config.enableWideView = isEnabled;
+		this._enableWideViewSource.next(isEnabled);
+		vscode.postMessage(messagesFromWebview.setWideViewEnabled(isEnabled));
 	}
 }

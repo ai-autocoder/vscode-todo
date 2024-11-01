@@ -1,20 +1,25 @@
-import { Component } from "@angular/core";
+import { Component, OnInit } from "@angular/core";
 import { TodoService } from "../todo/todo.service";
-
 import { ExportFormats, ImportFormats } from "../../../../src/todo/todoTypes";
+import { Observable } from "rxjs";
 
 @Component({
 	selector: "app-header",
 	templateUrl: "./header.component.html",
 	styleUrl: "./header.component.css",
 })
-export class HeaderComponent {
+export class HeaderComponent implements OnInit {
 	ExportFormats = ExportFormats;
 	ImportFormats = ImportFormats;
 	isImportMenuOpen = false;
 	isExportMenuOpen = false;
+	enableWideView!: Observable<boolean>;
 
-	constructor(private todoService: TodoService) {}
+	constructor(readonly todoService: TodoService) {}
+
+	ngOnInit(): void {
+		this.enableWideView = this.todoService.enableWideView;
+	}
 
 	import(format: ImportFormats) {
 		this.todoService.import(format);
@@ -38,5 +43,8 @@ export class HeaderComponent {
 
 	onExportMenuClosed() {
 		this.isExportMenuOpen = false;
+	}
+	setWideViewEnabled(isEnabled: boolean) {
+		this.todoService.setWideViewEnabled(isEnabled);
 	}
 }

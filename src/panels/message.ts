@@ -46,13 +46,17 @@ type MessagePayload<T, L> = T extends
 				? { format: ExportFormats }
 				: T extends MessageActionsFromWebview.import
 					? { format: ImportFormats }
-					: T extends MessageActionsToWebview.syncTodoData
-						? TodoSlice | CurrentFileSlice
-						: T extends MessageActionsToWebview.syncEditorFocusAndRecords
-							? EditorFocusAndRecordsSlice
-							: T extends MessageActionsToWebview.reloadWebview
-								? StoreState
-								: never;
+					: T extends MessageActionsFromWebview.setWideViewEnabled
+						? {
+								isEnabled: boolean;
+							}
+						: T extends MessageActionsToWebview.syncTodoData
+							? TodoSlice | CurrentFileSlice
+							: T extends MessageActionsToWebview.syncEditorFocusAndRecords
+								? EditorFocusAndRecordsSlice
+								: T extends MessageActionsToWebview.reloadWebview
+									? StoreState
+									: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -72,7 +76,10 @@ export type Message<
 			}
 		: T extends MessageActionsFromWebview.pinFile
 			? { type: T; scope: TodoScope.currentFile }
-			: T extends MessageActionsFromWebview.export | MessageActionsFromWebview.import
+			: T extends
+						| MessageActionsFromWebview.export
+						| MessageActionsFromWebview.import
+						| MessageActionsFromWebview.setWideViewEnabled
 				? {
 						type: T;
 						payload: MessagePayload<T, L>;
@@ -96,6 +103,7 @@ export const enum MessageActionsFromWebview {
 	pinFile = "pinFile",
 	export = "export",
 	import = "import",
+	setWideViewEnabled = "setWideViewEnabled",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
@@ -208,6 +216,12 @@ export const messagesFromWebview = {
 	import: (format: ImportFormats): Message<MessageActionsFromWebview.import> => ({
 		type: MessageActionsFromWebview.import,
 		payload: { format },
+	}),
+	setWideViewEnabled: (
+		isEnabled: boolean
+	): Message<MessageActionsFromWebview.setWideViewEnabled> => ({
+		type: MessageActionsFromWebview.setWideViewEnabled,
+		payload: { isEnabled },
 	}),
 };
 export const messagesToWebview = {
