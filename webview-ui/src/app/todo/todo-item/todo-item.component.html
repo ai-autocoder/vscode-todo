@@ -87,40 +87,40 @@
 		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
 			<fieldset>
 				<legend>Type</legend>
-				<button
-					mat-menu-item
-					[class.selected]="todo.isNote"
-					(click)="setIsNote($event, true)"
-					aria-label="Select Note"
-				>
-					Note
+				<button mat-menu-item (click)="setIsNote($event, true)" aria-label="Select Note">
+					<div class="menu-check">
+						Note
+						<span *ngIf="todo.isNote" class="icon-container">
+							<app-icon name="check"></app-icon>
+						</span>
+					</div>
 				</button>
-				<button
-					mat-menu-item
-					[class.selected]="!todo.isNote"
-					(click)="setIsNote($event, false)"
-					aria-label="Select Todo"
-				>
-					Todo
+				<button mat-menu-item (click)="setIsNote($event, false)" aria-label="Select Todo">
+					<div class="menu-check">
+						Todo
+						<span *ngIf="!todo.isNote" class="icon-container">
+							<app-icon name="check"></app-icon>
+						</span>
+					</div>
 				</button>
 			</fieldset>
 			<fieldset>
 				<legend>View as</legend>
-				<button
-					mat-menu-item
-					[class.selected]="!todo.isMarkdown"
-					(click)="setIsMarkdown($event, false)"
-					aria-label="View as text"
-				>
-					Text
+				<button mat-menu-item (click)="setIsMarkdown($event, false)" aria-label="View as text">
+					<div class="menu-check">
+						Text
+						<span *ngIf="!todo.isMarkdown" class="icon-container">
+							<app-icon name="check"></app-icon>
+						</span>
+					</div>
 				</button>
-				<button
-					mat-menu-item
-					[class.selected]="todo.isMarkdown"
-					(click)="setIsMarkdown($event, true)"
-					aria-label="View as Markdown"
-				>
-					Markdown
+				<button mat-menu-item (click)="setIsMarkdown($event, true)" aria-label="View as Markdown">
+					<div class="menu-check">
+						Markdown
+						<span *ngIf="todo.isMarkdown" class="icon-container">
+							<app-icon name="check"></app-icon>
+						</span>
+					</div>
 				</button>
 			</fieldset>
 			<mat-divider></mat-divider>
