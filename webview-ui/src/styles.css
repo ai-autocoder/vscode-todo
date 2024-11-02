@@ -178,3 +178,13 @@ vscode-button[appearance="icon"] {
 		display: flex;
 	}
 }
+
+app-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+span.icon-container {
+	display: flex;
+	gap: 0.25em;
+}
