@@ -1,5 +1,11 @@
 # Change Log
 
+## [1.8.0]
+
+- Added 'Wide View' mode with configurable settings and toggle functionality
+- Improved consistency for export, import, and view mode icons
+- Improved action menu and align colors with VSCode menu
+
 ## [1.7.0]
 
 - Improved menu styling and layout
