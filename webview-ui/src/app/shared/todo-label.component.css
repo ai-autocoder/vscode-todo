@@ -1,5 +1,22 @@
-small {
-	font-variant: small-caps;
+.labels-container {
 	display: flex;
 	flex-direction: column;
+	color: var(--vscode-descriptionForeground);
+	line-height: 1.2;
+}
+
+.label {
+	display: flex;
+	align-items: baseline;
+	gap: 4px;
+}
+
+.label-text {
+	min-width: 70px;
+	font-size: 12px;
+}
+
+.date {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
 }

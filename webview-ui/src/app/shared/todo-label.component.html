@@ -1,14 +1,11 @@
-<small>
-	<div *ngIf="todo?.creationDate">
-		<strong>Created:</strong>
-		{{ todo.creationDate | date : "EEE" }}
-		{{ todo.creationDate | date : "mediumDate" }}
-		{{ todo.creationDate | date : "shortTime" }}
+<div class="labels-container">
+	<div class="label" *ngIf="todo?.creationDate">
+		<span class="label-text">CREATED</span>
+		<span class="date">{{ todo.creationDate | date: "EEE, dd MMM yyyy HH:mm" }}</span>
 	</div>
-	<div *ngIf="todo?.completed && todo?.completionDate">
-		<strong>Completed: </strong>
-		{{ todo.completionDate | date : "EEE" }}
-		{{ todo.completionDate | date : "mediumDate" }}
-		{{ todo.completionDate | date : "shortTime" }}
+
+	<div class="label" *ngIf="todo?.completed && todo?.completionDate">
+		<span class="label-text">COMPLETED</span>
+		<span class="date">{{ todo.completionDate | date: "EEE, dd MMM yyyy HH:mm" }}</span>
 	</div>
-</small>
+</div>
