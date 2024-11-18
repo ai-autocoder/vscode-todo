@@ -43,26 +43,15 @@ export class HelloWorldPanel {
 	private _disposables: Disposable[] = [];
 	private _store: EnhancedStore;
 
-	/**
-	 * The HelloWorldPanel class private constructor (called only from the render method).
-	 *
-	 * @param panel A reference to the webview panel
-	 * @param context The ExtensionContext
-	 */
 	private constructor(panel: WebviewPanel, context: ExtensionContext, store: EnhancedStore) {
 		this._panel = panel;
 		this._store = store;
 		const extensionUri = context.extensionUri;
 
-		// Set an event listener to listen for when the panel is disposed (i.e. when the user closes
-		// the panel or when the panel is closed programmatically)
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-
-		// Set the HTML content for the webview panel
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
 
-		// Set an event listener to listen for messages passed from the webview context
-		this._setWebviewMessageListener(this._panel.webview, context);
+		HelloWorldPanel.setupWebviewMessageHandler(this._panel.webview, context, store);
 
 		this.reloadWebview();
 	}
@@ -71,7 +60,6 @@ export class HelloWorldPanel {
 	 * Renders the current webview panel if it exists otherwise a new webview panel
 	 * will be created and displayed.
 	 *
-	 * @param extensionUri The URI of the directory containing the extension.
 	 */
 	public static render(context: ExtensionContext, store: EnhancedStore) {
 		const extensionUri = context.extensionUri;
@@ -137,9 +125,6 @@ export class HelloWorldPanel {
 		this._panel.webview.postMessage(message);
 	}
 
-	/**
-	 * Cleans up and disposes of webview resources when the webview panel is closed.
-	 */
 	public dispose() {
 		HelloWorldPanel.currentPanel = undefined;
 
@@ -193,45 +178,45 @@ export class HelloWorldPanel {
 
 		// Tip: Install the es6-string-html VS Code extension to enable code highlighting below
 		return /*html*/ `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-          <link rel="stylesheet" type="text/css" href="${stylesUri}">
-          <title>Todo</title>
-        </head>
-        <body class="${themeKind}">
-          <app-root></app-root>
-          <script type="module" nonce="${nonce}" src="${polyfillsUri}"></script>
-          <script nonce="${nonce}" src="${scriptsUri}"></script>
-          <script type="module" nonce="${nonce}" src="${mainScriptUri}"></script>
-        </body>
-      </html>
-    `;
+            <!DOCTYPE html>
+            <html lang="en">
+                <head>
+                    <meta charset="UTF-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+                    <link rel="stylesheet" type="text/css" href="${stylesUri}">
+                    <title>Todo</title>
+                </head>
+                <body class="${themeKind}">
+                    <app-root></app-root>
+                    <script type="module" nonce="${nonce}" src="${polyfillsUri}"></script>
+                    <script nonce="${nonce}" src="${scriptsUri}"></script>
+                    <script type="module" nonce="${nonce}" src="${mainScriptUri}"></script>
+                </body>
+            </html>
+        `;
 	}
 
-	/**
-	 * Sets up an event listener to listen for messages passed from the webview and
-	 * executes code based on the message that is received.
-	 *
-	 * @param webview A reference to the extension webview
-	 */
-	private _setWebviewMessageListener(webview: Webview, context: ExtensionContext) {
+	public static setupWebviewMessageHandler(
+		webview: Webview,
+		context: ExtensionContext,
+		store: EnhancedStore
+	) {
 		webview.onDidReceiveMessage(
 			(message: Message<MessageActionsFromWebview, TodoScope>) => {
 				const storeActions =
-					"scope" in message && message.scope ? this.getStoreActions(message.scope) : undefined;
+					"scope" in message && message.scope
+						? HelloWorldPanel.getStoreActions(message.scope)
+						: undefined;
 				switch (message.type) {
 					case MessageActionsFromWebview.addTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.addTodo, TodoScope>;
-						this._store.dispatch(storeActions!.addTodo(payload));
+						store.dispatch(storeActions!.addTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.deleteTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.deleteTodo, TodoScope>;
-						this._store.dispatch(storeActions!.deleteTodo(payload));
+						store.dispatch(storeActions!.deleteTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.undoDelete: {
@@ -241,52 +226,52 @@ export class HelloWorldPanel {
 						if (
 							message.scope === TodoScope.currentFile &&
 							currentFilePath &&
-							this._store.getState().currentFilePath !== currentFilePath
+							store.getState().currentFilePath !== currentFilePath
 						) {
 							const data = context.workspaceState.get<TodoFilesData>("TodoFilesData");
 							const todos = data?.[currentFilePath] ?? [];
 
-							this._store.dispatch(
+							store.dispatch(
 								currentFileActions.loadData({
 									filePath: currentFilePath,
 									data: todos,
 								})
 							);
 						}
-						this._store.dispatch(storeActions!.undoDelete(payload));
+						store.dispatch(storeActions!.undoDelete(payload));
 						break;
 					}
 					case MessageActionsFromWebview.toggleTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleTodo, TodoScope>;
-						this._store.dispatch(storeActions!.toggleTodo(payload));
+						store.dispatch(storeActions!.toggleTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.editTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.editTodo, TodoScope>;
-						this._store.dispatch(storeActions!.editTodo(payload));
+						store.dispatch(storeActions!.editTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.reorderTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.reorderTodo, TodoScope>;
-						this._store.dispatch(storeActions!.reorderTodo(payload));
+						store.dispatch(storeActions!.reorderTodo(payload));
 						break;
 					}
 					case MessageActionsFromWebview.toggleMarkdown: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleMarkdown, TodoScope>;
-						this._store.dispatch(storeActions!.toggleMarkdown(payload));
+						store.dispatch(storeActions!.toggleMarkdown(payload));
 						break;
 					}
 					case MessageActionsFromWebview.toggleTodoNote: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleTodoNote, TodoScope>;
-						this._store.dispatch(storeActions!.toggleTodoNote(payload));
+						store.dispatch(storeActions!.toggleTodoNote(payload));
 						break;
 					}
 					case MessageActionsFromWebview.pinFile: {
-						this._store.dispatch(currentFileActions.pinFile());
+						store.dispatch(currentFileActions.pinFile());
 						break;
 					}
 					case MessageActionsFromWebview.requestData: {
-						const { payload: massagePayload } = message as Message<
+						const { payload: messagePayload } = message as Message<
 							MessageActionsFromWebview.requestData,
 							TodoScope
 						>;
@@ -296,12 +281,12 @@ export class HelloWorldPanel {
 										[filePath: string]: Todo[];
 								  }
 								| undefined;
-							const todos = data?.[massagePayload.filePath] || [];
+							const todos = data?.[messagePayload.filePath] || [];
 							const actionPayload = {
-								filePath: massagePayload.filePath,
+								filePath: messagePayload.filePath,
 								data: todos,
 							};
-							this._store.dispatch(
+							store.dispatch(
 								storeActions!.loadData(actionPayload as Parameters<typeof currentFileActions.loadData>[0])
 							);
 						} else {
@@ -337,11 +322,11 @@ export class HelloWorldPanel {
 				}
 			},
 			undefined,
-			this._disposables
+			[]
 		);
 	}
 
-	private getStoreActions(scope: TodoScope) {
+	private static getStoreActions(scope: TodoScope) {
 		switch (scope) {
 			case TodoScope.user:
 				return userActions;

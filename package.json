@@ -98,6 +98,24 @@
 					"default": false
 				}
 			}
+		},
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "vsc-todo-sidebar",
+					"title": "VS Code Todo",
+					"icon": "$(checklist)"
+				}
+			]
+		},
+		"views": {
+			"vsc-todo-sidebar": [
+				{
+					"type": "webview",
+					"id": "vsc-todo.todoView",
+					"name": "Todo"
+				}
+			]
 		}
 	},
 	"author": {

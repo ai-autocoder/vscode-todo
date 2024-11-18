@@ -8,6 +8,7 @@ import { exportCommand } from "./todo/exporter";
 import { ExportFormats } from "./todo/todoTypes";
 import { importCommand } from "./todo/importer";
 import { ImportFormats } from "./todo/todoTypes";
+import { TodoViewProvider } from "./panels/TodoViewProvider";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,
@@ -110,12 +111,15 @@ export function activate(context: ExtensionContext) {
 		}
 	});
 
+	const provider = new TodoViewProvider(context.extensionUri, store, context);
+
 	context.subscriptions.push(
 		...commands,
 		statusBarItem,
 		onDidChangeActiveTextEditorSubscription,
 		onDidRenameFilesSubscription,
-		onDidDeleteFilesSubscription
+		onDidDeleteFilesSubscription,
+		vscode.window.registerWebviewViewProvider(TodoViewProvider.viewType, provider)
 	);
 }
 
@@ -127,6 +131,7 @@ function handleTodoChange(
 ) {
 	store.dispatch(actionTrackerActions.resetLastSliceName());
 	HelloWorldPanel.currentPanel?.updateWebview(sliceState);
+	TodoViewProvider.currentProvider?.updateWebview(sliceState);
 	updateStatusBarItem(state);
 	persist(sliceState as TodoSlice | CurrentFileSlice, context);
 	if (sliceState.scope === TodoScope.currentFile) {
@@ -163,6 +168,10 @@ function handleEditorFocusAndRecordsChange(
 		"editorFocusAndRecords/setWorkspaceFilesWithRecords"
 	) {
 		HelloWorldPanel.currentPanel?.updateWebview(
+			state.editorFocusAndRecords,
+			Slices.editorFocusAndRecords
+		);
+		TodoViewProvider.currentProvider?.updateWebview(
 			state.editorFocusAndRecords,
 			Slices.editorFocusAndRecords
 		);
