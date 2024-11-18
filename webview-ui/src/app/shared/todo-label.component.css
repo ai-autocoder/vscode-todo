@@ -16,7 +16,8 @@
 	font-size: 12px;
 }
 
-.date {
+.label-date {
 	font-family: var(--vscode-editor-font-family);
 	font-size: 12px;
+	text-wrap: nowrap;
 }

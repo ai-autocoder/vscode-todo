@@ -10,3 +10,9 @@
 .menu-open {
 	background-color: var(--vscode-menu-background);
 }
+
+@media (max-width: 650px) {
+	.header-container {
+		display: none;
+	}
+}

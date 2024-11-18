@@ -1,11 +1,11 @@
 <div class="labels-container">
 	<div class="label" *ngIf="todo?.creationDate">
 		<span class="label-text">CREATED</span>
-		<span class="date">{{ todo.creationDate | date: "EEE, dd MMM yyyy HH:mm" }}</span>
+		<span class="label-date">{{ todo.creationDate | date: "EEE, dd MMM yyyy HH:mm" }}</span>
 	</div>
 
 	<div class="label" *ngIf="todo?.completed && todo?.completionDate">
 		<span class="label-text">COMPLETED</span>
-		<span class="date">{{ todo.completionDate | date: "EEE, dd MMM yyyy HH:mm" }}</span>
+		<span class="label-date">{{ todo.completionDate | date: "EEE, dd MMM yyyy HH:mm" }}</span>
 	</div>
 </div>
