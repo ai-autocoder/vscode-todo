@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.9.0]
+
+- Added view in the Activity Bar
+- Minor UI fixes and improvements
+
 ## [1.8.0]
 
 - Added 'Wide View' mode with configurable settings and toggle functionality
