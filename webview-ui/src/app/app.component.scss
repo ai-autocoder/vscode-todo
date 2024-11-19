@@ -56,6 +56,12 @@ vscode-panels::part(activeIndicator) {
 	width: calc(100% + 2rem);
 }
 
+@media screen and (max-width: 500px) {
+	vscode-panels::part(activeIndicator) {
+		opacity: 0;
+	}
+}
+
 new-todo {
 	display: flex;
 	width: 100%;
