@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.9.1]
+
+- UI optimizations for small viewports
+
 ## [1.9.0]
 
 - Added view in the Activity Bar
