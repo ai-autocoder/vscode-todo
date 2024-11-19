@@ -13,6 +13,7 @@
 
 @media (max-width: 650px) {
 	.header-container {
-		display: none;
+		position: relative;
+		padding: 0;
 	}
 }
