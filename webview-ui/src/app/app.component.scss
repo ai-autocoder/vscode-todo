@@ -30,6 +30,12 @@ vscode-panels::part(tabpanel) {
 	}
 }
 
+@media screen and (max-width: 500px) {
+	.button-pin {
+		margin-left: auto;
+	}
+}
+
 vscode-panel-tab:hover {
 	.button-pin {
 		opacity: 1;
