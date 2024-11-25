@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.9.2]
+
+- Fix inverted legends for import/export menus
+- Panel tabs optimizations for small viewports
+
 ## [1.9.1]
 
 - UI optimizations for small viewports
