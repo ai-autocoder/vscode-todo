@@ -26,6 +26,7 @@ import { getUri } from "../utilities/getUri";
 import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
+import { TodoViewProvider } from "./TodoViewProvider";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -52,8 +53,6 @@ export class HelloWorldPanel {
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
 
 		HelloWorldPanel.setupWebviewMessageHandler(this._panel.webview, context, store);
-
-		this.reloadWebview();
 	}
 
 	/**
@@ -203,12 +202,17 @@ export class HelloWorldPanel {
 		store: EnhancedStore
 	) {
 		webview.onDidReceiveMessage(
-			(message: Message<MessageActionsFromWebview, TodoScope>) => {
+			(message: Message<MessageActionsFromWebview, TodoScope> | { type: "webview-ready" }) => {
 				const storeActions =
 					"scope" in message && message.scope
 						? HelloWorldPanel.getStoreActions(message.scope)
 						: undefined;
 				switch (message.type) {
+					case "webview-ready": {
+						HelloWorldPanel.currentPanel?.reloadWebview();
+						TodoViewProvider.currentProvider?.reloadWebview();
+						break;
+					}
 					case MessageActionsFromWebview.addTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.addTodo, TodoScope>;
 						store.dispatch(storeActions!.addTodo(payload));

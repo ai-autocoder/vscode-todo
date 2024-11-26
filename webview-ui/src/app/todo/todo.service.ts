@@ -59,6 +59,10 @@ export class TodoService {
 
 	constructor() {
 		window.addEventListener("message", this.handleMessage.bind(this));
+
+		setTimeout(() => {
+			vscode.postMessage({ type: "webview-ready" });
+		}, 0);
 	}
 
 	private handleMessage(event: MessageEvent) {

@@ -44,10 +44,9 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 
 		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 		HelloWorldPanel.setupWebviewMessageHandler(webviewView.webview, this._context, this._store);
-		this.reloadWebview();
 	}
 
-	private reloadWebview() {
+	public reloadWebview() {
 		if (this._view) {
 			const currentState = this._store.getState();
 			const config = getConfig();
