@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.9.3]
+
+- Fix webview panel occasionally displaying no data on initial load, particularly affecting slower machines
+
 ## [1.9.2]
 
 - Fix inverted legends for import/export menus
