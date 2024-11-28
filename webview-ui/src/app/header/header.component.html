@@ -73,4 +73,14 @@
 			</button>
 		</fieldset>
 	</mat-menu>
+
+	<vscode-button
+		appearance="icon"
+		[aria-label]="'Delete all items in this tab'"
+		[title]="'Delete all items in this tab'"
+		(click)="deleteAll()"
+		[disabled]="isListEmpty"
+	>
+		<app-icon name="trash"></app-icon>
+	</vscode-button>
 </div>

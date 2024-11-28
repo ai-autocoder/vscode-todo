@@ -209,4 +209,8 @@ export class TodoService {
 		this._enableWideViewSource.next(isEnabled);
 		vscode.postMessage(messagesFromWebview.setWideViewEnabled(isEnabled));
 	}
+
+	deleteAll(scope: TodoScope) {
+		vscode.postMessage(messagesFromWebview.deleteAll(scope));
+	}
 }

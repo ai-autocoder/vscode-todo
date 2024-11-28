@@ -136,6 +136,12 @@ const todoReducers = {
 		state.numberOfTodos = getNumberOfTodos(state);
 		state.numberOfNotes = getNumberOfNotes(state);
 	},
+	deleteAll: (state: TodoSlice) => {
+		state.todos = [];
+		state.lastActionType = "deleteAll";
+		state.numberOfTodos = 0;
+		state.numberOfNotes = 0;
+	},
 };
 
 const userSlice = createSlice({

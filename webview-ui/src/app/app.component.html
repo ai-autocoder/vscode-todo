@@ -4,7 +4,7 @@
 		'wide-view-animation': enableWideViewAnimation | async,
 	}"
 >
-	<app-header></app-header>
+	<app-header [currentScope]="scope"></app-header>
 	<vscode-panels activeid="tab-2">
 		<vscode-panel-tab (click)="selectTab(TodoScope.user)" id="tab-1" [title]="'Global User Data'">
 			User

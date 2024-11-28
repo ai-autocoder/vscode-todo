@@ -1,6 +1,6 @@
-import { Component, OnInit } from "@angular/core";
+import { Component, Input, OnInit } from "@angular/core";
 import { TodoService } from "../todo/todo.service";
-import { ExportFormats, ImportFormats } from "../../../../src/todo/todoTypes";
+import { ExportFormats, ImportFormats, TodoScope } from "../../../../src/todo/todoTypes";
 import { Observable } from "rxjs";
 
 @Component({
@@ -14,6 +14,7 @@ export class HeaderComponent implements OnInit {
 	isImportMenuOpen = false;
 	isExportMenuOpen = false;
 	enableWideView!: Observable<boolean>;
+	@Input() currentScope!: TodoScope;
 
 	constructor(readonly todoService: TodoService) {}
 
@@ -44,7 +45,25 @@ export class HeaderComponent implements OnInit {
 	onExportMenuClosed() {
 		this.isExportMenuOpen = false;
 	}
+
 	setWideViewEnabled(isEnabled: boolean) {
 		this.todoService.setWideViewEnabled(isEnabled);
+	}
+
+	deleteAll() {
+		this.todoService.deleteAll(this.currentScope);
+	}
+
+	get isListEmpty(): boolean {
+		switch (this.currentScope) {
+			case TodoScope.user:
+				return this.todoService.todoCount.user === 0;
+			case TodoScope.workspace:
+				return this.todoService.todoCount.workspace === 0;
+			case TodoScope.currentFile:
+				return this.todoService.todoCount.currentFile === 0;
+			default:
+				return true;
+		}
 	}
 }
