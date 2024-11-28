@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.10.0]
+
+- Added Delete All button to clear entire list per tab
+
 ## [1.9.3]
 
 - Fix webview panel occasionally displaying no data on initial load, particularly affecting slower machines
