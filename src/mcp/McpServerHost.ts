@@ -321,6 +321,10 @@ export default class McpServerHost implements vscode.Disposable {
 		const mcpServer = this.createServerInstance(sdk);
 		const transport = new sdk.streamableHttpServerTransport({
 			sessionIdGenerator: () => randomUUID(),
+			// The transport only assigns sessionId while handling the initialize
+			// request, so onsessioninitialized is the single source of truth for
+			// registering the session. Registering again after connect() would be
+			// a no-op (sessionId is still undefined there).
 			onsessioninitialized: (sessionId) => {
 				this.sessions.set(sessionId, { transport, server: mcpServer });
 			},
@@ -337,9 +341,6 @@ export default class McpServerHost implements vscode.Disposable {
 		};
 
 		await mcpServer.connect(transport);
-		if (transport.sessionId) {
-			this.sessions.set(transport.sessionId, { transport, server: mcpServer });
-		}
 		await transport.handleRequest(req, res, body);
 	}
 
