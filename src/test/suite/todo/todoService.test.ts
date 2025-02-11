@@ -311,6 +311,23 @@ suite("TodoService CRUD", () => {
 		assert.ok(readFileTodos(context, otherFilePath)[0].completionDate);
 	});
 
+	test("set completed: idempotent for a non-active file — completionDate is preserved", async () => {
+		seedFileTodos(context, otherFilePath, [makeTodo(8, "file task")]);
+		await service.setCompleted(TodoScope.currentFile, 8, true, { filePath: otherFilePath });
+		const firstDate = readFileTodos(context, otherFilePath)[0].completionDate;
+		assert.ok(firstDate, "completionDate should be set on first completion");
+
+		const again = await service.setCompleted(TodoScope.currentFile, 8, true, {
+			filePath: otherFilePath,
+		});
+		assert.strictEqual(again.todo.completed, true);
+		assert.strictEqual(
+			again.todo.completionDate,
+			firstDate,
+			"re-completing must not rewrite the completion date"
+		);
+	});
+
 	// --- Toggle note / markdown ---------------------------------------------
 
 	test("set note: flips a task into a note and is idempotent", async () => {

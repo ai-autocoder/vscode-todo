@@ -248,6 +248,10 @@ export default class TodoService {
 			dispatch: (actions, current) =>
 				current.completed === completed ? undefined : actions.toggleTodo({ id }),
 			mutateFile: (todo) => {
+				// Idempotent: leave an already-matching item (and its completionDate) untouched.
+				if (todo.completed === completed) {
+					return;
+				}
 				todo.completed = completed;
 				todo.completionDate = completed ? new Date().toISOString() : undefined;
 			},
