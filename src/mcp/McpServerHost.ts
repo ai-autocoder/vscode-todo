@@ -321,6 +321,10 @@ export default class McpServerHost implements vscode.Disposable {
 		const mcpServer = this.createServerInstance(sdk);
 		const transport = new sdk.streamableHttpServerTransport({
 			sessionIdGenerator: () => randomUUID(),
+			// Reply with a single JSON body rather than opening an SSE stream. This
+			// local single-user server has no server-initiated notifications, so plain
+			// JSON responses are lighter and simpler for tool-calling clients.
+			enableJsonResponse: true,
 			// The transport only assigns sessionId while handling the initialize
 			// request, so onsessioninitialized is the single source of truth for
 			// registering the session. Registering again after connect() would be
