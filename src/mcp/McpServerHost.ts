@@ -1,5 +1,5 @@
 import * as http from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import * as vscode from "vscode";
 import * as z from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -1034,7 +1034,20 @@ export default class McpServerHost implements vscode.Disposable {
 		if (!match) {
 			return false;
 		}
-		return match[1].trim() === config.token.trim();
+		return this.tokensEqual(match[1].trim(), config.token.trim());
+	}
+
+	// Constant-time comparison to avoid leaking the token via response timing.
+	private tokensEqual(provided: string, expected: string): boolean {
+		const providedBuf = Buffer.from(provided, "utf8");
+		const expectedBuf = Buffer.from(expected, "utf8");
+		// timingSafeEqual requires equal-length buffers; differing lengths mean a
+		// mismatch, but still run a same-length compare so timing does not reveal it.
+		if (providedBuf.length !== expectedBuf.length) {
+			timingSafeEqual(expectedBuf, expectedBuf);
+			return false;
+		}
+		return timingSafeEqual(providedBuf, expectedBuf);
 	}
 
 	private getSessionId(req: http.IncomingMessage, url?: URL): string | undefined {
