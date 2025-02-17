@@ -961,12 +961,23 @@ export default class McpServerHost implements vscode.Disposable {
 		try {
 			return await handler();
 		} catch (error) {
+			// Full detail (including any stack) goes to the log; the client only sees
+			// the curated Error.message, or a generic message for non-Error throws so
+			// internal objects never leak across the MCP boundary.
+			McpLogChannel.log(`[MCP] Tool error: ${String(error)}`);
+			if (error instanceof Error && error.stack) {
+				McpLogChannel.log(error.stack);
+			}
+			const message =
+				error instanceof Error && error.message.trim()
+					? error.message
+					: "The tool call failed due to an unexpected error.";
 			return {
 				isError: true,
 				content: [
 					{
 						type: "text",
-						text: String(error),
+						text: message,
 					},
 				],
 			};
