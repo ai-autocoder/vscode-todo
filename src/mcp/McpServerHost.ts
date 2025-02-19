@@ -36,6 +36,10 @@ type SessionEntry = {
 };
 
 export default class McpServerHost implements vscode.Disposable {
+	// Cap concurrent sessions so a client that initializes repeatedly without a
+	// clean DELETE cannot grow the map unbounded. When exceeded, the
+	// least-recently-used session is evicted and its server closed.
+	private static readonly MAX_SESSIONS = 50;
 	private readonly host = "127.0.0.1";
 	private server: http.Server | null = null;
 	private sessions = new Map<string, SessionEntry>();
@@ -263,9 +267,12 @@ export default class McpServerHost implements vscode.Disposable {
 					res.end("Invalid JSON body");
 					return;
 				}
-				if (sessionId && this.sessions.has(sessionId)) {
-					await this.sessions.get(sessionId)!.transport.handleRequest(req, res, body);
-					return;
+				if (sessionId) {
+					const entry = this.touchSession(sessionId);
+					if (entry) {
+						await entry.transport.handleRequest(req, res, body);
+						return;
+					}
 				}
 
 				if (!sessionId && (sdk.isInitializeRequest(body) || this.isInitializeLikeRequest(body))) {
@@ -282,22 +289,24 @@ export default class McpServerHost implements vscode.Disposable {
 			}
 
 			if (req.method === "GET") {
-				if (!sessionId || !this.sessions.has(sessionId)) {
+				const entry = sessionId ? this.touchSession(sessionId) : undefined;
+				if (!entry) {
 					res.statusCode = 400;
 					res.end("Missing or invalid session ID");
 					return;
 				}
-				await this.sessions.get(sessionId)!.transport.handleRequest(req, res);
+				await entry.transport.handleRequest(req, res);
 				return;
 			}
 
 			if (req.method === "DELETE") {
-				if (!sessionId || !this.sessions.has(sessionId)) {
+				const entry = sessionId ? this.touchSession(sessionId) : undefined;
+				if (!entry) {
 					res.statusCode = 400;
 					res.end("Missing or invalid session ID");
 					return;
 				}
-				await this.sessions.get(sessionId)!.transport.handleRequest(req, res);
+				await entry.transport.handleRequest(req, res);
 				return;
 			}
 
@@ -330,7 +339,7 @@ export default class McpServerHost implements vscode.Disposable {
 			// registering the session. Registering again after connect() would be
 			// a no-op (sessionId is still undefined there).
 			onsessioninitialized: (sessionId) => {
-				this.sessions.set(sessionId, { transport, server: mcpServer });
+				this.registerSession(sessionId, { transport, server: mcpServer });
 			},
 		});
 
@@ -346,6 +355,41 @@ export default class McpServerHost implements vscode.Disposable {
 
 		await mcpServer.connect(transport);
 		await transport.handleRequest(req, res, body);
+	}
+
+	// Register a session, evicting the least-recently-used one first when the cap
+	// is reached. A Map iterates in insertion order, so the first key is the LRU
+	// entry (touchSession re-inserts on use to keep that ordering accurate).
+	private registerSession(sessionId: string, entry: SessionEntry): void {
+		while (this.sessions.size >= McpServerHost.MAX_SESSIONS) {
+			const oldest = this.sessions.keys().next();
+			if (oldest.done) {
+				break;
+			}
+			this.evictSession(oldest.value);
+		}
+		this.sessions.set(sessionId, entry);
+	}
+
+	private touchSession(sessionId: string): SessionEntry | undefined {
+		const entry = this.sessions.get(sessionId);
+		if (entry) {
+			this.sessions.delete(sessionId);
+			this.sessions.set(sessionId, entry);
+		}
+		return entry;
+	}
+
+	private evictSession(sessionId: string): void {
+		const entry = this.sessions.get(sessionId);
+		this.sessions.delete(sessionId);
+		if (!entry) {
+			return;
+		}
+		McpLogChannel.log(`[MCP] Evicting idle session ${sessionId} (max ${McpServerHost.MAX_SESSIONS}).`);
+		void entry.server.close().catch((error) => {
+			McpLogChannel.log(`[MCP] Error closing evicted session: ${String(error)}`);
+		});
 	}
 
 	private createServerInstance(sdk: McpSdk): McpServer {
