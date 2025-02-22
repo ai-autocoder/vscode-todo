@@ -40,6 +40,10 @@ export default class McpServerHost implements vscode.Disposable {
 	// clean DELETE cannot grow the map unbounded. When exceeded, the
 	// least-recently-used session is evicted and its server closed.
 	private static readonly MAX_SESSIONS = 50;
+	// Upper bound on the serialized text block of a tool/resource response. Set
+	// very high so realistic payloads (including long Markdown notes) pass
+	// untouched; it only guards against a pathological scope flooding the client.
+	private static readonly CHARACTER_LIMIT = 2_000_000;
 	private readonly host = "127.0.0.1";
 	private server: http.Server | null = null;
 	private sessions = new Map<string, SessionEntry>();
@@ -970,18 +974,60 @@ export default class McpServerHost implements vscode.Disposable {
 	}
 
 	private toResourceResult(uri: string, data: unknown) {
+		const serialized = JSON.stringify(data, null, 2);
+		// Resources have no structured fallback, so cap the text and append a notice
+		// (as valid JSON) rather than streaming an unbounded blob to the client.
+		const text =
+			serialized.length > McpServerHost.CHARACTER_LIMIT
+				? JSON.stringify(
+						{
+							truncated: true,
+							character_limit: McpServerHost.CHARACTER_LIMIT,
+							original_length: serialized.length,
+							message:
+								"Resource payload exceeded the character limit and was omitted. Use the " +
+								"todo_list_items tool with limit/offset to page through this scope instead.",
+						},
+						null,
+						2
+					)
+				: serialized;
 		return {
 			contents: [
 				{
 					uri,
 					mimeType: "application/json",
-					text: JSON.stringify(data, null, 2),
+					text,
 				},
 			],
 		};
 	}
 
 	private toolResult(data: unknown) {
+		const serialized = JSON.stringify(data ?? null, null, 2);
+		const isStructured = Boolean(data) && typeof data === "object" && !Array.isArray(data);
+		// The text block is the human/unstructured fallback; structuredContent carries
+		// the schema-typed payload. When the text would exceed the limit, replace just
+		// the text with a pointer to structuredContent so the response stays bounded
+		// without breaking the declared outputSchema.
+		const text =
+			serialized.length > McpServerHost.CHARACTER_LIMIT
+				? JSON.stringify(
+						{
+							truncated: true,
+							character_limit: McpServerHost.CHARACTER_LIMIT,
+							original_length: serialized.length,
+							message: isStructured
+								? "Result text omitted because it exceeded the character limit; read the " +
+									"full payload from structuredContent, or use limit/offset to request a " +
+									"smaller page."
+								: "Result omitted because it exceeded the character limit. Use limit/offset " +
+									"to request a smaller page.",
+						},
+						null,
+						2
+					)
+				: serialized;
 		const result: {
 			content: Array<{ type: "text"; text: string }>;
 			structuredContent?: Record<string, unknown>;
@@ -989,13 +1035,13 @@ export default class McpServerHost implements vscode.Disposable {
 			content: [
 				{
 					type: "text",
-					text: JSON.stringify(data ?? null, null, 2),
+					text,
 				},
 			],
 		};
 		// Mirror the payload as structuredContent so clients with the declared
 		// outputSchema can parse results without re-parsing the text block.
-		if (data && typeof data === "object" && !Array.isArray(data)) {
+		if (isStructured) {
 			result.structuredContent = data as Record<string, unknown>;
 		}
 		return result;
