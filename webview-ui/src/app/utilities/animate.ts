@@ -18,7 +18,8 @@ interface KeyframeWithSize extends Keyframe {
 }
 
 @Directive({
-	selector: "[auto-animate]",
+    selector: "[auto-animate]",
+    standalone: false
 })
 export class AutoAnimateDirective implements AfterViewInit, OnChanges {
 	@Input() autoAnimateOptions: Partial<AutoAnimateOptions> | AutoAnimationPlugin = {};

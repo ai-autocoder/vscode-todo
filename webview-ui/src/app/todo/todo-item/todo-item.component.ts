@@ -11,9 +11,10 @@ import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
 @Component({
-	selector: "todo-item",
-	templateUrl: "./todo-item.component.html",
-	styleUrls: ["./todo-item.component.scss"],
+    selector: "todo-item",
+    templateUrl: "./todo-item.component.html",
+    styleUrls: ["./todo-item.component.scss"],
+    standalone: false
 })
 export class TodoItemComponent implements OnInit {
 	@Input() todo!: Todo;

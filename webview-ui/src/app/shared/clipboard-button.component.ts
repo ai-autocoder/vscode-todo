@@ -5,9 +5,8 @@ import { distinctUntilChanged, map, shareReplay, startWith, switchMap } from "rx
 import { IconComponent } from "./icon/icon.component";
 
 @Component({
-	selector: "app-clipboard-button",
-	standalone: true,
-	template: `
+    selector: "app-clipboard-button",
+    template: `
 		<vscode-button
 			appearance="icon"
 			class="icon-button markdown-clipboard-button"
@@ -20,16 +19,16 @@ import { IconComponent } from "./icon/icon.component";
 			<ng-template #icon><app-icon [name]="'copy'"></app-icon></ng-template>
 		</vscode-button>
 	`,
-	styles: [
-		`
+    styles: [
+        `
 			vscode-button[appearance="icon"]:not(:hover) {
 				background: rgba(39, 40, 34, 0.5);
 			}
 		`,
-	],
-	changeDetection: ChangeDetectionStrategy.OnPush,
-	imports: [AsyncPipe, NgIf, IconComponent],
-	schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    ],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [AsyncPipe, NgIf, IconComponent],
+    schemas: [CUSTOM_ELEMENTS_SCHEMA]
 })
 export class ClipboardButtonComponent {
 	private _buttonClick$ = new Subject<void>();

@@ -10,8 +10,8 @@ import {
 } from "@angular/core";
 
 @Component({
-	selector: "autosize-text-area",
-	template: `
+    selector: "autosize-text-area",
+    template: `
 		<textarea
 			#textarea
 			cdkTextareaAutosize
@@ -20,8 +20,8 @@ import {
 			[value]="text"
 		></textarea>
 	`,
-	styles: [
-		`
+    styles: [
+        `
 			textarea {
 				box-sizing: content-box;
 				overflow: hidden;
@@ -47,25 +47,26 @@ import {
 				outline: none;
 			}
 		`,
-		`
+        `
 			textarea::placeholder {
 				color: var(--input-placeholder-foreground);
 			}
 		`,
-		`
+        `
 			textarea:hover:enabled {
 				background: var(--input-background);
 				border-color: var(--dropdown-border);
 			}
 		`,
-		`
+        `
 			textarea:active:enabled,
 			textarea:focus:enabled {
 				border-color: var(--focus-border);
 			}
 		`,
-	],
-	changeDetection: ChangeDetectionStrategy.OnPush,
+    ],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    standalone: false
 })
 export class AutosizeTextArea implements AfterViewInit {
 	text: string = "";

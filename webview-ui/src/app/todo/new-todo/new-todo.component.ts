@@ -3,9 +3,10 @@ import { TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
 @Component({
-	selector: "new-todo",
-	templateUrl: "./new-todo.component.html",
-	styleUrls: ["./new-todo.component.css"],
+    selector: "new-todo",
+    templateUrl: "./new-todo.component.html",
+    styleUrls: ["./new-todo.component.css"],
+    standalone: false
 })
 export class NewTodoComponent implements OnChanges {
 	newTodoText: string = "";

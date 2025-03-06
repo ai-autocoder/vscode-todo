@@ -3,10 +3,11 @@ import { TodoService } from "../todo.service";
 import { Observable } from "rxjs";
 
 @Component({
-	selector: "file-list",
-	templateUrl: "./file-list.component.html",
-	styleUrls: ["./file-list.component.scss"],
-	changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: "file-list",
+    templateUrl: "./file-list.component.html",
+    styleUrls: ["./file-list.component.scss"],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    standalone: false
 })
 export class FileList {
 	workspaceFilesWithRecords!: Observable<{ filePath: string; todoNumber: number }[]>;

@@ -3,8 +3,9 @@ import { Observable } from "rxjs";
 import { map } from "rxjs/operators";
 
 @Pipe({
-	name: "fileName",
-	pure: false, // Set pure to false to handle observables
+    name: "fileName",
+    pure: false,
+    standalone: false
 })
 export class FileNamePipe implements PipeTransform {
 	transform(value: Observable<string> | string | null): Observable<string> | string {

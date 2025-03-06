@@ -14,24 +14,22 @@ import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
 @Component({
-	selector: "todo-list",
-	templateUrl: "./todo-list.component.html",
-	styleUrls: ["./todo-list.component.scss"],
-	changeDetection: ChangeDetectionStrategy.OnPush,
-	animations: [
-		trigger("leaveAnimation", [
-			transition(":leave", [
-				animate(
-					300,
-					style({
-						transform: "scale(.5)",
-						opacity: 0,
-						easing: "ease-out",
-					})
-				),
-			]),
-		]),
-	],
+    selector: "todo-list",
+    templateUrl: "./todo-list.component.html",
+    styleUrls: ["./todo-list.component.scss"],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    animations: [
+        trigger("leaveAnimation", [
+            transition(":leave", [
+                animate(300, style({
+                    transform: "scale(.5)",
+                    opacity: 0,
+                    easing: "ease-out",
+                })),
+            ]),
+        ]),
+    ],
+    standalone: false
 })
 export class TodoList implements OnInit, AfterViewInit {
 	@Input()
