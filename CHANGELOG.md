@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.11.0]
+
+- Updated Angular to version 19
+- Updated dependencies
+
 ## [1.10.0]
 
 - Added Delete All button to clear entire list per tab
