@@ -1,27 +1,28 @@
 <div
-	cdkDropList
-	(cdkDropListDropped)="onDrop($event)"
-	[cdkDropListSortPredicate]="sortPredicate"
-	[cdkDropListAutoScrollStep]="8"
-	auto-animate
-	[autoAnimateOptions]="{ duration: 300 }"
-	[autoAnimateEnabled]="isAutoAnimateEnabled"
->
-	<div
-		*ngFor="let todo of todos; trackBy: trackById"
-		[@leaveAnimation]
-		[@.disabled]="!isLeaveAnimationEnabled"
-		#dragItem
-		cdkDrag
-		[cdkDragData]="todo"
-		(cdkDragStarted)="dragStarted()"
-	>
-		<todo-item
-			[todo]="todo"
-			[scope]="scope"
-			(delete)="handleDelete($event)"
-			[ngClass]="{ note: todo.isNote }"
-		>
-		</todo-item>
-	</div>
+  cdkDropList
+  (cdkDropListDropped)="onDrop($event)"
+  [cdkDropListSortPredicate]="sortPredicate"
+  [cdkDropListAutoScrollStep]="8"
+  auto-animate
+  [autoAnimateOptions]="{ duration: 300 }"
+  [autoAnimateEnabled]="isAutoAnimateEnabled"
+  >
+  @for (todo of todos; track trackById($index, todo)) {
+    <div
+      [@leaveAnimation]
+      [@.disabled]="!isLeaveAnimationEnabled"
+      #dragItem
+      cdkDrag
+      [cdkDragData]="todo"
+      (cdkDragStarted)="dragStarted()"
+      >
+      <todo-item
+        [todo]="todo"
+        [scope]="scope"
+        (delete)="handleDelete($event)"
+        [ngClass]="{ note: todo.isNote }"
+        >
+      </todo-item>
+    </div>
+  }
 </div>

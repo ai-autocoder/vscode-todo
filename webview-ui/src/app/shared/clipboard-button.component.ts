@@ -1,4 +1,4 @@
-import { AsyncPipe, NgIf } from "@angular/common";
+import { AsyncPipe } from "@angular/common";
 import { ChangeDetectionStrategy, Component, CUSTOM_ELEMENTS_SCHEMA } from "@angular/core";
 import { merge, of, Subject, timer } from "rxjs";
 import { distinctUntilChanged, map, shareReplay, startWith, switchMap } from "rxjs/operators";
@@ -8,17 +8,20 @@ import { IconComponent } from "./icon/icon.component";
     selector: "app-clipboard-button",
     template: `
 		<vscode-button
-			appearance="icon"
-			class="icon-button markdown-clipboard-button"
-			[class.copied]="copied$ | async"
-			aria-label="Copy to clipboard"
-			title="Copy"
-			(click)="onCopyToClipboardClick()"
-		>
-			<ng-container *ngIf="copied$ | async; else icon">{{ copiedText$ | async }}</ng-container>
-			<ng-template #icon><app-icon [name]="'copy'"></app-icon></ng-template>
+		  appearance="icon"
+		  class="icon-button markdown-clipboard-button"
+		  [class.copied]="copied$ | async"
+		  aria-label="Copy to clipboard"
+		  title="Copy"
+		  (click)="onCopyToClipboardClick()"
+		  >
+		  @if (copied$ | async) {
+		    {{ copiedText$ | async }}
+		  } @else {
+		    <app-icon [name]="'copy'"></app-icon>
+		  }
 		</vscode-button>
-	`,
+		`,
     styles: [
         `
 			vscode-button[appearance="icon"]:not(:hover) {
@@ -27,7 +30,7 @@ import { IconComponent } from "./icon/icon.component";
 		`,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AsyncPipe, NgIf, IconComponent],
+    imports: [AsyncPipe, IconComponent],
     schemas: [CUSTOM_ELEMENTS_SCHEMA]
 })
 export class ClipboardButtonComponent {

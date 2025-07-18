@@ -1,15 +1,16 @@
 <div class="file-list-container">
-	<div
-		*ngFor="let file of workspaceFilesWithRecords | async"
-		(click)="setCurrentFile(file.filePath)"
-		class="file-list-item"
-		[ngClass]="file.filePath === (currentFilePath | async) ? 'active' : ''"
-		title="{{ file.filePath }}"
-		aria-label="Show records for this file"
-	>
-		<div class="file-name">{{ file.filePath | fileName }}</div>
-		<vscode-badge [ngStyle]="{ display: file.todoNumber ? 'inline-block' : 'none' }">{{
-			file.todoNumber
-		}}</vscode-badge>
-	</div>
+  @for (file of workspaceFilesWithRecords | async; track file) {
+    <div
+      (click)="setCurrentFile(file.filePath)"
+      class="file-list-item"
+      [ngClass]="file.filePath === (currentFilePath | async) ? 'active' : ''"
+      title="{{ file.filePath }}"
+      aria-label="Show records for this file"
+      >
+      <div class="file-name">{{ file.filePath | fileName }}</div>
+      <vscode-badge [ngStyle]="{ display: file.todoNumber ? 'inline-block' : 'none' }">{{
+        file.todoNumber
+      }}</vscode-badge>
+    </div>
+  }
 </div>

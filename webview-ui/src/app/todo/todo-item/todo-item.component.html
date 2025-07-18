@@ -1,132 +1,148 @@
 <div
-	class="todo-container"
+  class="todo-container"
 	[ngClass]="{
 		'dragging': dragging,
 		'note': todo.isNote,
 		'edit-mode': isEditable,
 		'menu-open': isActionMenuOpen,
 	}"
->
-	<!-- Button dragger -->
-	<div class="icon-button-container drag-handle-container">
-		<vscode-button
-			appearance="icon"
-			class="icon-button drag-handle"
-			cdkDragHandle
-			aria-label="Drag to reorder todo item"
-			title="Drag to reorder"
-		>
-			<span>
-				<app-icon name="drag"></app-icon>
-			</span>
-		</vscode-button>
-	</div>
-	<div class="checkbox" *ngIf="!todo.isNote">
-		<vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
-	</div>
-	<div class="content">
-		<autosize-text-area
-			*ngIf="isEditable"
-			id="text-area-{{ todo.id }}"
-			class="todo-text"
-			[(value)]="todo.text"
-			[autofocus]="true"
-		>
-		</autosize-text-area>
-		<!-- prettier-ignore -->
-		<div
-			(click)="edit()"
-			*ngIf="!isEditable && !todo.isMarkdown"
-			class="todo-text"
-		[class.complete]="todo.completed && !todo.isNote"
-		>{{ todo.text }}</div>
-		<div *ngIf="!isEditable && todo.isMarkdown" class="markdown-container" (click)="edit($event)">
-			<markdown
-				clipboard
-				class="todo-text"
-				[lineNumbers]="enableLineNumbers"
-				[class.complete]="todo.completed && !todo.isNote"
-				[data]="todo.text"
-			></markdown>
-		</div>
-		<div class="footer" *ngIf="isEditable">
-			<div class="labels">
-				<todo-label [todo]="todo"></todo-label>
-			</div>
-			<div class="buttons">
-				<vscode-button (click)="saveEdit()" [disabled]="!todo.text.trim().length" aria-label="Save"
-					>Save</vscode-button
-				>
-				<vscode-button
-					appearance="secondary"
-					(click)="cancelEdit()"
-					aria-label="Cancel"
-					id="cancel-button"
-					>Cancel</vscode-button
-				>
-			</div>
-		</div>
-	</div>
-	<div class="icon-button-container">
-		<vscode-button
-			appearance="icon"
-			class="icon-button"
-			[matMenuTriggerFor]="actionMenu"
-			(menuOpened)="onActionMenuOpened()"
-			(menuClosed)="onActionMenuClosed()"
-			[ngClass]="{ 'menu-open': isActionMenuOpen }"
-			aria-label="Open menu"
-			title="Menu"
-		>
-			<span>
-				<app-icon name="menu"></app-icon>
-			</span>
-		</vscode-button>
+  >
+  <!-- Button dragger -->
+  <div class="icon-button-container drag-handle-container">
+    <vscode-button
+      appearance="icon"
+      class="icon-button drag-handle"
+      cdkDragHandle
+      aria-label="Drag to reorder todo item"
+      title="Drag to reorder"
+      >
+      <span>
+        <app-icon name="drag"></app-icon>
+      </span>
+    </vscode-button>
+  </div>
+  @if (!todo.isNote) {
+    <div class="checkbox">
+      <vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
+    </div>
+  }
+  <div class="content">
+    @if (isEditable) {
+      <autosize-text-area
+        id="text-area-{{ todo.id }}"
+        class="todo-text"
+        [(value)]="todo.text"
+        [autofocus]="true"
+        >
+      </autosize-text-area>
+    }
+    <!-- prettier-ignore -->
+    @if (!isEditable && !todo.isMarkdown) {
+      <div
+        (click)="edit()"
+        class="todo-text"
+        [class.complete]="todo.completed && !todo.isNote"
+      >{{ todo.text }}</div>
+    }
+    @if (!isEditable && todo.isMarkdown) {
+      <div class="markdown-container" (click)="edit($event)">
+        <markdown
+          clipboard
+          class="todo-text"
+          [lineNumbers]="enableLineNumbers"
+          [class.complete]="todo.completed && !todo.isNote"
+          [data]="todo.text"
+        ></markdown>
+      </div>
+    }
+    @if (isEditable) {
+      <div class="footer">
+        <div class="labels">
+          <todo-label [todo]="todo"></todo-label>
+        </div>
+        <div class="buttons">
+          <vscode-button (click)="saveEdit()" [disabled]="!todo.text.trim().length" aria-label="Save"
+            >Save</vscode-button
+            >
+            <vscode-button
+              appearance="secondary"
+              (click)="cancelEdit()"
+              aria-label="Cancel"
+              id="cancel-button"
+              >Cancel</vscode-button
+              >
+            </div>
+          </div>
+        }
+      </div>
+      <div class="icon-button-container">
+        <vscode-button
+          appearance="icon"
+          class="icon-button"
+          [matMenuTriggerFor]="actionMenu"
+          (menuOpened)="onActionMenuOpened()"
+          (menuClosed)="onActionMenuClosed()"
+          [ngClass]="{ 'menu-open': isActionMenuOpen }"
+          aria-label="Open menu"
+          title="Menu"
+          >
+          <span>
+            <app-icon name="menu"></app-icon>
+          </span>
+        </vscode-button>
 
-		<!-- Action menu -->
-		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
-			<fieldset>
-				<legend>Type</legend>
-				<button mat-menu-item (click)="setIsNote($event, true)" aria-label="Select Note">
-					<div class="menu-check">
-						Note
-						<span *ngIf="todo.isNote" class="icon-container">
-							<app-icon name="check"></app-icon>
-						</span>
-					</div>
-				</button>
-				<button mat-menu-item (click)="setIsNote($event, false)" aria-label="Select Todo">
-					<div class="menu-check">
-						Todo
-						<span *ngIf="!todo.isNote" class="icon-container">
-							<app-icon name="check"></app-icon>
-						</span>
-					</div>
-				</button>
-			</fieldset>
-			<fieldset>
-				<legend>View as</legend>
-				<button mat-menu-item (click)="setIsMarkdown($event, false)" aria-label="View as text">
-					<div class="menu-check">
-						Text
-						<span *ngIf="!todo.isMarkdown" class="icon-container">
-							<app-icon name="check"></app-icon>
-						</span>
-					</div>
-				</button>
-				<button mat-menu-item (click)="setIsMarkdown($event, true)" aria-label="View as Markdown">
-					<div class="menu-check">
-						Markdown
-						<span *ngIf="todo.isMarkdown" class="icon-container">
-							<app-icon name="check"></app-icon>
-						</span>
-					</div>
-				</button>
-			</fieldset>
-			<mat-divider></mat-divider>
-			<button mat-menu-item class="danger" (click)="onDelete(todo)" aria-label="Delete item">
-				<span class="icon-container"> <app-icon name="trash"></app-icon> Delete </span>
-			</button>
-		</mat-menu>
-	</div>
-</div>
+        <!-- Action menu -->
+        <mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
+          <fieldset>
+            <legend>Type</legend>
+            <button mat-menu-item (click)="setIsNote($event, true)" aria-label="Select Note">
+              <div class="menu-check">
+                Note
+                @if (todo.isNote) {
+                  <span class="icon-container">
+                    <app-icon name="check"></app-icon>
+                  </span>
+                }
+              </div>
+            </button>
+            <button mat-menu-item (click)="setIsNote($event, false)" aria-label="Select Todo">
+              <div class="menu-check">
+                Todo
+                @if (!todo.isNote) {
+                  <span class="icon-container">
+                    <app-icon name="check"></app-icon>
+                  </span>
+                }
+              </div>
+            </button>
+          </fieldset>
+          <fieldset>
+            <legend>View as</legend>
+            <button mat-menu-item (click)="setIsMarkdown($event, false)" aria-label="View as text">
+              <div class="menu-check">
+                Text
+                @if (!todo.isMarkdown) {
+                  <span class="icon-container">
+                    <app-icon name="check"></app-icon>
+                  </span>
+                }
+              </div>
+            </button>
+            <button mat-menu-item (click)="setIsMarkdown($event, true)" aria-label="View as Markdown">
+              <div class="menu-check">
+                Markdown
+                @if (todo.isMarkdown) {
+                  <span class="icon-container">
+                    <app-icon name="check"></app-icon>
+                  </span>
+                }
+              </div>
+            </button>
+          </fieldset>
+          <mat-divider></mat-divider>
+          <button mat-menu-item class="danger" (click)="onDelete(todo)" aria-label="Delete item">
+            <span class="icon-container"> <app-icon name="trash"></app-icon> Delete </span>
+          </button>
+        </mat-menu>
+      </div>
+    </div>
