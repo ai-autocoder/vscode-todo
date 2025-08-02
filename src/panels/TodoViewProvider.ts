@@ -7,6 +7,7 @@ import { getUri } from "../utilities/getUri";
 import { getConfig } from "../utilities/config";
 import { messagesToWebview } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
+import { deleteCompletedTodos } from "../todo/todoUtils";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
@@ -38,6 +39,7 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 
 		webviewView.onDidChangeVisibility(() => {
 			if (webviewView.visible) {
+				deleteCompletedTodos(this._store);
 				this.reloadWebview();
 			}
 		});

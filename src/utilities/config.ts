@@ -8,6 +8,7 @@ export type Config = {
 	createPosition: "top" | "bottom";
 	enableLineNumbers: boolean;
 	enableWideView: boolean;
+	autoDeleteCompletedAfterDays: number;
 };
 
 export function getConfig(): Config {
@@ -17,6 +18,7 @@ export function getConfig(): Config {
 	const createMarkdownByDefault: boolean = config.get("createMarkdownByDefault", true);
 	let createPosition: any = config.get("createPosition", "bottom");
 	const enableLineNumbers: boolean = config.get("enableLineNumbers", false);
+	const autoDeleteCompletedAfterDays: number = config.get("autoDeleteCompletedAfterDays", 0);
 
 	const taskSortingOptionsEnum =
 		contributes.configuration.properties["vscodeTodo.taskSortingOptions"]["enum"];
@@ -42,6 +44,7 @@ export function getConfig(): Config {
 		createPosition,
 		enableLineNumbers,
 		enableWideView,
+		autoDeleteCompletedAfterDays,
 	};
 }
 

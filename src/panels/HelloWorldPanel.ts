@@ -27,6 +27,7 @@ import { Message, MessageActionsFromWebview, messagesToWebview } from "./message
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
+import { deleteCompletedTodos } from "../todo/todoUtils";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -70,6 +71,7 @@ export class HelloWorldPanel {
 			// If the webview panel already exists but not in focus, reveal it
 			else {
 				HelloWorldPanel.currentPanel._panel.reveal(ViewColumn.Beside);
+				deleteCompletedTodos(store);
 			}
 		} else {
 			// If a webview panel does not already exist create and show a new one
@@ -93,6 +95,7 @@ export class HelloWorldPanel {
 					enableFindWidget: true,
 				}
 			);
+			deleteCompletedTodos(store);
 			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store);
 		}
 	}

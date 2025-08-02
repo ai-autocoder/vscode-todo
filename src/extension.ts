@@ -25,6 +25,8 @@ import {
 	TodoSlice,
 } from "./todo/todoTypes";
 import {
+	deleteCompletedTodos,
+	deleteCompletedTodosCurrentFile,
 	getWorkspaceFilesWithRecords,
 	persist,
 	removeDataForDeletedFile,
@@ -121,6 +123,8 @@ export function activate(context: ExtensionContext) {
 		onDidDeleteFilesSubscription,
 		vscode.window.registerWebviewViewProvider(TodoViewProvider.viewType, provider)
 	);
+
+	deleteCompletedTodos(store);
 }
 
 function handleTodoChange(
@@ -167,6 +171,7 @@ function handleEditorFocusAndRecordsChange(
 		state.editorFocusAndRecords.lastActionType ===
 		"editorFocusAndRecords/setWorkspaceFilesWithRecords"
 	) {
+		deleteCompletedTodosCurrentFile(store);
 		HelloWorldPanel.currentPanel?.updateWebview(
 			state.editorFocusAndRecords,
 			Slices.editorFocusAndRecords

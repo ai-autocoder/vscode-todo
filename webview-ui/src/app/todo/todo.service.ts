@@ -40,6 +40,7 @@ export class TodoService {
 		createPosition: "top",
 		enableLineNumbers: false,
 		enableWideView: false,
+		autoDeleteCompletedAfterDays: 0,
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<

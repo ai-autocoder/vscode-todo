@@ -96,6 +96,11 @@
 					"description": "Enable wide view mode in the webview.",
 					"type": "boolean",
 					"default": false
+				},
+				"vscodeTodo.autoDeleteCompletedAfterDays": {
+					"description": "The number of days after which completed todos are automatically deleted. Set to 0 to disable this feature.",
+					"type": "number",
+					"default": 0
 				}
 			}
 		},

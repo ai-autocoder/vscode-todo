@@ -2,7 +2,12 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
-import { currentFileActions, editorFocusAndRecordsActions } from "./store";
+import {
+	currentFileActions,
+	editorFocusAndRecordsActions,
+	userActions,
+	workspaceActions,
+} from "./store";
 import {
 	CurrentFileSlice,
 	StoreState,
@@ -111,24 +116,34 @@ function sortType1(todos: Todo[]) {
 		const isACompleted = !a.isNote && a.completed;
 		const isBCompleted = !b.isNote && b.completed;
 
-		if (a.isNote && b.isNote) return 0; // Both are notes, maintain original order
+		if (a.isNote && b.isNote) {
+			return 0;
+		} // Both are notes, maintain original order
 
 		if (!a.isNote && !b.isNote) {
 			// Both are non-notes
-			if (isACompleted === isBCompleted) return 0; // Both completed or both non-completed, maintain original order
-			if (isACompleted) return 1; // A is completed, B is not, A goes after B
+			if (isACompleted === isBCompleted) {
+				return 0;
+			} // Both completed or both non-completed, maintain original order
+			if (isACompleted) {
+				return 1;
+			} // A is completed, B is not, A goes after B
 			return -1; // B is completed, A is not, B goes after A
 		}
 
 		if (a.isNote) {
 			// A is a note, B is a non-note
-			if (!isBCompleted) return 0; // B is not completed, maintain original order
+			if (!isBCompleted) {
+				return 0;
+			} // B is not completed, maintain original order
 			return -1; // B is completed, note goes before
 		}
 
 		if (b.isNote) {
 			// A is a non-note, B is a note
-			if (!isACompleted) return 0; // A is not completed, maintain original order
+			if (!isACompleted) {
+				return 0;
+			} // A is not completed, maintain original order
 			return 1; // A is completed, note goes before
 		}
 
@@ -183,16 +198,8 @@ export function getWorkspaceFilesWithRecords(
  */
 export function sortByFileName(data: TodoFilesData = {}): TodoFilesData {
 	const keys = Object.keys(data).sort((a, b) => {
-		const fileNameA =
-			a
-				.split(/[\\\/]/)
-				.pop()
-				?.toLowerCase() || "";
-		const fileNameB =
-			b
-				.split(/[\\\/]/)
-				.pop()
-				?.toLowerCase() || "";
+		const fileNameA = a.split(/[\/]/).pop()?.toLowerCase() || "";
+		const fileNameB = b.split(/[\/]/).pop()?.toLowerCase() || "";
 		return fileNameA.localeCompare(fileNameB);
 	});
 
@@ -232,7 +239,9 @@ export function updateDataForRenamedFile({
 	store: EnhancedStore;
 }) {
 	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
-	if (!previousData[oldPath]) return;
+	if (!previousData[oldPath]) {
+		return;
+	}
 
 	const state = store.getState();
 	const { [oldPath]: renamedFileData, ...restOfData } = previousData;
@@ -263,7 +272,9 @@ export function removeDataForDeletedFile({
 }) {
 	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
 
-	if (!previousData[filePath]) return;
+	if (!previousData[filePath]) {
+		return;
+	}
 
 	const state: StoreState = store.getState();
 	const { [filePath]: deletedFileData, ...restOfData } = previousData;
@@ -289,4 +300,68 @@ export function assertNever(x: never, message?: string): never {
 	//Cut off first line of the stack so that it points to the assertNever call
 	err.stack = err.stack?.split("\n").slice(1).join("\n");
 	throw err;
+}
+
+export function deleteCompletedTodos(store: EnhancedStore) {
+	const { autoDeleteCompletedAfterDays } = getConfig();
+	if (autoDeleteCompletedAfterDays <= 0) {
+		return;
+	}
+
+	const now = new Date();
+	const userState = store.getState().user;
+	const workspaceState = store.getState().workspace;
+
+	const getTodosToDelete = (todos: Todo[]) => {
+		return todos.filter((todo) => {
+			if (!todo.isNote && todo.completed && todo.completionDate) {
+				const completionDate = new Date(todo.completionDate);
+				const diffInDays = (now.getTime() - completionDate.getTime()) / (1000 * 3600 * 24);
+				return diffInDays > autoDeleteCompletedAfterDays;
+			}
+			return false;
+		});
+	};
+
+	const userTodosToDelete = getTodosToDelete(userState.todos);
+	const workspaceTodosToDelete = getTodosToDelete(workspaceState.todos);
+
+	if (userTodosToDelete.length > 0) {
+		store.dispatch(userActions.deleteTodos({ ids: userTodosToDelete.map((todo) => todo.id) }));
+	}
+
+	if (workspaceTodosToDelete.length > 0) {
+		store.dispatch(
+			workspaceActions.deleteTodos({ ids: workspaceTodosToDelete.map((todo) => todo.id) })
+		);
+	}
+}
+
+export function deleteCompletedTodosCurrentFile(store: EnhancedStore) {
+	const { autoDeleteCompletedAfterDays } = getConfig();
+	if (autoDeleteCompletedAfterDays <= 0) {
+		return;
+	}
+
+	const now = new Date();
+	const currentFileState = store.getState().currentFile;
+
+	const getTodosToDelete = (todos: Todo[]) => {
+		return todos.filter((todo) => {
+			if (!todo.isNote && todo.completed && todo.completionDate) {
+				const completionDate = new Date(todo.completionDate);
+				const diffInDays = (now.getTime() - completionDate.getTime()) / (1000 * 3600 * 24);
+				return diffInDays > autoDeleteCompletedAfterDays;
+			}
+			return false;
+		});
+	};
+
+	const currentFileTodosToDelete = getTodosToDelete(currentFileState.todos);
+
+	if (currentFileTodosToDelete.length > 0) {
+		store.dispatch(
+			currentFileActions.deleteTodos({ ids: currentFileTodosToDelete.map((todo) => todo.id) })
+		);
+	}
 }
