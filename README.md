@@ -27,6 +27,7 @@ VS Code Todo
 - **Status Bar Integration**
 - **Built-in search** (Ctrl+F on Windows, ⌘F on macOS)
 - **Import and Export** (JSON / Markdown format)
+- **Auto delete completed todos after a specified number of days**
 
 ![Image of UI overview](./assets/screenshots/UI-overview.gif)
 
@@ -102,6 +103,15 @@ The default sorting option is **sortType1**.
 
 ```json
 "vscodeTodo.taskSortingOptions": "sortType1"
+```
+
+### Auto delete completed todos after a specified number of days
+
+You can configure the extension to automatically delete completed todos after a specified number of days. This feature helps keep your task list clean and manageable.
+To enable this feature, set the `vscodeTodo.autoDeleteCompletedAfterDays` configuration option to the desired number of days. Set it to `0` to disable auto-deletion.
+
+```json
+"vscodeTodo.autoDeleteCompletedAfterDays": 7
 ```
 
 ### Status Bar Integration
