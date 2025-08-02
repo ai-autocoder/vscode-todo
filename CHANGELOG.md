@@ -1,5 +1,11 @@
 # Change Log
 
+## [1.12.0]
+
+- Added auto-delete feature for completed todos after a specified number of days (configurable)
+- Updated Angular to version 20
+- Updated dependencies
+
 ## [1.11.0]
 
 - Updated Angular to version 19
