@@ -121,7 +121,7 @@ function writeDataToFile(filePath: string, formattedData: string) {
 
 function formatMarkdown(data: ExportObject) {
 	const formatItems = (items?: Array<Todo>) => {
-		if (!items || items.length === 0) return "";
+		if (!items || items.length === 0) {return "";}
 
 		let result = "";
 		let prevIsNote = false;

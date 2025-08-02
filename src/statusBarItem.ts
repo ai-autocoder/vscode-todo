@@ -25,7 +25,7 @@ export function initStatusBarItem(context: vscode.ExtensionContext) {
  * @param {Object} todoCount - An object containing the number of todos.
  */
 export function updateStatusBarItem(state: StoreState) {
-	if (!_statusBarItem) return;
+	if (!_statusBarItem) {return;}
 	const currentFileTodos = `${state.currentFile.filePath === "" ? "-" : state.currentFile.numberOfTodos}`;
 	const currentFileNotes = `${state.currentFile.filePath === "" ? "-" : state.currentFile.numberOfNotes}`;
 
