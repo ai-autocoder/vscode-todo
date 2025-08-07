@@ -116,10 +116,6 @@ markdown pre {
 	overflow: hidden;
 	opacity: 0.8;
 	position: relative;
-
-	& .todo-container .icon-button-container.drag-handle-container {
-		opacity: 1;
-	}
 }
 /* Gradient overlay for items overflowing */
 .cdk-drag.cdk-drag-preview::after {

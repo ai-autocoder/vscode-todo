@@ -7,20 +7,7 @@
 		'menu-open': isActionMenuOpen,
 	}"
   >
-  <!-- Button dragger -->
-  <div class="icon-button-container drag-handle-container">
-    <vscode-button
-      appearance="icon"
-      class="icon-button drag-handle"
-      cdkDragHandle
-      aria-label="Drag to reorder todo item"
-      title="Drag to reorder"
-      >
-      <span>
-        <app-icon name="drag"></app-icon>
-      </span>
-    </vscode-button>
-  </div>
+  
   @if (!todo.isNote) {
     <div class="checkbox">
       <vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
