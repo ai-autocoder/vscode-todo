@@ -20,7 +20,9 @@
         class="todo-text"
         [(value)]="todo.text"
         [autofocus]="true"
-        >
+        (mousedown)="$event.stopPropagation()"
+        (dragstart)="$event.preventDefault()"
+      >
       </autosize-text-area>
     }
     <!-- prettier-ignore -->
@@ -43,7 +45,11 @@
       </div>
     }
     @if (isEditable) {
-      <div class="footer">
+      <div
+        class="footer"
+        (mousedown)="$event.stopPropagation()"
+        (dragstart)="$event.preventDefault()"
+      >
         <div class="labels">
           <todo-label [todo]="todo"></todo-label>
         </div>
