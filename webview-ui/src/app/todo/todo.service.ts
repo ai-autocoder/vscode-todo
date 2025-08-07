@@ -214,4 +214,8 @@ export class TodoService {
 	deleteAll(scope: TodoScope) {
 		vscode.postMessage(messagesFromWebview.deleteAll(scope));
 	}
+
+	deleteCompleted(scope: TodoScope) {
+		vscode.postMessage(messagesFromWebview.deleteCompleted(scope));
+	}
 }

@@ -84,7 +84,9 @@ export type Message<
 						type: T;
 						payload: MessagePayload<T, L>;
 					}
-				: T extends MessageActionsFromWebview.deleteAll
+				: T extends
+						| MessageActionsFromWebview.deleteAll
+						| MessageActionsFromWebview.deleteCompleted
 					? {
 							type: T;
 							scope: L;
@@ -110,6 +112,7 @@ export const enum MessageActionsFromWebview {
 	import = "import",
 	setWideViewEnabled = "setWideViewEnabled",
 	deleteAll = "deleteAll",
+	deleteCompleted = "deleteCompleted",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
@@ -233,6 +236,12 @@ export const messagesFromWebview = {
 		scope: L
 	): Message<MessageActionsFromWebview.deleteAll, TodoScope> => ({
 		type: MessageActionsFromWebview.deleteAll,
+		scope,
+	}),
+	deleteCompleted: <L extends TodoScope>(
+		scope: L
+	): Message<MessageActionsFromWebview.deleteCompleted, TodoScope> => ({
+		type: MessageActionsFromWebview.deleteCompleted,
 		scope,
 	}),
 };

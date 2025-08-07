@@ -95,6 +95,13 @@ const todoReducers = {
 		state.numberOfNotes = getNumberOfNotes(state);
 	},
 
+	deleteCompleted: (state: TodoSlice) => {
+		state.todos = state.todos.filter((todo) => !todo.completed);
+		state.lastActionType = "deleteCompleted";
+		state.numberOfTodos = getNumberOfTodos(state);
+		state.numberOfNotes = getNumberOfNotes(state);
+	},
+
 	undoDelete: (
 		state: TodoSlice,
 		action: PayloadAction<{

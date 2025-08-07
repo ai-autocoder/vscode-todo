@@ -1,88 +1,98 @@
 <div class="header-container">
-  @if (!(enableWideView | async)) {
-    <vscode-button
-      appearance="icon"
-      [aria-label]="'Wide View'"
-      [title]="'Wide View'"
-      (click)="setWideViewEnabled(true)"
-      >
-      <span>
-        <app-icon name="wide-view"></app-icon>
-      </span>
-    </vscode-button>
-  }
-  @if (enableWideView | async) {
-    <vscode-button
-      appearance="icon"
-      [aria-label]="'Normal View'"
-      [title]="'Normal View'"
-      (click)="setWideViewEnabled(false)"
-      >
-      <span>
-        <app-icon name="normal-view"></app-icon>
-      </span>
-    </vscode-button>
-  }
+	@if (!(enableWideView | async)) {
+		<vscode-button
+			appearance="icon"
+			[aria-label]="'Wide View'"
+			[title]="'Wide View'"
+			(click)="setWideViewEnabled(true)"
+		>
+			<span>
+				<app-icon name="wide-view"></app-icon>
+			</span>
+		</vscode-button>
+	}
+	@if (enableWideView | async) {
+		<vscode-button
+			appearance="icon"
+			[aria-label]="'Normal View'"
+			[title]="'Normal View'"
+			(click)="setWideViewEnabled(false)"
+		>
+			<span>
+				<app-icon name="normal-view"></app-icon>
+			</span>
+		</vscode-button>
+	}
 
-  <vscode-button
-    appearance="icon"
-    [matMenuTriggerFor]="importMenu"
-    [aria-label]="'Import'"
-    [title]="'Import'"
-    (menuOpened)="onImportMenuOpened()"
-    (menuClosed)="onImportMenuClosed()"
-    [ngClass]="{ 'menu-open': isImportMenuOpen }"
-    >
-    <span>
-      <app-icon name="import"></app-icon>
-    </span>
-  </vscode-button>
-  <!-- Export menu -->
-  <mat-menu #importMenu="matMenu" yPosition="below" xPosition="before">
-    <fieldset>
-      <legend>Import From</legend>
-      <button mat-menu-item (click)="import(ImportFormats.JSON)" aria-label="Import to JSON">
-        Json
-      </button>
-      <button mat-menu-item (click)="import(ImportFormats.MARKDOWN)" aria-label="Import to Markdown">
-        Markdown
-      </button>
-    </fieldset>
-  </mat-menu>
+	<vscode-button
+		appearance="icon"
+		[matMenuTriggerFor]="importMenu"
+		[aria-label]="'Import'"
+		[title]="'Import'"
+		(menuOpened)="onImportMenuOpened()"
+		(menuClosed)="onImportMenuClosed()"
+		[ngClass]="{ 'menu-open': isImportMenuOpen }"
+	>
+		<span>
+			<app-icon name="import"></app-icon>
+		</span>
+	</vscode-button>
+	<!-- Export menu -->
+	<mat-menu #importMenu="matMenu" yPosition="below" xPosition="before">
+		<fieldset>
+			<legend>Import From</legend>
+			<button mat-menu-item (click)="import(ImportFormats.JSON)" aria-label="Import to JSON">
+				Json
+			</button>
+			<button mat-menu-item (click)="import(ImportFormats.MARKDOWN)" aria-label="Import to Markdown">
+				Markdown
+			</button>
+		</fieldset>
+	</mat-menu>
 
-  <vscode-button
-    appearance="icon"
-    [matMenuTriggerFor]="exportMenu"
-    [aria-label]="'Export'"
-    [title]="'Export'"
-    (menuOpened)="onExportMenuOpened()"
-    (menuClosed)="onExportMenuClosed()"
-    [ngClass]="{ 'menu-open': isExportMenuOpen }"
-    >
-    <span>
-      <app-icon name="export"></app-icon>
-    </span>
-  </vscode-button>
-  <!-- Export menu -->
-  <mat-menu #exportMenu="matMenu" yPosition="below" xPosition="before">
-    <fieldset>
-      <legend>Export To</legend>
-      <button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON">
-        Json
-      </button>
-      <button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown">
-        Markdown
-      </button>
-    </fieldset>
-  </mat-menu>
+	<vscode-button
+		appearance="icon"
+		[matMenuTriggerFor]="exportMenu"
+		[aria-label]="'Export'"
+		[title]="'Export'"
+		(menuOpened)="onExportMenuOpened()"
+		(menuClosed)="onExportMenuClosed()"
+		[ngClass]="{ 'menu-open': isExportMenuOpen }"
+	>
+		<span>
+			<app-icon name="export"></app-icon>
+		</span>
+	</vscode-button>
+	<!-- Export menu -->
+	<mat-menu #exportMenu="matMenu" yPosition="below" xPosition="before">
+		<fieldset>
+			<legend>Export To</legend>
+			<button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON">
+				Json
+			</button>
+			<button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown">
+				Markdown
+			</button>
+		</fieldset>
+	</mat-menu>
 
-  <vscode-button
-    appearance="icon"
-    [aria-label]="'Delete all items in this tab'"
-    [title]="'Delete all items in this tab'"
-    (click)="deleteAll()"
-    [disabled]="isListEmpty"
-    >
-    <app-icon name="trash"></app-icon>
-  </vscode-button>
+	<vscode-button
+		appearance="icon"
+		[aria-label]="'Delete all items in this tab'"
+		[title]="'Delete all items in this tab'"
+		(click)="deleteAll()"
+		[disabled]="isListEmpty"
+	>
+		<app-icon name="trash"></app-icon>
+	</vscode-button>
+
+	<vscode-button
+		appearance="icon"
+		[aria-label]="'Clear completed todos in this tab'"
+		[title]="'Clear completed todos in this tab'"
+		(click)="deleteCompleted()"
+		[disabled]="!completedTodosExist"
+	>
+		<app-icon name="clear"></app-icon>
+	</vscode-button>
 </div>

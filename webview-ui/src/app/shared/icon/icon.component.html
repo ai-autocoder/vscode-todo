@@ -1,145 +1,127 @@
-
 @switch (name) {
-  @case ('drag') {
-    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        fill-rule="evenodd"
-        clip-rule="evenodd"
-        d="M15 6H1V7H15V6ZM15 9H1V10H15V9Z"
-        fill="#C5C5C5"
-        />
-      </svg>
-    }
-    @case ('menu') {
-      <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
-        <path
-          d="M4 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"
-          fill="#C5C5C5"
-          />
-        </svg>
-      }
-      @case ('pin') {
-        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
-          <path
-            d="M4 2h7v.278c0 .406-.086.778-.258 1.117-.172.339-.42.63-.742.875v2.86c.307.145.583.328.828.546.245.219.456.464.633.735.177.27.31.565.398.882.089.318.136.646.141.985v.5H8V14l-.5 1-.5-1v-3.222H3v-.5c0-.339.047-.664.14-.977.094-.312.227-.607.4-.883A3.404 3.404 0 0 1 5 7.13V4.27a2.561 2.561 0 0 1-.734-.875A2.505 2.505 0 0 1 4 2.278V2zm1.086.778c.042.125.094.232.156.32a1.494 1.494 0 0 0 .461.43L6 3.715v4.102l-.336.117c-.411.146-.76.383-1.047.711C4.331 8.973 4.09 9.573 4 10h7c-.088-.427-.33-1.027-.617-1.355a2.456 2.456 0 0 0-1.047-.71L9 7.816V3.715l.297-.18c.094-.057.177-.122.25-.195a2.28 2.28 0 0 0 .21-.242.968.968 0 0 0 .157-.32H5.086z"
-            fill="#C5C5C5"
-            />
-          </svg>
-        }
-        @case ('chevron-left') {
-          <svg
-            viewBox="0 0 16 16"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            >
-            <path
-              fill-rule="evenodd"
-              clip-rule="evenodd"
-              d="M5.928 7.976l4.357 4.357-.618.62L5 8.284v-.618L9.667 3l.618.619-4.357 4.357z"
-              fill="#C5C5C5"
-              />
-            </svg>
-          }
-          @case ('chevron-right') {
-            <svg
-              viewBox="0 0 16 16"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              >
-              <path
-                fill-rule="evenodd"
-                clip-rule="evenodd"
-                d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"
-                fill="#C5C5C5"
-                />
-              </svg>
-            }
-            @case ('copy') {
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none">
-                <g fill="#C5C5C5" fill-rule="evenodd" clip-rule="evenodd">
-                  <path d="m4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1zm9 3l-3-3H5v10h8z" />
-                  <path d="M3 1L2 2v10l1 1V2h6.414l-1-1z" />
-                </g>
-              </svg>
-            }
-            @case ('export') {
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-                <path
-                  fill="#C5C5C5"
-                  fill-rule="evenodd"
-                  clip-rule="evenodd"
-                  d="M 13.086,7 11.048962,4.9561436 a 0.50154906,0.50154906 90.007115 0 1 8.8e-5,-0.7081996 0.49639846,0.49639846 0.2943735 0 1 0.702503,0.00361 l 2.894894,2.8948932 a 0.5,0.5 90 0 1 0,0.7071068 l -2.894894,2.8948936 a 0.49964476,0.49964476 0.02036097 0 1 -0.706855,-2.52e-4 0.4977055,0.4977055 90.319959 0 1 0.0039,-0.703674 L 13.078,8.016 V 8 H 4 A 0.5,0.5 45 0 1 3.5,7.5 0.5,0.5 135 0 1 4,7 Z M 1.5,4 A 0.5,0.5 45 0 1 2,4.5 v 6 A 0.5,0.5 135 0 1 1.5,11 0.5,0.5 45 0 1 1,10.5 v -6 A 0.5,0.5 135 0 1 1.5,4 Z"
-                  />
-                </svg>
-              }
-              @case ('import') {
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-                  <g transform="scale(0.50)">
-                    <path
-                      fill="none"
-                      stroke="#C5C5C5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M 4,16 V 26.4 C 4,28.056854 3.9431458,28 5.6,28 h 20.8 c 1.656854,0 1.6,0.05685 1.6,-1.6 V 16 M 16,4 v 18 m 0,0 -5.25,-5.25 M 16,22 21.25,16.75"
-                    ></path>
-                  </g>
-                </svg>
-              }
-              @case ('wide-view') {
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  >
-                  <path
-                    fill="#C5C5C5"
-                    d="M 1.5,19.1 V 4.9 a 1,1 135 0 1 1,-1 h 19 a 1,1 45 0 1 1,1 v 14.2 a 1,1 135 0 1 -1,1 l -19,0 a 1,1 45 0 1 -1,-1 z M 3,18.6 H 4.5 V 5.4 H 3 Z m 3,0 H 18 V 5.4 H 6 Z m 13.5,0 H 21 V 5.4 H 19.5 Z M 6.4982974,6.0528634 6.5374449,17.960352 Z"
-                    />
-                  </svg>
-                }
-                @case ('normal-view') {
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    >
-                    <path
-                      fill="#C5C5C5"
-                      d="M 1.5,19.1 V 4.9 a 1,1 135 0 1 1,-1 h 19 a 1,1 45 0 1 1,1 v 14.2 a 1,1 135 0 1 -1,1 l -19,0 a 1,1 45 0 1 -1,-1 z M 3,18.6 H 7.5 V 5.4 H 3 Z m 6,0 h 6 L 15,5.4 H 9 Z m 7.5,0 H 21 V 5.4 H 16.5 Z M 6.4982974,6.0528634 6.5374449,17.960352 Z"
-                      />
-                    </svg>
-                  }
-                  @case ('trash') {
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      >
-                      <path
-                        fill="#C5C5C5"
-                        fill-rule="evenodd"
-                        d="M10 3h3v1h-1v9l-1 1H4l-1-1V4H2V3h3V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zM9 2H6v1h3zM4 13h7V4H4zm2-8H5v7h1zm1 0h1v7H7zm2 0h1v7H9z"
-                        clip-rule="evenodd"
-                        />
-                      </svg>
-                    }
-                    @case ('check') {
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        >
-                        <path
-                          fill="#C5C5C5"
-                          fill-rule="evenodd"
-                          d="m14.431 3.323l-8.47 10l-.79-.036l-3.35-4.77l.818-.574l2.978 4.24l8.051-9.506z"
-                          clip-rule="evenodd"
-                          />
-                        </svg>
-                      }
-                    }
+	@case ("drag") {
+		<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+			<path
+				fill-rule="evenodd"
+				clip-rule="evenodd"
+				d="M15 6H1V7H15V6ZM15 9H1V10H15V9Z"
+				fill="#C5C5C5"
+			/>
+		</svg>
+	}
+	@case ("menu") {
+		<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
+			<path
+				d="M4 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm5 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"
+				fill="#C5C5C5"
+			/>
+		</svg>
+	}
+	@case ("pin") {
+		<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
+			<path
+				d="M4 2h7v.278c0 .406-.086.778-.258 1.117-.172.339-.42.63-.742.875v2.86c.307.145.583.328.828.546.245.219.456.464.633.735.177.27.31.565.398.882.089.318.136.646.141.985v.5H8V14l-.5 1-.5-1v-3.222H3v-.5c0-.339.047-.664.14-.977.094-.312.227-.607.4-.883A3.404 3.404 0 0 1 5 7.13V4.27a2.561 2.561 0 0 1-.734-.875A2.505 2.505 0 0 1 4 2.278V2zm1.086.778c.042.125.094.232.156.32a1.494 1.494 0 0 0 .461.43L6 3.715v4.102l-.336.117c-.411.146-.76.383-1.047.711C4.331 8.973 4.09 9.573 4 10h7c-.088-.427-.33-1.027-.617-1.355a2.456 2.456 0 0 0-1.047-.71L9 7.816V3.715l.297-.18c.094-.057.177-.122.25-.195a2.28 2.28 0 0 0 .21-.242.968.968 0 0 0 .157-.32H5.086z"
+				fill="#C5C5C5"
+			/>
+		</svg>
+	}
+	@case ("chevron-left") {
+		<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
+			<path
+				fill-rule="evenodd"
+				clip-rule="evenodd"
+				d="M5.928 7.976l4.357 4.357-.618.62L5 8.284v-.618L9.667 3l.618.619-4.357 4.357z"
+				fill="#C5C5C5"
+			/>
+		</svg>
+	}
+	@case ("chevron-right") {
+		<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="none">
+			<path
+				fill-rule="evenodd"
+				clip-rule="evenodd"
+				d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"
+				fill="#C5C5C5"
+			/>
+		</svg>
+	}
+	@case ("copy") {
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none">
+			<g fill="#C5C5C5" fill-rule="evenodd" clip-rule="evenodd">
+				<path d="m4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1zm9 3l-3-3H5v10h8z" />
+				<path d="M3 1L2 2v10l1 1V2h6.414l-1-1z" />
+			</g>
+		</svg>
+	}
+	@case ("export") {
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+			<path
+				fill="#C5C5C5"
+				fill-rule="evenodd"
+				clip-rule="evenodd"
+				d="M 13.086,7 11.048962,4.9561436 a 0.50154906,0.50154906 90.007115 0 1 8.8e-5,-0.7081996 0.49639846,0.49639846 0.2943735 0 1 0.702503,0.00361 l 2.894894,2.8948932 a 0.5,0.5 90 0 1 0,0.7071068 l -2.894894,2.8948936 a 0.49964476,0.49964476 0.02036097 0 1 -0.706855,-2.52e-4 0.4977055,0.4977055 90.319959 0 1 0.0039,-0.703674 L 13.078,8.016 V 8 H 4 A 0.5,0.5 45 0 1 3.5,7.5 0.5,0.5 135 0 1 4,7 Z M 1.5,4 A 0.5,0.5 45 0 1 2,4.5 v 6 A 0.5,0.5 135 0 1 1.5,11 0.5,0.5 45 0 1 1,10.5 v -6 A 0.5,0.5 135 0 1 1.5,4 Z"
+			/>
+		</svg>
+	}
+	@case ("import") {
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+			<g transform="scale(0.50)">
+				<path
+					fill="none"
+					stroke="#C5C5C5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					stroke-width="2"
+					d="M 4,16 V 26.4 C 4,28.056854 3.9431458,28 5.6,28 h 20.8 c 1.656854,0 1.6,0.05685 1.6,-1.6 V 16 M 16,4 v 18 m 0,0 -5.25,-5.25 M 16,22 21.25,16.75"
+				></path>
+			</g>
+		</svg>
+	}
+	@case ("wide-view") {
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
+			<path
+				fill="#C5C5C5"
+				d="M 1.5,19.1 V 4.9 a 1,1 135 0 1 1,-1 h 19 a 1,1 45 0 1 1,1 v 14.2 a 1,1 135 0 1 -1,1 l -19,0 a 1,1 45 0 1 -1,-1 z M 3,18.6 H 4.5 V 5.4 H 3 Z m 3,0 H 18 V 5.4 H 6 Z m 13.5,0 H 21 V 5.4 H 19.5 Z M 6.4982974,6.0528634 6.5374449,17.960352 Z"
+			/>
+		</svg>
+	}
+	@case ("normal-view") {
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
+			<path
+				fill="#C5C5C5"
+				d="M 1.5,19.1 V 4.9 a 1,1 135 0 1 1,-1 h 19 a 1,1 45 0 1 1,1 v 14.2 a 1,1 135 0 1 -1,1 l -19,0 a 1,1 45 0 1 -1,-1 z M 3,18.6 H 7.5 V 5.4 H 3 Z m 6,0 h 6 L 15,5.4 H 9 Z m 7.5,0 H 21 V 5.4 H 16.5 Z M 6.4982974,6.0528634 6.5374449,17.960352 Z"
+			/>
+		</svg>
+	}
+	@case ("trash") {
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+			<path
+				fill="#C5C5C5"
+				fill-rule="evenodd"
+				d="M10 3h3v1h-1v9l-1 1H4l-1-1V4H2V3h3V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zM9 2H6v1h3zM4 13h7V4H4zm2-8H5v7h1zm1 0h1v7H7zm2 0h1v7H9z"
+				clip-rule="evenodd"
+			/>
+		</svg>
+	}
+	@case ("check") {
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+			<path
+				fill="#C5C5C5"
+				fill-rule="evenodd"
+				d="m14.431 3.323l-8.47 10l-.79-.036l-3.35-4.77l.818-.574l2.978 4.24l8.051-9.506z"
+				clip-rule="evenodd"
+			/>
+		</svg>
+	}
+	@case ("clear") {
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 1024 1024">
+			<path
+				fill="#C5C5C5"
+				fill-rule="evenodd"
+				clip-rule="evenodd"
+				d="M899.1 869.6l-53-305.6H864c14.4 0 26-11.6 26-26V346c0-14.4-11.6-26-26-26H618V138c0-14.4-11.6-26-26-26H432c-14.4 0-26 11.6-26 26v182H160c-14.4 0-26 11.6-26 26v192c0 14.4 11.6 26 26 26h17.9l-53 305.6c-0.3 1.5-0.4 3-0.4 4.4 0 14.4 11.6 26 26 26h723c1.5 0 3-0.1 4.4-0.4 14.2-2.4 23.7-15.9 21.2-30zM204 390h272V182h72v208h272v104H204V390z m468 440V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H416V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H202.8l45.1-260H776l45.1 260H672z"
+				p-id="9724"
+			></path>
+		</svg>
+	}
+}

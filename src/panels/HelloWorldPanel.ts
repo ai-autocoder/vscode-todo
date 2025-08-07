@@ -347,6 +347,10 @@ export class HelloWorldPanel {
 						}
 						break;
 					}
+					case MessageActionsFromWebview.deleteCompleted: {
+						store.dispatch(storeActions!.deleteCompleted());
+						break;
+					}
 					default:
 						console.error("Action not found");
 				}
