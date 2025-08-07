@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.13.1]
+
+- [UI] Prevent drag events in edit mode in text area and footer to avoid unintended dragging during text selection
+- [UI] Remove unnecessary padding from body element to increase usable space
+
 ## [1.13.0]
 
 - [UI] Added manual auto-delete feature for completed todos via UI button
