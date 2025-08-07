@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.13.0]
+
+- [UI] Added manual auto-delete feature for completed todos via UI button
+- [UI] Removed drag handle button; the entire todo/note is now draggable
+
 ## [1.12.0]
 
 - Added auto-delete feature for completed todos after a specified number of days (configurable)
