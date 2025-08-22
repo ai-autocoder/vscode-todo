@@ -13,7 +13,7 @@ import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { MatMenuModule } from "@angular/material/menu";
 import { MatDividerModule } from "@angular/material/divider";
 import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
-import { CLIPBOARD_OPTIONS, MarkdownModule } from "ngx-markdown";
+import { CLIPBOARD_OPTIONS, MERMAID_OPTIONS, MarkdownModule } from "ngx-markdown";
 import { FileNamePipe } from "./pipes/file-name.pipe";
 import { FileList } from "./todo/file-list/file-list.component";
 import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
@@ -53,6 +53,16 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 				provide: CLIPBOARD_OPTIONS,
 				useValue: {
 					buttonComponent: ClipboardButtonComponent,
+				},
+			},
+			mermaidOptions: {
+				provide: MERMAID_OPTIONS,
+				useValue: {
+					darkMode: false,
+					theme: "neutral",
+					startOnLoad: true,
+					fontFamily: "monospace",
+					securityLevel: "loose",
 				},
 			},
 		}),

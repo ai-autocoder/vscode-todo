@@ -22,6 +22,7 @@ VS Code Todo
 - **Global, Workspace, and File-specific Scopes Management**
 - **Markdown Support**
 - **Code Syntax Highlighting**
+- **Mermaid Diagram Support**
 - **Customizable Sorting**
 - **Drag-and-Drop Functionality**
 - **Status Bar Integration**
@@ -58,12 +59,12 @@ To create a note with code highlighting, use the standard markdown syntax.
 
 For example, to highlight TypeScript code:
 
-```markdown
+````markdown
 ```typescript
     const myProp: string = 'value';
     console.log(myProp);
 ​```
-```
+````
 
 <details>
 <summary>Supported Syntax Highlighting Languages (click to expand)</summary>
@@ -88,6 +89,20 @@ For example, to highlight TypeScript code:
 _Note: This table represents a subset of the languages supported by PrismJS. For a full list, please refer to the [PrismJS supported languages page](https://prismjs.com/#supported-languages)._
 
 </details>
+
+### Mermaid Diagram Support
+
+You can create diagrams and charts using [Mermaid](https://mermaid-js.github.io/mermaid/#/) syntax. To render a Mermaid diagram, ensure that the "View as Markdown" option is selected for the item, and then wrap your Mermaid code in a `mermaid` block:
+
+````markdown
+```mermaid
+graph TD;
+    A-->B;
+    A-->C;
+    B-->D;
+    C-->D;
+```
+````
 
 ### Customizable Sorting
 

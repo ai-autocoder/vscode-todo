@@ -36,7 +36,8 @@
 							"src/styles.css"
 						],
 						"scripts": [
-							"node_modules/clipboard/dist/clipboard.min.js"
+							"node_modules/clipboard/dist/clipboard.min.js",
+							"node_modules/mermaid/dist/mermaid.min.js"
 						],
 						"browser": "src/main.ts",
 						"allowedCommonJsDependencies": [
@@ -48,8 +49,8 @@
 							"budgets": [
 								{
 									"type": "initial",
-									"maximumWarning": "1500kb",
-									"maximumError": "2mb"
+									"maximumWarning": "5mb",
+									"maximumError": "10mb"
 								},
 								{
 									"type": "anyComponentStyle",
@@ -112,7 +113,8 @@
 							"src/styles.css"
 						],
 						"scripts": [
-							"node_modules/clipboard/dist/clipboard.min.js"
+							"node_modules/clipboard/dist/clipboard.min.js",
+							"node_modules/mermaid/dist/mermaid.min.js"
 						]
 					}
 				}

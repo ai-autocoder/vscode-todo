@@ -26,6 +26,7 @@
 		"angular-split": "^17.2.0",
 		"clipboard": "^2.0.11",
 		"marked": "^15.0.7",
+		"mermaid": "^11.10.0",
 		"ngx-markdown": "^20.0.0",
 		"prismjs": "^1.29.0",
 		"rxjs": "~7.8.2",
