@@ -26,6 +26,7 @@ webview-ui/karma.conf.js
 webview-ui/tsconfig.app.json
 webview-ui/tsconfig.spec.json
 webview-ui/angular.json
+webview-ui\generate-prism-imports.js
 
 # Ignore Misc
 .yarnrc
@@ -37,3 +38,12 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 assets/hi-res/**
+docs/**
+.vscode-test.mjs
+.history/**
+GEMINI.md
+
+# Ignore prettier config files
+.prettierignore
+.prettierrc
+
