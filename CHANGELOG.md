@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.14.0]
+
+- [UI] Support for Mermaid diagrams rendering
+
 ## [1.13.1]
 
 - [UI] Prevent drag events in edit mode in text area and footer to avoid unintended dragging during text selection
