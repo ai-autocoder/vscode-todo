@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.14.1]
+
+- Update Readme with Getting Started section
+
 ## [1.14.0]
 
 - [UI] Support for Mermaid diagrams rendering
