@@ -17,6 +17,47 @@ VS Code Todo
 
 **VS Code Todo** is an advanced to-do list and note manager within Visual Studio Code, now featuring **Markdown Support**, **Notes**, and **Code Highlighting**. This extension allows for managing tasks and notes—whether tied to your workspace, the current file, or stored globally—all accessible directly from the VS Code status bar.
 
+## Getting Started
+
+After installing **VS Code Todo**, follow these steps to begin using the extension:
+
+1. **Open the Todo Panel**
+
+   - Click the status bar icon at the bottom of VS Code, or
+   - Use the activity bar button on the left.  
+     This will open the main panel.
+
+2. **Select a Tab**
+
+   - Use the three tabs at the top to choose where to store your items:
+     - **Global**: tasks available across all workspaces
+     - **Workspace**: tasks tied to the current project (default)
+     - **File**: tasks associated with the active file
+
+3. **Add a Todo**
+
+   - Enter text in the input box at the bottom of the panel.
+   - Press **Enter** to create the item.
+   - The new todo will appear in the selected tab, either at the top or bottom of the list depending on your configuration.
+
+4. **Manage Items**
+
+   - Each item includes a menu button with the following options:
+     - Change type between **Todo** and **Note**
+     - Toggle rendering between plain text and markdown
+     - Delete the item
+   - Items can also be **reordered** by dragging and dropping them within the list.
+
+5. **Use the Toolbar**
+
+   - The toolbar above the tabs provides options to:
+     - Toggle wide view
+     - Export or import data (JSON / Markdown)
+     - Delete all items in the current tab
+     - Delete completed todos
+
+This covers the basic workflow. For advanced functionality such as markdown support, code highlighting, diagram rendering, auto-deletion, and sorting, see the sections below.
+
 ## Key Features
 
 - **Global, Workspace, and File-specific Scopes Management**
