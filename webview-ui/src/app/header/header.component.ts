@@ -59,14 +59,14 @@ export class HeaderComponent implements OnInit {
 		this.todoService.deleteCompleted(this.currentScope);
 	}
 
-	get completedTodosExist(): boolean {
+	get hasCompletedTodos(): boolean {
 		switch (this.currentScope) {
 			case TodoScope.user:
-				return this.todoService.userTodos.some((todo) => todo.completed);
+				return this.todoService.userTodos.some(todo => todo.completed && !todo.isNote);
 			case TodoScope.workspace:
-				return this.todoService.workspaceTodos.some((todo) => todo.completed);
+				return this.todoService.workspaceTodos.some(todo => todo.completed && !todo.isNote);
 			case TodoScope.currentFile:
-				return this.todoService.currentFileTodos.some((todo) => todo.completed);
+				return this.todoService.currentFileTodos.some(todo => todo.completed && !todo.isNote);
 			default:
 				return false;
 		}

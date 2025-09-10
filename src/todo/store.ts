@@ -96,7 +96,7 @@ const todoReducers = {
 	},
 
 	deleteCompleted: (state: TodoSlice) => {
-		state.todos = state.todos.filter((todo) => !todo.completed);
+		state.todos = state.todos.filter((todo) => !todo.completed || todo.isNote);
 		state.lastActionType = "deleteCompleted";
 		state.numberOfTodos = getNumberOfTodos(state);
 		state.numberOfNotes = getNumberOfNotes(state);

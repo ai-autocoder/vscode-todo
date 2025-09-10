@@ -91,7 +91,7 @@
 		[aria-label]="'Clear completed todos in this tab'"
 		[title]="'Clear completed todos in this tab'"
 		(click)="deleteCompleted()"
-		[disabled]="!completedTodosExist"
+		[disabled]="!hasCompletedTodos"
 	>
 		<app-icon name="clear"></app-icon>
 	</vscode-button>
