@@ -7,7 +7,6 @@ import { AutosizeTextArea } from "./shared/autosize-textarea.component";
 import { TodoLabel } from "./shared/todo-label.component";
 import { NewTodoComponent } from "./todo/new-todo/new-todo.component";
 import { TodoList } from "./todo/todo-list/todo-list.component";
-import { AutoAnimateDirective } from "./utilities/animate";
 import { MatSnackBarModule } from "@angular/material/snack-bar";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { MatMenuModule } from "@angular/material/menu";
@@ -32,7 +31,6 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		TodoList,
 		TodoItemComponent,
 		NewTodoComponent,
-		AutoAnimateDirective,
 		FileNamePipe,
 		FileList,
 		AutosizeTextArea,
