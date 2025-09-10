@@ -75,11 +75,11 @@ export class HeaderComponent implements OnInit {
 	get isListEmpty(): boolean {
 		switch (this.currentScope) {
 			case TodoScope.user:
-				return this.todoService.todoCount.user === 0;
+				return this.todoService.userTodos.length === 0;
 			case TodoScope.workspace:
-				return this.todoService.todoCount.workspace === 0;
+				return this.todoService.workspaceTodos.length === 0;
 			case TodoScope.currentFile:
-				return this.todoService.todoCount.currentFile === 0;
+				return this.todoService.currentFileTodos.length === 0;
 			default:
 				return true;
 		}
