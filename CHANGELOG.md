@@ -1,5 +1,13 @@
 # Change Log
 
+## [1.15.0]
+
+- [UI] Angular enter/leave animations + FLIP-based reordering (replaces auto-animate)
+- [UI] Improve drag-preview by removing height cap during drag
+- [UI] Fix Delete All was disabled when list has notes/completed todos only; preserve notes on Clear Completed todos.
+- Update Angular and other dependencies
+- Update README
+
 ## [1.14.1]
 
 - Update Readme with Getting Started section
