@@ -9,8 +9,47 @@ VS Code Todo
 <h3 align="center">The to-do and note manager for VS Code.</h3>
 
 <p align="center">
- <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
- <img src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vsc-todo.png?label=VS%20Code%20Todo" alt="Marketplace bagde"></a>
+  <!-- VS Code Marketplace -->
+  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
+    <img alt="VS Marketplace Version" src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vsc-todo.svg?color=2ea043" />
+  </a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
+    <img alt="VS Marketplace Installs" src="https://vsmarketplacebadges.dev/installs/FrancescoAnzalone.vsc-todo.svg" />
+  </a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
+  <img src="https://vsmarketplacebadges.dev/downloads-short/FrancescoAnzalone.vsc-todo.png" alt="VS Marketplace downloads"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
+    <img alt="VS Marketplace Rating" src="https://vsmarketplacebadges.dev/rating-star/FrancescoAnzalone.vsc-todo.svg" />
+  </a>
+</p>
+
+
+<p align="center">
+  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
+    <img src="https://img.shields.io/open-vsx/v/FrancescoAnzalone/vsc-todo" alt="Open VSX version"></a>
+  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
+    <img src="https://img.shields.io/open-vsx/dt/FrancescoAnzalone/vsc-todo" alt="Open VSX downloads"></a>
+	<a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
+    <img src="https://img.shields.io/open-vsx/rating/FrancescoAnzalone/vsc-todo" alt="Open VSX downloads"></a>
+</p>
+
+  <!-- Project meta -->
+
+<p align="center">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" />
+  <a href="https://prettier.io/">
+    <img alt="Code style: Prettier" src="https://img.shields.io/badge/code_style-Prettier-ff69b4.svg" />
+  </a>
+  <a href="https://eslint.org/">
+    <img alt="Lint: ESLint" src="https://img.shields.io/badge/lint-ESLint-4B32C3.svg" />
+  </a>
+
+</p>
+
+<p align="center">
+  <a href="#getting-started">Getting started</a>
+  ·
+  <a href="https://github.com/ai-autocoder/vscode-todo/issues">Report an issue</a>
 </p>
 
 ## Introduction
