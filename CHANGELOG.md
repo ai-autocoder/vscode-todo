@@ -1,8 +1,8 @@
 # Change Log
 
-## [1.15.1]
+## [1.15.2] [1.15.1]
 
-- Minor fix on Readme
+- Minor fixes on Readme
 
 ## [1.15.0]
 
