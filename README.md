@@ -13,25 +13,25 @@ VS Code Todo
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
     <img
       alt="VS Marketplace Version"
-      src="https://vsmarketplacebadges.dev/version-short/FrancescoAnzalone.vsc-todo.svg"
+      src="https://vsmarketplacebadges.dev/version-short/FrancescoAnzalone.vsc-todo.png"
     />
   </a>
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
     <img
       alt="VS Marketplace Installs"
-      src="https://vsmarketplacebadges.dev/installs-short/FrancescoAnzalone.vsc-todo.svg"
+      src="https://vsmarketplacebadges.dev/installs-short/FrancescoAnzalone.vsc-todo.png"
     />
   </a>
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
   <img
     alt="VS Marketplace Downloads"
-    src="https://vsmarketplacebadges.dev/downloads-short/FrancescoAnzalone.vsc-todo.svg"
+    src="https://vsmarketplacebadges.dev/downloads-short/FrancescoAnzalone.vsc-todo.png"
   >
   </a>
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
     <img
       alt="VS Marketplace Rating"
-      src="https://vsmarketplacebadges.dev/rating-star/FrancescoAnzalone.vsc-todo.svg"
+      src="https://vsmarketplacebadges.dev/rating-star/FrancescoAnzalone.vsc-todo.png"
     />
   </a>
 </p>
