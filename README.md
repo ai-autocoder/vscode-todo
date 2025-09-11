@@ -11,26 +11,50 @@ VS Code Todo
 <p align="center">
   <!-- VS Code Marketplace -->
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-    <img alt="VS Marketplace Version" src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vsc-todo.svg" />
+    <img
+      alt="VS Marketplace Version"
+      src="https://vsmarketplacebadges.dev/version-short/FrancescoAnzalone.vsc-todo.svg"
+    />
   </a>
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-    <img alt="VS Marketplace Installs" src="https://vsmarketplacebadges.dev/installs/FrancescoAnzalone.vsc-todo.svg" />
+    <img
+      alt="VS Marketplace Installs"
+      src="https://vsmarketplacebadges.dev/installs-short/FrancescoAnzalone.vsc-todo.svg"
+    />
   </a>
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-  <img src="https://vsmarketplacebadges.dev/downloads-short/FrancescoAnzalone.vsc-todo.png" alt="VS Marketplace downloads"></a>
+  <img
+    alt="VS Marketplace Downloads"
+    src="https://vsmarketplacebadges.dev/downloads-short/FrancescoAnzalone.vsc-todo.svg"
+  >
+  </a>
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-    <img alt="VS Marketplace Rating" src="https://vsmarketplacebadges.dev/rating-star/FrancescoAnzalone.vsc-todo.svg" />
+    <img
+      alt="VS Marketplace Rating"
+      src="https://vsmarketplacebadges.dev/rating-star/FrancescoAnzalone.vsc-todo.svg"
+    />
   </a>
 </p>
 
-
 <p align="center">
   <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
-    <img src="https://img.shields.io/open-vsx/v/FrancescoAnzalone/vsc-todo" alt="Open VSX version"></a>
+    <img
+      src="https://img.shields.io/open-vsx/v/FrancescoAnzalone/vsc-todo"
+      alt="Open VSX Version"
+    >
+  </a>
   <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
-    <img src="https://img.shields.io/open-vsx/dt/FrancescoAnzalone/vsc-todo" alt="Open VSX downloads"></a>
-	<a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
-    <img src="https://img.shields.io/open-vsx/rating/FrancescoAnzalone/vsc-todo" alt="Open VSX downloads"></a>
+    <img
+      alt="Open VSX Downloads"
+      src="https://img.shields.io/open-vsx/dt/FrancescoAnzalone/vsc-todo"
+    >
+  </a>
+  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
+    <img
+      alt="Open VSX Rating"
+      src="https://img.shields.io/open-vsx/stars/FrancescoAnzalone/vsc-todo"
+    >
+  </a>
 </p>
 
   <!-- Project meta -->
@@ -38,10 +62,16 @@ VS Code Todo
 <p align="center">
   <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" />
   <a href="https://prettier.io/">
-    <img alt="Code style: Prettier" src="https://img.shields.io/badge/code_style-Prettier-ff69b4.svg" />
+    <img
+      alt="Code style: Prettier"
+      src="https://img.shields.io/badge/code_style-Prettier-ff69b4.svg"
+    />
   </a>
   <a href="https://eslint.org/">
-    <img alt="Lint: ESLint" src="https://img.shields.io/badge/lint-ESLint-4B32C3.svg" />
+    <img
+      alt="Lint: ESLint"
+      src="https://img.shields.io/badge/lint-ESLint-4B32C3.svg"
+    />
   </a>
 
 </p>
