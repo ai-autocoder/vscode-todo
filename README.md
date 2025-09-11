@@ -11,7 +11,7 @@ VS Code Todo
 <p align="center">
   <!-- VS Code Marketplace -->
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-    <img alt="VS Marketplace Version" src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vsc-todo.svg?color=2ea043" />
+    <img alt="VS Marketplace Version" src="https://vsmarketplacebadges.dev/version/FrancescoAnzalone.vsc-todo.svg" />
   </a>
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
     <img alt="VS Marketplace Installs" src="https://vsmarketplacebadges.dev/installs/FrancescoAnzalone.vsc-todo.svg" />
