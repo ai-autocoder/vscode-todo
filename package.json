@@ -4,7 +4,7 @@
 	"publisher": "FrancescoAnzalone",
 	"description": "The to-do and note manager for VS Code",
 	"icon": "icon.png",
-	"version": "1.15.0",
+	"version": "1.15.1",
 	"license": "MIT",
 	"keywords": [
 		"todo",
