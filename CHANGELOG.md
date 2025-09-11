@@ -1,5 +1,9 @@
 # Change Log
 
+## [1.15.1]
+
+- Minor fix on Readme
+
 ## [1.15.0]
 
 - [UI] Angular enter/leave animations + FLIP-based reordering (replaces auto-animate)
