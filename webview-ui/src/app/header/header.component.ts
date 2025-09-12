@@ -84,4 +84,32 @@ export class HeaderComponent implements OnInit {
 				return true;
 		}
 	}
+
+	get allCollapsed(): boolean {
+		const items = this.getTodosByScope();
+		return items.length > 0 && items.every((t) => t.collapsed === true);
+	}
+
+	get hasAnyCollapsed(): boolean {
+		const items = this.getTodosByScope();
+		return items.some((t) => t.collapsed === true);
+	}
+
+	private getTodosByScope() {
+		switch (this.currentScope) {
+			case TodoScope.user:
+				return this.todoService.userTodos;
+			case TodoScope.workspace:
+				return this.todoService.workspaceTodos;
+			case TodoScope.currentFile:
+				return this.todoService.currentFileTodos;
+			default:
+				return [];
+		}
+	}
+
+	toggleAllCollapsed() {
+		const nextCollapsed = !this.allCollapsed;
+		this.todoService.setAllCollapsed(this.currentScope, { collapsed: nextCollapsed });
+	}
 }

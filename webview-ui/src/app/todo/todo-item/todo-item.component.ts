@@ -38,6 +38,32 @@ export class TodoItemComponent implements OnInit {
 		this.enableLineNumbers = this.todoService.config.enableLineNumbers;
 	}
 
+	collapse(event?: MouseEvent) {
+		if (event) event.stopPropagation();
+		if (this.isEditable) {
+			this.saveEdit();
+		}
+		this.todoService.toggleCollapsed(this.scope, { id: this.todo.id });
+	}
+
+	expand(event?: MouseEvent) {
+		if (event) event.stopPropagation();
+		this.todoService.toggleCollapsed(this.scope, { id: this.todo.id });
+	}
+
+	getPreviewText(text: string): string {
+		// Lightweight strip of markdown syntax and return first line
+		// const noCodeFence = text.replace(/```[\s\S]*?```/g, "");
+		// const stripped = noCodeFence
+		// 	.replace(/!\[[^\]]*\]\([^\)]*\)/g, "") // images
+		// 	.replace(/\[[^\]]*\]\([^\)]*\)/g, "$1") // links [text](url) -> text
+		// 	.replace(/[#>*_`~\-]{1,}/g, " ") // headings, lists, emphasis, code ticks
+		// 	.replace(/\s+/g, " ")
+		// 	.trim();
+		// return stripped.split("\n")[0];
+		return text.trim().split("\n")[0];
+	}
+
 	onActionMenuOpened() {
 		this.isActionMenuOpen = true;
 	}

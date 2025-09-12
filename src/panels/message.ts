@@ -18,6 +18,8 @@ type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.reorderTodo
 	| MessageActionsFromWebview.toggleMarkdown
 	| MessageActionsFromWebview.toggleTodoNote
+	| MessageActionsFromWebview.toggleCollapsed
+	| MessageActionsFromWebview.setAllCollapsed
 	? Parameters<
 			L extends TodoScope.user
 				? (typeof userActions)[T]
@@ -35,6 +37,7 @@ type MessagePayload<T, L> = T extends
 				creationDate: string;
 				isMarkdown: boolean;
 				isNote: boolean;
+				collapsed?: boolean;
 				itemPosition: number;
 				currentFilePath?: string | null;
 			}
@@ -106,6 +109,8 @@ export const enum MessageActionsFromWebview {
 	reorderTodo = "reorderTodo",
 	toggleMarkdown = "toggleMarkdown",
 	toggleTodoNote = "toggleTodoNote",
+	toggleCollapsed = "toggleCollapsed",
+	setAllCollapsed = "setAllCollapsed",
 	requestData = "requestData",
 	pinFile = "pinFile",
 	export = "export",
@@ -201,6 +206,26 @@ export const messagesFromWebview = {
 			: Parameters<typeof workspaceActions.toggleTodoNote>[0]
 	): Message<MessageActionsFromWebview.toggleTodoNote, TodoScope> => ({
 		type: MessageActionsFromWebview.toggleTodoNote,
+		scope,
+		payload,
+	}),
+	toggleCollapsed: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.toggleCollapsed>[0]
+			: Parameters<typeof workspaceActions.toggleCollapsed>[0]
+	): Message<MessageActionsFromWebview.toggleCollapsed, TodoScope> => ({
+		type: MessageActionsFromWebview.toggleCollapsed,
+		scope,
+		payload,
+	}),
+	setAllCollapsed: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.setAllCollapsed>[0]
+			: Parameters<typeof workspaceActions.setAllCollapsed>[0]
+	): Message<MessageActionsFromWebview.setAllCollapsed, TodoScope> => ({
+		type: MessageActionsFromWebview.setAllCollapsed,
 		scope,
 		payload,
 	}),

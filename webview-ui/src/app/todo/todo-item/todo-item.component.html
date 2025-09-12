@@ -7,43 +7,74 @@
 		'menu-open': isActionMenuOpen,
 	}"
 >
-	@if (!todo.isNote) {
-		<div class="checkbox">
-			<vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
-		</div>
-	}
-	<div class="content">
-		@if (isEditable) {
-			<autosize-text-area
-				id="text-area-{{ todo.id }}"
-				class="todo-text"
-				[(value)]="todo.text"
-				[autofocus]="true"
-				(mousedown)="$event.stopPropagation()"
-				(dragstart)="$event.preventDefault()"
-			>
-			</autosize-text-area>
-		}
-		<!-- prettier-ignore -->
-		@if (!isEditable && !todo.isMarkdown) {
+    @if (!todo.isNote) {
+        <div class="checkbox">
+            @if (todo.collapsed) {
+                <vscode-button
+                    appearance="icon"
+                    class="chevron-button"
+                    (click)="expand($event)"
+                    aria-label="Expand item"
+                    title="Expand item"
+                >
+                    <span><app-icon name="chevron-right"></app-icon></span>
+                </vscode-button>
+            }
+            @if (!todo.collapsed) {
+                <vscode-checkbox (click)="toggleCompleted()" [checked]="todo.completed"></vscode-checkbox>
+            }
+        </div>
+    }
+    <div class="content">
+        @if (isEditable) {
+            <autosize-text-area
+                id="text-area-{{ todo.id }}"
+                class="todo-text"
+                [(value)]="todo.text"
+                [autofocus]="true"
+                (mousedown)="$event.stopPropagation()"
+                (dragstart)="$event.preventDefault()"
+            >
+            </autosize-text-area>
+        }
+        @if (!isEditable && todo.collapsed) {
+            <div class="todo-text collapsed" [attr.aria-expanded]="false">
+                @if (todo.isNote) {
+                    <vscode-button
+                        appearance="icon"
+                        class="chevron-inline"
+                        (click)="expand($event)"
+                        aria-label="Expand item"
+                        title="Expand item"
+                    >
+                        <span><app-icon name="chevron-right"></app-icon></span>
+                    </vscode-button>
+                }
+                <span class="collapsed-text" [class.complete]="todo.completed && !todo.isNote">
+                    {{ getPreviewText(todo.text) }}
+                </span>
+            </div>
+        }
+        <!-- prettier-ignore -->
+        @if (!isEditable && !todo.collapsed && !todo.isMarkdown) {
       <div
         (click)="edit()"
         class="todo-text"
         [class.complete]="todo.completed && !todo.isNote"
       >{{ todo.text }}</div>
     }
-		@if (!isEditable && todo.isMarkdown) {
-			<div class="markdown-container" (click)="edit($event)">
-				<markdown
-					clipboard
-					class="todo-text"
-					[lineNumbers]="enableLineNumbers"
-					[class.complete]="todo.completed && !todo.isNote"
-					[data]="todo.text"
-					mermaid
-				></markdown>
-			</div>
-		}
+        @if (!isEditable && !todo.collapsed && todo.isMarkdown) {
+            <div class="markdown-container" (click)="edit($event)">
+                <markdown
+                    clipboard
+                    class="todo-text"
+                    [lineNumbers]="enableLineNumbers"
+                    [class.complete]="todo.completed && !todo.isNote"
+                    [data]="todo.text"
+                    mermaid
+                ></markdown>
+            </div>
+        }
 		@if (isEditable) {
 			<div class="footer" (mousedown)="$event.stopPropagation()" (dragstart)="$event.preventDefault()">
 				<div class="labels">
@@ -80,13 +111,26 @@
 			</span>
 		</vscode-button>
 
-		<!-- Action menu -->
-		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
-			<fieldset>
-				<legend>Type</legend>
-				<button mat-menu-item (click)="setIsNote($event, true)" aria-label="Select Note">
-					<div class="menu-check">
-						Note
+        <!-- Action menu -->
+        <mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
+            <fieldset>
+                <legend>{{ todo.collapsed ? 'Expand' : 'Collapse' }}</legend>
+                @if (!todo.collapsed) {
+                    <button mat-menu-item (click)="collapse($event)" aria-label="Collapse item">
+                        <span class="icon-container"> <app-icon name="chevron-down"></app-icon> Collapse item </span>
+                    </button>
+                }
+                @if (todo.collapsed) {
+                    <button mat-menu-item (click)="expand($event)" aria-label="Expand item">
+                        <span class="icon-container"> <app-icon name="chevron-right"></app-icon> Expand item </span>
+                    </button>
+                }
+            </fieldset>
+            <fieldset>
+                <legend>Type</legend>
+                <button mat-menu-item (click)="setIsNote($event, true)" aria-label="Select Note">
+                    <div class="menu-check">
+                        Note
 						@if (todo.isNote) {
 							<span class="icon-container">
 								<app-icon name="check"></app-icon>

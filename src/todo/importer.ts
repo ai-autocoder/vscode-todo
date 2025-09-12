@@ -218,16 +218,17 @@ function filterValidTodos(todos: TodoPartialInput[]): TodoPartialInput[] {
 }
 
 function initMissingTodoProperties(validImportData: TodoPartialInput[]): Todo[] {
-	return validImportData.map((todo) => ({
-		...todo,
-		id: todo.id || generateUniqueId(validImportData),
-		text: todo.text.trim(),
-		completed: todo.completed ?? false,
-		isMarkdown: todo.isMarkdown ?? false,
-		isNote: todo.isNote ?? false,
-		creationDate: todo.creationDate ?? new Date().toISOString(),
-		completionDate: todo.completed ? (todo.completionDate ?? new Date().toISOString()) : undefined,
-	}));
+    return validImportData.map((todo) => ({
+        ...todo,
+        id: todo.id || generateUniqueId(validImportData),
+        text: todo.text.trim(),
+        completed: todo.completed ?? false,
+        isMarkdown: todo.isMarkdown ?? false,
+        isNote: todo.isNote ?? false,
+        collapsed: todo.collapsed ?? false,
+        creationDate: todo.creationDate ?? new Date().toISOString(),
+        completionDate: todo.completed ? (todo.completionDate ?? new Date().toISOString()) : undefined,
+    }));
 }
 
 function mergeTodoArrays(

@@ -78,6 +78,18 @@
 
 	<vscode-button
 		appearance="icon"
+		[aria-label]="allCollapsed ? 'Expand all' : 'Collapse all'"
+		[title]="allCollapsed ? 'Expand all' : 'Collapse all'"
+		(click)="toggleAllCollapsed()"
+		[disabled]="isListEmpty"
+	>
+		<span>
+			<app-icon [name]="allCollapsed ? 'chevron-right' : 'chevron-down'"></app-icon>
+		</span>
+	</vscode-button>
+
+	<vscode-button
+		appearance="icon"
 		[aria-label]="'Delete all items in this tab'"
 		[title]="'Delete all items in this tab'"
 		(click)="deleteAll()"

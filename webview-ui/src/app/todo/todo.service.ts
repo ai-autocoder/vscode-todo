@@ -48,7 +48,7 @@ export class TodoService {
 	>([]);
 	private _enableWideViewSource = new BehaviorSubject<boolean>(this._config.enableWideView);
 
-	private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
+    private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
 
 	enableWideView = this._enableWideViewSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
@@ -144,9 +144,9 @@ export class TodoService {
 		return this._todoCount;
 	}
 
-	get config(): Config {
-		return this._config;
-	}
+    get config(): Config {
+        return this._config;
+    }
 
 	get isPinned(): boolean {
 		return this._currentFileSlice.isPinned;
@@ -182,6 +182,14 @@ export class TodoService {
 
 	toggleTodoNote(...args: Parameters<typeof messagesFromWebview.toggleTodoNote>) {
 		vscode.postMessage(messagesFromWebview.toggleTodoNote(...args));
+	}
+
+	toggleCollapsed(...args: Parameters<typeof messagesFromWebview.toggleCollapsed>) {
+		vscode.postMessage(messagesFromWebview.toggleCollapsed(...args));
+	}
+
+	setAllCollapsed(...args: Parameters<typeof messagesFromWebview.setAllCollapsed>) {
+		vscode.postMessage(messagesFromWebview.setAllCollapsed(...args));
 	}
 
 	pinFile() {

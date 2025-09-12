@@ -273,6 +273,16 @@ export class HelloWorldPanel {
 						store.dispatch(storeActions!.toggleTodoNote(payload));
 						break;
 					}
+					case MessageActionsFromWebview.toggleCollapsed: {
+						const { payload } = message as Message<MessageActionsFromWebview.toggleCollapsed, TodoScope>;
+						store.dispatch(storeActions!.toggleCollapsed(payload));
+						break;
+					}
+					case MessageActionsFromWebview.setAllCollapsed: {
+						const { payload } = message as Message<MessageActionsFromWebview.setAllCollapsed, TodoScope>;
+						store.dispatch(storeActions!.setAllCollapsed(payload));
+						break;
+					}
 					case MessageActionsFromWebview.pinFile: {
 						store.dispatch(currentFileActions.pinFile());
 						break;

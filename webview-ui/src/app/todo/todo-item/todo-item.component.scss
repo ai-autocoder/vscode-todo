@@ -46,6 +46,14 @@
 		}
 	}
 
+	.chevron-button {
+		margin: 0;
+		padding: 0;
+		width: 24px;
+		height: 24px;
+		align-self: center;
+	}
+
 	.content {
 		justify-content: center;
 		flex-direction: column;
@@ -60,6 +68,24 @@
 			word-wrap: break-word;
 			width: 100%;
 			cursor: pointer;
+		}
+
+		div.todo-text.collapsed {
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			cursor: default;
+		}
+
+		.chevron-inline {
+			margin: 0;
+			padding: 0;
+			width: 20px;
+			height: 20px;
+			flex: 0 0 auto;
 		}
 
 		div.markdown-container {

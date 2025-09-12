@@ -111,6 +111,7 @@ const todoReducers = {
 			creationDate: string;
 			isMarkdown: boolean;
 			isNote: boolean;
+			collapsed?: boolean;
 			itemPosition: number;
 		}>
 	) => {
@@ -121,11 +122,25 @@ const todoReducers = {
 			creationDate: action.payload.creationDate,
 			isMarkdown: action.payload.isMarkdown,
 			isNote: action.payload.isNote,
+			collapsed: action.payload.collapsed ?? false,
 		};
 		state.todos?.splice(action.payload.itemPosition, 0, restoredItem);
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
 		state.numberOfNotes = getNumberOfNotes(state);
+	},
+
+	toggleCollapsed: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
+		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
+		if (!todo) {return;}
+		todo.collapsed = !todo.collapsed;
+		state.lastActionType = action.type;
+	},
+	setAllCollapsed: (state: TodoSlice, action: PayloadAction<{ collapsed: boolean }>) => {
+		state.todos?.forEach((todo) => {
+			todo.collapsed = action.payload.collapsed;
+		});
+		state.lastActionType = action.type;
 	},
 	reorderTodo: (state: TodoSlice, action: PayloadAction<{ reorderedTodos: Todo[] }>) => {
 		state.todos = action.payload.reorderedTodos;
