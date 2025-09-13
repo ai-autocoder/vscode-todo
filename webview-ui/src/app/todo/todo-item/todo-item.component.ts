@@ -39,7 +39,6 @@ export class TodoItemComponent implements OnInit {
 	}
 
 	collapse(event?: MouseEvent) {
-		if (event) event.stopPropagation();
 		if (this.isEditable) {
 			this.saveEdit();
 		}
@@ -47,7 +46,6 @@ export class TodoItemComponent implements OnInit {
 	}
 
 	expand(event?: MouseEvent) {
-		if (event) event.stopPropagation();
 		this.todoService.toggleCollapsed(this.scope, { id: this.todo.id });
 	}
 

@@ -115,7 +115,7 @@
 		<mat-menu #actionMenu="matMenu" yPosition="below" xPosition="before">
 			<!-- Expand / Collapse -->
 			@if (!todo.collapsed) {
-				<button mat-menu-item (click)="collapse($event)" aria-label="Collapse item">
+				<button mat-menu-item (click)="collapse()" aria-label="Collapse item">
 					<div class="menu-row">
 						<span class="menu-left"><app-icon name="chevron-down"></app-icon></span>
 						<span class="menu-label">Collapse</span>
@@ -124,7 +124,7 @@
 				</button>
 			}
 			@if (todo.collapsed) {
-				<button mat-menu-item (click)="expand($event)" aria-label="Expand item">
+				<button mat-menu-item (click)="expand()" aria-label="Expand item">
 					<div class="menu-row">
 						<span class="menu-left"><app-icon name="chevron-right"></app-icon></span>
 						<span class="menu-label">Expand</span>
