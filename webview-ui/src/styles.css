@@ -174,9 +174,29 @@ span.icon-container {
 	gap: 0.25em;
 }
 
-div.menu-check {
+/* Unified menu row layout: left icon, label, right status */
+div.menu-row {
+	display: grid;
+	grid-template-columns: 18px 1fr 18px;
+	align-items: center;
+	column-gap: 8px;
+	width: 100%;
+}
+
+span.menu-left,
+span.menu-right {
 	display: flex;
-	justify-content: space-between;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+}
+
+span.menu-label {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 @media screen and (max-width: 500px) {
