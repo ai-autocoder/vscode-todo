@@ -25,10 +25,10 @@ import {
 			textarea {
 				box-sizing: content-box;
 				overflow: hidden;
-				color: var(--input-foreground);
-				background: var(--input-background);
+				color: var(--vscode-input-foreground);
+				background: var(--vscode-input-background);
 				border-radius: calc(var(--corner-radius-round) * 1px);
-				border: calc(var(--border-width) * 1px) solid var(--dropdown-border);
+				border: calc(var(--border-width) * 1px) solid var(--vscode-dropdown-border);
 				font-style: inherit;
 				font-variant: inherit;
 				font-weight: inherit;
@@ -49,19 +49,19 @@ import {
 		`,
         `
 			textarea::placeholder {
-				color: var(--input-placeholder-foreground);
+				color: var(--vscode-input-placeholderForeground);
 			}
 		`,
         `
 			textarea:hover:enabled {
-				background: var(--input-background);
-				border-color: var(--dropdown-border);
+				background: var(--vscode-input-background);
+				border-color: var(--vscode-dropdown-border);
 			}
 		`,
         `
 			textarea:active:enabled,
 			textarea:focus:enabled {
-				border-color: var(--focus-border);
+				border-color: var(--vscode-focusBorder);
 			}
 		`,
     ],

@@ -42,7 +42,7 @@
 		margin: calc(var(--design-unit) * 1px) 0;
 
 		&.menu-open {
-			background: var(--button-icon-hover-background);
+			background: var(--vscode-toolbar-hoverBackground);
 		}
 	}
 
@@ -100,7 +100,7 @@
 
 		.todo-text.complete {
 			text-decoration: line-through;
-			color: var(--input-placeholder-foreground);
+			color: var(--vscode-input-placeholderForeground);
 		}
 
 		autosize-text-area {

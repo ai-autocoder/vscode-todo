@@ -81,7 +81,8 @@ markdown pre {
 	--mat-menu-item-label-text-font: var(--font-family);
 	--mat-menu-item-label-text-size: var(--vscode-font-size);
 	--mat-menu-item-label-text-tracking: "normal";
-	--mat-menu-item-hover-state-layer-color: var(--list-active-selection-background);
+	/* Use VS Code theme var for generic list hover */
+	--mat-menu-item-hover-state-layer-color: var(--vscode-list-hoverBackground);
 	--mat-menu-item-label-text-color: var(--vscode-menu-foreground);
 }
 .mat-mdc-menu-content {
@@ -95,12 +96,19 @@ markdown pre {
 	border-radius: 4px;
 	min-height: 30px !important;
 	text-align: start !important;
-	--mat-menu-item-hover-state-layer-color: var(--button-primary-hover-background);
+	/* Default hover layer color uses VS Code list hover */
+	--mat-menu-item-hover-state-layer-color: var(--vscode-list-hoverBackground);
 
 	&:hover {
 		--mat-menu-item-hover-state-layer-color: var(--vscode-menu-selectionBackground);
 		--mat-menu-item-label-text-color: var(--vscode-menu-selectionForeground);
 	}
+}
+
+/* Keyboard focus outline aligned with VS Code focus color */
+.mat-mdc-menu-item:focus {
+	outline: 1px solid var(--vscode-focusBorder) !important;
+	outline-offset: -1px;
 }
 
 .mat-divider {
@@ -150,7 +158,7 @@ fieldset {
 
 button.danger {
 	&:hover {
-		background: hsl(0, 49%, 47%) !important;
+		background: var(--vscode-statusBarItem-errorBackground) !important;
 		app-icon svg path {
 			fill: var(--vscode-menu-selectionForeground);
 		}
@@ -220,6 +228,6 @@ span.menu-label {
 	}
 
 	vscode-panel-tab:hover {
-		background: var(--button-icon-hover-background);
+		background: var(--vscode-tab-hoverBackground);
 	}
 }
