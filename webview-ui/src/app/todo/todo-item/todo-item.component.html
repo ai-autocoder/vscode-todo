@@ -135,7 +135,13 @@
 			<!-- Type section -->
 			<fieldset>
 				<legend>Type</legend>
-				<button mat-menu-item (click)="setIsNote($event, true)" aria-label="Select Note">
+				<button
+					mat-menu-item
+					(click)="setIsNote($event, true)"
+					aria-label="Select Note"
+					[attr.role]="'menuitemradio'"
+					[attr.aria-checked]="todo.isNote"
+				>
 					<div class="menu-row">
 						<span class="menu-left"></span>
 						<span class="menu-label">Note</span>
@@ -146,7 +152,13 @@
 						}
 					</div>
 				</button>
-				<button mat-menu-item (click)="setIsNote($event, false)" aria-label="Select Todo">
+				<button
+					mat-menu-item
+					(click)="setIsNote($event, false)"
+					aria-label="Select Todo"
+					[attr.role]="'menuitemradio'"
+					[attr.aria-checked]="!todo.isNote"
+				>
 					<div class="menu-row">
 						<span class="menu-left"></span>
 						<span class="menu-label">Todo</span>
@@ -161,7 +173,13 @@
 			<!-- View as section -->
 			<fieldset>
 				<legend>View as</legend>
-				<button mat-menu-item (click)="setIsMarkdown($event, false)" aria-label="View as text">
+				<button
+					mat-menu-item
+					(click)="setIsMarkdown($event, false)"
+					aria-label="View as text"
+					[attr.role]="'menuitemradio'"
+					[attr.aria-checked]="!todo.isMarkdown"
+				>
 					<div class="menu-row">
 						<span class="menu-left"></span>
 						<span class="menu-label">Text</span>
@@ -172,7 +190,13 @@
 						}
 					</div>
 				</button>
-				<button mat-menu-item (click)="setIsMarkdown($event, true)" aria-label="View as Markdown">
+				<button
+					mat-menu-item
+					(click)="setIsMarkdown($event, true)"
+					aria-label="View as Markdown"
+					[attr.role]="'menuitemradio'"
+					[attr.aria-checked]="todo.isMarkdown"
+				>
 					<div class="menu-row">
 						<span class="menu-left"></span>
 						<span class="menu-label">Markdown</span>
