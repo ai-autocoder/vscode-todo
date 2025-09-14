@@ -97,6 +97,11 @@
 					"type": "boolean",
 					"default": true
 				},
+				"vscodeTodo.enableMarkdownKatex": {
+					"description": "Render KaTeX math inside markdown blocks. When disabled, math delimiters are shown as plain text.",
+					"type": "boolean",
+					"default": true
+				},
 				"vscodeTodo.enableWideView": {
 					"description": "Enable wide view mode in the webview.",
 					"type": "boolean",

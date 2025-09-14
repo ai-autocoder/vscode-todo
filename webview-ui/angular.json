@@ -33,11 +33,14 @@
 							"@angular/material/prebuilt-themes/pink-bluegrey.css",
 							"node_modules/prismjs/themes/prism-okaidia.css",
 							"node_modules/prismjs/plugins/line-numbers/prism-line-numbers.css",
+							"node_modules/katex/dist/katex.min.css",
 							"src/styles.css"
 						],
 						"scripts": [
 							"node_modules/clipboard/dist/clipboard.min.js",
-							"node_modules/mermaid/dist/mermaid.min.js"
+							"node_modules/mermaid/dist/mermaid.min.js",
+							"node_modules/katex/dist/katex.min.js",
+							"node_modules/katex/dist/contrib/auto-render.min.js"
 						],
 						"browser": "src/main.ts",
 						"allowedCommonJsDependencies": [
@@ -110,11 +113,14 @@
 							"@angular/material/prebuilt-themes/pink-bluegrey.css",
 							"node_modules/prismjs/themes/prism-okaidia.css",
 							"node_modules/prismjs/plugins/line-numbers/prism-line-numbers.css",
+							"node_modules/katex/dist/katex.min.css",
 							"src/styles.css"
 						],
 						"scripts": [
 							"node_modules/clipboard/dist/clipboard.min.js",
-							"node_modules/mermaid/dist/mermaid.min.js"
+							"node_modules/mermaid/dist/mermaid.min.js",
+							"node_modules/katex/dist/katex.min.js",
+							"node_modules/katex/dist/contrib/auto-render.min.js"
 						]
 					}
 				}

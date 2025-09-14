@@ -26,6 +26,7 @@
     "clipboard": "^2.0.11",
     "marked": "^15.0.7",
     "mermaid": "^11.10.0",
+    "katex": "^0.16.10",
     "ngx-markdown": "^20.0.0",
     "prismjs": "^1.29.0",
     "rxjs": "~7.8.2",

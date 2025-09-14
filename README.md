@@ -133,6 +133,7 @@ This covers the basic workflow. For advanced functionality such as markdown supp
 - **Markdown Support**
 - **Code Syntax Highlighting**
 - **Mermaid Diagram Support**
+- **KaTeX Math Support**
 - **Customizable Sorting**
 - **Drag-and-Drop Functionality**
 - **Status Bar Integration**
@@ -223,6 +224,29 @@ If you prefer to see Mermaid code with syntax highlighting instead of rendered d
 ```
 
 When disabled, Mermaid code blocks render as regular code with Prism highlighting; when enabled (default), they render as diagrams.
+
+### KaTeX Math Support
+
+Render mathematical expressions using [KaTeX](https://katex.org/) in Markdown items. Enable "View as Markdown" for the item, then use KaTeX delimiters. Math is not rendered inside fenced code blocks (```), so do not wrap math in triple backticks.
+
+- Inline math: `$a^2 + b^2 = c^2$`
+- Block math (put on separate lines, no backticks):
+
+  $$
+  \int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}
+  $$
+
+Supported delimiters include `$...$`, `$$...$$`, `\( ... \)`, and `\[ ... \]`.
+
+#### Toggle Math Rendering
+
+To disable KaTeX rendering and show math delimiters as plain text with syntax highlighting instead, set the following setting in VS Code:
+
+```json
+"vscodeTodo.enableMarkdownKatex": false
+```
+
+When enabled (default), inline `$...$` and block `$$...$$` expressions render as KaTeX. If you see a code block instead, remove surrounding triple backticks—KaTeX does not render inside code fences.
 
 ### Customizable Sorting
 

@@ -26,6 +26,7 @@ export class TodoItemComponent implements OnInit {
 	isActionMenuOpen = false;
 	enableLineNumbers: boolean = false;
 	enableMarkdownDiagrams: boolean = true;
+	enableMarkdownKatex: boolean = true;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
 
@@ -38,6 +39,7 @@ export class TodoItemComponent implements OnInit {
 	ngOnInit() {
 		this.enableLineNumbers = this.todoService.config.enableLineNumbers;
 		this.enableMarkdownDiagrams = this.todoService.config.enableMarkdownDiagrams;
+		this.enableMarkdownKatex = this.todoService.config.enableMarkdownKatex;
 	}
 
 	collapse(event?: MouseEvent) {

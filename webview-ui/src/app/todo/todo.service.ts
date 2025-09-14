@@ -40,6 +40,7 @@ export class TodoService {
 		createPosition: "top",
 		enableLineNumbers: false,
 		enableMarkdownDiagrams: true,
+		enableMarkdownKatex: true,
 		enableWideView: false,
 		autoDeleteCompletedAfterDays: 0,
 	};
