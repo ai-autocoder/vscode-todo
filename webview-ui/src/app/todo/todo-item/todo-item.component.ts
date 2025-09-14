@@ -74,8 +74,18 @@ export class TodoItemComponent implements OnInit {
 		this.isActionMenuOpen = false;
 	}
 
-	saveEdit() {
-		this.todoService.editTodo(this.scope, { id: this.todo.id, newText: this.todo.text.trim() });
+		saveEdit() {
+		const newText = this.todo.text.trim();
+		// If edited text is empty, delete the item instead of saving an empty value.
+		// Restore previous text on the object so UNDO can bring it back correctly.
+		if (!newText.length) {
+			this.todo.text = this.previousText;
+			this.removeGlobalClickListener();
+			this.isEditable = false;
+			this.delete.emit(this.todo);
+			return;
+		}
+		this.todoService.editTodo(this.scope, { id: this.todo.id, newText });
 		this.isEditable = false;
 		this.removeGlobalClickListener();
 	}
