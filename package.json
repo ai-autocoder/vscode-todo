@@ -92,6 +92,11 @@
 					"type": "boolean",
 					"default": false
 				},
+				"vscodeTodo.enableMarkdownDiagrams": {
+					"description": "Render Mermaid diagrams inside markdown blocks. When disabled, Mermaid code blocks are shown with syntax highlighting only.",
+					"type": "boolean",
+					"default": true
+				},
 				"vscodeTodo.enableWideView": {
 					"description": "Enable wide view mode in the webview.",
 					"type": "boolean",

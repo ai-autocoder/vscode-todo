@@ -7,6 +7,7 @@ export type Config = {
 	createMarkdownByDefault: boolean;
 	createPosition: "top" | "bottom";
 	enableLineNumbers: boolean;
+	enableMarkdownDiagrams: boolean;
 	enableWideView: boolean;
 	autoDeleteCompletedAfterDays: number;
 };
@@ -18,6 +19,7 @@ export function getConfig(): Config {
 	const createMarkdownByDefault: boolean = config.get("createMarkdownByDefault", true);
 	let createPosition: any = config.get("createPosition", "bottom");
 	const enableLineNumbers: boolean = config.get("enableLineNumbers", false);
+	const enableMarkdownDiagrams: boolean = config.get("enableMarkdownDiagrams", true);
 	const autoDeleteCompletedAfterDays: number = config.get("autoDeleteCompletedAfterDays", 0);
 
 	const taskSortingOptionsEnum =
@@ -43,6 +45,7 @@ export function getConfig(): Config {
 		createMarkdownByDefault,
 		createPosition,
 		enableLineNumbers,
+		enableMarkdownDiagrams,
 		enableWideView,
 		autoDeleteCompletedAfterDays,
 	};

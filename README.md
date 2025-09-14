@@ -214,6 +214,16 @@ graph TD;
 ```
 ````
 
+#### Toggle Diagram Rendering
+
+If you prefer to see Mermaid code with syntax highlighting instead of rendered diagrams, set the following setting in your VS Code settings:
+
+```json
+"vscodeTodo.enableMarkdownDiagrams": false
+```
+
+When disabled, Mermaid code blocks render as regular code with Prism highlighting; when enabled (default), they render as diagrams.
+
 ### Customizable Sorting
 
 You can personalize how the completed tasks are sorted, with two sorting options and the ability to disable sorting as needed.

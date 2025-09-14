@@ -25,6 +25,7 @@ export class TodoItemComponent implements OnInit {
 	previousText!: string;
 	isActionMenuOpen = false;
 	enableLineNumbers: boolean = false;
+	enableMarkdownDiagrams: boolean = true;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
 
@@ -36,6 +37,7 @@ export class TodoItemComponent implements OnInit {
 
 	ngOnInit() {
 		this.enableLineNumbers = this.todoService.config.enableLineNumbers;
+		this.enableMarkdownDiagrams = this.todoService.config.enableMarkdownDiagrams;
 	}
 
 	collapse(event?: MouseEvent) {

@@ -1,5 +1,9 @@
 # Change Log
 
+## Next Version
+
+- Config option `vscodeTodo.enableMarkdownDiagrams` to toggle Mermaid diagram rendering in markdown. When disabled, Mermaid fences are shown with syntax highlighting only.
+
 ##  [1.15.3]
 
 - Minor fixes on Readme
