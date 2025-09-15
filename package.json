@@ -112,6 +112,12 @@
 					"type": "number",
 					"default": 0
 				},
+				"vscodeTodo.collapsedPreviewLines": {
+					"description": "Number of lines to show for each collapsed item preview.",
+					"type": "number",
+					"default": 1,
+					"minimum": 1
+				},
 				"vscodeTodo.webviewFontFamily": {
 					"description": "Font family for the Todo webview. Leave empty to inherit VS Code's font.",
 					"type": "string",

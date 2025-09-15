@@ -50,9 +50,11 @@
 						<span><app-icon name="chevron-right"></app-icon></span>
 					</vscode-button>
 				}
-				<span class="collapsed-text" [class.complete]="todo.completed && !todo.isNote">
-					{{ getPreviewText(todo.text) }}
-				</span>
+				<span
+					class="collapsed-text"
+					[class.complete]="todo.completed && !todo.isNote"
+					[ngStyle]="{ '-webkit-line-clamp': collapsedPreviewLines }"
+				>{{ getPreviewText(todo.text) }}</span>
 			</div>
 		}
 		<!-- prettier-ignore -->

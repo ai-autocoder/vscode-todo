@@ -45,6 +45,7 @@ export class TodoService {
 		autoDeleteCompletedAfterDays: 0,
 		webviewFontFamily: "",
 		webviewFontSize: 0,
+		collapsedPreviewLines: 1,
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<

@@ -27,6 +27,7 @@ export class TodoItemComponent implements OnInit {
 	enableLineNumbers: boolean = false;
 	enableMarkdownDiagrams: boolean = true;
 	enableMarkdownKatex: boolean = true;
+	collapsedPreviewLines: number = 1;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
 
@@ -40,6 +41,7 @@ export class TodoItemComponent implements OnInit {
 		this.enableLineNumbers = this.todoService.config.enableLineNumbers;
 		this.enableMarkdownDiagrams = this.todoService.config.enableMarkdownDiagrams;
 		this.enableMarkdownKatex = this.todoService.config.enableMarkdownKatex;
+		this.collapsedPreviewLines = this.todoService.config.collapsedPreviewLines ?? 1;
 	}
 
 	collapse(event?: MouseEvent) {
@@ -54,16 +56,11 @@ export class TodoItemComponent implements OnInit {
 	}
 
 	getPreviewText(text: string): string {
-		// Lightweight strip of markdown syntax and return first line
-		// const noCodeFence = text.replace(/```[\s\S]*?```/g, "");
-		// const stripped = noCodeFence
-		// 	.replace(/!\[[^\]]*\]\([^\)]*\)/g, "") // images
-		// 	.replace(/\[[^\]]*\]\([^\)]*\)/g, "$1") // links [text](url) -> text
-		// 	.replace(/[#>*_`~\-]{1,}/g, " ") // headings, lists, emphasis, code ticks
-		// 	.replace(/\s+/g, " ")
-		// 	.trim();
-		// return stripped.split("\n")[0];
-		return text.trim().split("\n")[0];
+		const lines = text
+			.split("\n")
+			.map((l) => l.trim())
+			.filter((l) => l.length > 0);
+		return lines.slice(0, Math.max(1, this.collapsedPreviewLines)).join("\n");
 	}
 
 	onActionMenuOpened() {

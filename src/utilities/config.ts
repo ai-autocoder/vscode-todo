@@ -11,6 +11,7 @@ export type Config = {
 	enableMarkdownKatex: boolean;
 	enableWideView: boolean;
 	autoDeleteCompletedAfterDays: number;
+	collapsedPreviewLines: number;
 	// Webview typography
 	webviewFontFamily?: string;
 	webviewFontSize?: number;
@@ -46,6 +47,9 @@ export function getConfig(): Config {
 	}
 
 	const enableWideView: boolean = config.get("enableWideView", false);
+
+	// Sanitize numeric inputs
+	const collapsedPreviewLines = Math.max(1, Math.floor(collapsedPreviewLinesRaw || 1));
 
 	return {
 		taskSortingOptions,

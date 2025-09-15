@@ -72,13 +72,22 @@
 		}
 
 		div.todo-text.collapsed {
-			white-space: nowrap;
 			overflow: hidden;
-			text-overflow: ellipsis;
 			display: flex;
 			align-items: center;
 			gap: 4px;
 			cursor: default;
+		}
+
+		/* Multiline clamp for collapsed preview text */
+		span.collapsed-text {
+			flex: 1 1 auto;
+			display: -webkit-box;
+			-webkit-box-orient: vertical;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: pre-wrap; /* allow wrapping and preserve newlines */
+			/* clamp value set via inline style from component */
 		}
 
 		.chevron-inline {

@@ -273,6 +273,14 @@ To enable this feature, set the `vscodeTodo.autoDeleteCompletedAfterDays` config
 "vscodeTodo.autoDeleteCompletedAfterDays": 7
 ```
 
+### Collapsed item preview lines
+
+Control how many lines are shown when an item is collapsed. Set `vscodeTodo.collapsedPreviewLines` to the desired number of lines (minimum 1). Default is 1.
+
+```json
+"vscodeTodo.collapsedPreviewLines": 2
+```
+
 ### Webview Font Settings
 
 Control the webview's typography with two settings:
