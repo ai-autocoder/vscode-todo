@@ -61,7 +61,8 @@
 		padding: 0 0.5rem;
 
 		div.todo-text {
-			font-size: var(--vscode-editor-font-size);
+			font-size: var(--app-font-size);
+			font-family: var(--app-font-family);
 			margin: 0;
 			padding: 3.75px 0;
 			white-space: pre-wrap;
@@ -95,7 +96,8 @@
 		}
 
 		markdown.todo-text {
-			font-size: var(--vscode-editor-font-size);
+			font-size: var(--app-font-size);
+			font-family: var(--app-font-family);
 		}
 
 		.todo-text.complete {
@@ -108,6 +110,7 @@
 			width: 100%;
 			margin: calc(var(--design-unit) * 1px) 0;
 			padding: 2px 0;
+			font-family: var(--app-font-family);
 		}
 
 		.footer {

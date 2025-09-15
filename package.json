@@ -111,6 +111,18 @@
 					"description": "The number of days after which completed todos are automatically deleted. Set to 0 to disable this feature.",
 					"type": "number",
 					"default": 0
+				},
+				"vscodeTodo.webviewFontFamily": {
+					"description": "Font family for the Todo webview. Leave empty to inherit VS Code's font.",
+					"type": "string",
+					"default": ""
+				},
+				"vscodeTodo.webviewFontSize": {
+					"description": "Font size (in px) for the Todo webview. Set 0 to inherit VS Code's font size.",
+					"type": "number",
+					"default": 0,
+					"minimum": 0,
+					"maximum": 36
 				}
 			}
 		},

@@ -11,6 +11,9 @@ export type Config = {
 	enableMarkdownKatex: boolean;
 	enableWideView: boolean;
 	autoDeleteCompletedAfterDays: number;
+	// Webview typography
+	webviewFontFamily?: string;
+	webviewFontSize?: number;
 };
 
 export function getConfig(): Config {
@@ -23,6 +26,8 @@ export function getConfig(): Config {
 	const enableMarkdownDiagrams: boolean = config.get("enableMarkdownDiagrams", true);
 	const enableMarkdownKatex: boolean = config.get("enableMarkdownKatex", true);
 	const autoDeleteCompletedAfterDays: number = config.get("autoDeleteCompletedAfterDays", 0);
+	const webviewFontFamily: string = config.get("webviewFontFamily", "");
+	const webviewFontSize: number = config.get("webviewFontSize", 0);
 
 	const taskSortingOptionsEnum =
 		contributes.configuration.properties["vscodeTodo.taskSortingOptions"]["enum"];
@@ -51,6 +56,8 @@ export function getConfig(): Config {
 		enableMarkdownKatex,
 		enableWideView,
 		autoDeleteCompletedAfterDays,
+		webviewFontFamily,
+		webviewFontSize,
 	};
 }
 

@@ -13,11 +13,11 @@
 
 .label-text {
 	min-width: 70px;
-	font-size: 12px;
+	font-size: 0.8em;
 }
 
 .label-date {
-	font-family: var(--vscode-editor-font-family);
-	font-size: 12px;
+	font-family: inherit;
+	font-size: 0.8em;
 	text-wrap: nowrap;
 }

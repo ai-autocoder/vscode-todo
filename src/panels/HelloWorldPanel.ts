@@ -1,13 +1,14 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
 import {
-	Disposable,
-	ExtensionContext,
-	Uri,
-	ViewColumn,
-	Webview,
-	WebviewPanel,
-	window,
-	commands,
+    Disposable,
+    ExtensionContext,
+    Uri,
+    ViewColumn,
+    Webview,
+    WebviewPanel,
+    window,
+    commands,
+    workspace,
 } from "vscode";
 import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
@@ -54,6 +55,18 @@ export class HelloWorldPanel {
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
 
 		HelloWorldPanel.setupWebviewMessageHandler(this._panel.webview, context, store);
+
+		// Refresh webview when typography settings change
+		context.subscriptions.push(
+			workspace.onDidChangeConfiguration((e) => {
+				if (
+					e.affectsConfiguration("vscodeTodo.webviewFontFamily") ||
+					e.affectsConfiguration("vscodeTodo.webviewFontSize")
+				) {
+					this.reloadWebview();
+				}
+			})
+		);
 	}
 
 	/**

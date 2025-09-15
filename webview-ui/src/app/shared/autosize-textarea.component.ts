@@ -33,12 +33,12 @@ import {
 				font-variant: inherit;
 				font-weight: inherit;
 				font-stretch: inherit;
-				font-family: inherit;
+				font-family: var(--app-font-family);
 				font-optical-sizing: inherit;
 				font-kerning: inherit;
 				font-feature-settings: inherit;
 				font-variation-settings: inherit;
-				font-size: var(--vscode-editor-font-size);
+				font-size: var(--app-font-size);
 				line-height: var(--type-ramp-base-line-height);
 				padding: calc(var(--design-unit) * 2px);
 				width: 100%;

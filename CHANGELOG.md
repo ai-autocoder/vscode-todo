@@ -5,6 +5,7 @@
 - Config option `vscodeTodo.enableMarkdownDiagrams` to toggle Mermaid diagram rendering in markdown. When disabled, Mermaid fences are shown with syntax highlighting only.
 - Config option `vscodeTodo.enableMarkdownKatex` to toggle KaTeX math rendering in markdown.
 - Webview: Added KaTeX rendering support in Markdown via ngx-markdown.
+- Webview: Add customizable font family and size via `vscodeTodo.webviewFontFamily` and `vscodeTodo.webviewFontSize` (empty or 0 inherits VS Code).
 
 ##  [1.15.3]
 

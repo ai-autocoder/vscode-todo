@@ -273,6 +273,20 @@ To enable this feature, set the `vscodeTodo.autoDeleteCompletedAfterDays` config
 "vscodeTodo.autoDeleteCompletedAfterDays": 7
 ```
 
+### Webview Font Settings
+
+Control the webview's typography with two settings:
+
+- `vscodeTodo.webviewFontFamily`: CSS font-family string. Leave empty to inherit VS Code's font.
+- `vscodeTodo.webviewFontSize`: Number in pixels. Set `0` to inherit VS Code's editor font size.
+
+Example:
+
+```json
+"vscodeTodo.webviewFontFamily": "'Fira Code', Consolas, 'Courier New', monospace",
+"vscodeTodo.webviewFontSize": 18
+```
+
 ### Status Bar Integration
 
 View and access your task and note count from the status bar, with a hover tooltip providing a detailed breakdown.

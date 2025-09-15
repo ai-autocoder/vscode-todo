@@ -46,6 +46,18 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 
 		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 		HelloWorldPanel.setupWebviewMessageHandler(webviewView.webview, this._context, this._store);
+
+		// Refresh webview when typography settings change
+		this._context.subscriptions.push(
+			vscode.workspace.onDidChangeConfiguration((e) => {
+				if (
+					e.affectsConfiguration("vscodeTodo.webviewFontFamily") ||
+					e.affectsConfiguration("vscodeTodo.webviewFontSize")
+				) {
+					this.reloadWebview();
+				}
+			})
+		);
 	}
 
 	public reloadWebview() {

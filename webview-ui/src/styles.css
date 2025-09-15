@@ -1,4 +1,8 @@
 /* Variables */
+:root {
+	--app-font-family: var(--vscode-font-family);
+	--app-font-size: var(--vscode-editor-font-size);
+}
 body.light {
 	--note-accent-color: hsl(50, 56%, 85%);
 	--note-background-color: hsl(50, 56%, 85%);
@@ -78,7 +82,7 @@ markdown pre {
 
 .mat-mdc-menu-content,
 .mat-mdc-menu-content .mat-mdc-menu-item .mat-mdc-menu-item-text {
-	--mat-menu-item-label-text-font: var(--font-family);
+	--mat-menu-item-label-text-font: var(--vscode-font-family);
 	--mat-menu-item-label-text-size: var(--vscode-font-size);
 	--mat-menu-item-label-text-tracking: "normal";
 	/* Use VS Code theme var for generic list hover */

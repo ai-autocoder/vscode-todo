@@ -43,6 +43,8 @@ export class TodoService {
 		enableMarkdownKatex: true,
 		enableWideView: false,
 		autoDeleteCompletedAfterDays: 0,
+		webviewFontFamily: "",
+		webviewFontSize: 0,
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<
@@ -87,6 +89,7 @@ export class TodoService {
 
 	private handleReloadWebview(data: Message<MessageActionsToWebview.reloadWebview>) {
 		this._config = data.config;
+		this.applyCssFontVars();
 		this._userTodos = data.payload.user.todos;
 		this._todoCount.user = data.payload.user.numberOfTodos;
 		this._workspaceTodos = data.payload.workspace.todos;
@@ -99,6 +102,18 @@ export class TodoService {
 		this.workspaceLastAction.next("");
 		this.currentFileLastAction.next("");
 		this.handleSyncEditorFocusAndRecords(data.payload.editorFocusAndRecords);
+	}
+
+	private applyCssFontVars() {
+		const root = document.documentElement.style;
+		const family = (this._config.webviewFontFamily || "").trim();
+		const size = this._config.webviewFontSize || 0;
+
+		const effectiveFamily = family || "var(--vscode-font-family)";
+		const effectiveSize = size > 0 ? `${size}px` : "var(--vscode-editor-font-size)";
+
+		root.setProperty("--app-font-family", effectiveFamily);
+		root.setProperty("--app-font-size", effectiveSize);
 	}
 
 	private handleSyncTodoData(payload: TodoSlice | CurrentFileSlice) {
