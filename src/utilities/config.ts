@@ -27,6 +27,7 @@ export function getConfig(): Config {
 	const enableMarkdownDiagrams: boolean = config.get("enableMarkdownDiagrams", true);
 	const enableMarkdownKatex: boolean = config.get("enableMarkdownKatex", true);
 	const autoDeleteCompletedAfterDays: number = config.get("autoDeleteCompletedAfterDays", 0);
+	const collapsedPreviewLinesRaw: number = config.get("collapsedPreviewLines", 1);
 	const webviewFontFamily: string = config.get("webviewFontFamily", "");
 	const webviewFontSize: number = config.get("webviewFontSize", 0);
 
@@ -49,7 +50,9 @@ export function getConfig(): Config {
 	const enableWideView: boolean = config.get("enableWideView", false);
 
 	// Sanitize numeric inputs
-	const collapsedPreviewLines = Math.max(1, Math.floor(collapsedPreviewLinesRaw || 1));
+	const collapsedPreviewLines = Number.isFinite(collapsedPreviewLinesRaw)
+		? Math.max(1, Math.floor(collapsedPreviewLinesRaw))
+		: 1;
 
 	return {
 		taskSortingOptions,
@@ -60,6 +63,7 @@ export function getConfig(): Config {
 		enableMarkdownKatex,
 		enableWideView,
 		autoDeleteCompletedAfterDays,
+		collapsedPreviewLines,
 		webviewFontFamily,
 		webviewFontSize,
 	};
