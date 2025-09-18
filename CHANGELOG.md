@@ -1,6 +1,6 @@
 # Change Log
 
-## Next Version
+##  [1.16.0]
 
 - Config option `vscodeTodo.enableMarkdownDiagrams` to toggle Mermaid diagram rendering in markdown. When disabled, Mermaid fences are shown with syntax highlighting only.
 - Config option `vscodeTodo.enableMarkdownKatex` to toggle KaTeX math rendering in markdown.
@@ -8,6 +8,11 @@
 - Webview: Add customizable font family and size via `vscodeTodo.webviewFontFamily` and `vscodeTodo.webviewFontSize` (empty or 0 inherits VS Code).
 - Webview: Introduced multi-item selection with Ctrl/Cmd toggles, Shift range selection, and a toolbar for select-all, delete, or clear actions.
 - Config option `vscodeTodo.collapsedPreviewLines` to control collapsed item preview lines. Default: 1.
+- Webview: Added "collapsed" mode and config option `vscodeTodo.collapsedPreviewLines` to set the number of preview lines when collapsed (default: 1).
+- Styling improvements for better vscode theme compatibility.
+- Delete item if empty when edited.
+- Webview: Enable undo option when using the 'delete all' button.
+- Various bug fixes and improvements.
 
 ##  [1.15.3]
 
