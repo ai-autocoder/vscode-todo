@@ -6,6 +6,7 @@
 - Config option `vscodeTodo.enableMarkdownKatex` to toggle KaTeX math rendering in markdown.
 - Webview: Added KaTeX rendering support in Markdown via ngx-markdown.
 - Webview: Add customizable font family and size via `vscodeTodo.webviewFontFamily` and `vscodeTodo.webviewFontSize` (empty or 0 inherits VS Code).
+- Webview: Introduced multi-item selection with Ctrl/Cmd toggles, Shift range selection, and a toolbar for select-all, delete, or clear actions.
 - Config option `vscodeTodo.collapsedPreviewLines` to control collapsed item preview lines. Default: 1.
 
 ##  [1.15.3]

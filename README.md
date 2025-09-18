@@ -116,6 +116,9 @@ After installing **VS Code Todo**, follow these steps to begin using the extensi
      - Toggle rendering between plain text and markdown
      - Delete the item
    - Items can also be **reordered** by dragging and dropping them within the list.
+   - Use **multi-item selection** for batch actions:
+     - `Ctrl`/`Cmd`-click toggles individual items; hold `Shift` to select a range.
+     - When a selection is active, the toolbar at the bottom lets you **Select all**, **Delete**, or **Clear**; press `Esc` to exit.
 
 5. **Use the Toolbar**
 
@@ -136,6 +139,7 @@ This covers the basic workflow. For advanced functionality such as markdown supp
 - **KaTeX Math Support**
 - **Customizable Sorting**
 - **Drag-and-Drop Functionality**
+- **Multi-item selection toolbar for bulk actions**
 - **Status Bar Integration**
 - **Built-in search** (Ctrl+F on Windows, ⌘F on macOS)
 - **Import and Export** (JSON / Markdown format)
