@@ -1,5 +1,5 @@
 import { Injectable } from "@angular/core";
-import { BehaviorSubject } from "rxjs";
+import { BehaviorSubject, Subject } from "rxjs";
 import {
 	Message,
 	MessageActionsToWebview,
@@ -17,6 +17,14 @@ import {
 } from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
 import { Config } from "../../../../src/utilities/config";
+
+export interface SelectionState {
+	hasSelection: boolean;
+	selectedCount: number;
+	totalCount: number;
+}
+
+export type SelectionCommand = "selectAll" | "deleteSelected" | "clearSelection";
 
 @Injectable({
 	providedIn: "root",
@@ -55,6 +63,17 @@ export class TodoService {
 
     private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
 
+    private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
+        [TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
+        [TodoScope.workspace]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
+        [TodoScope.currentFile]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
+    };
+    private _selectionCommandMap: Record<TodoScope, Subject<SelectionCommand>> = {
+        [TodoScope.user]: new Subject<SelectionCommand>(),
+        [TodoScope.workspace]: new Subject<SelectionCommand>(),
+        [TodoScope.currentFile]: new Subject<SelectionCommand>(),
+    };
+
 	enableWideView = this._enableWideViewSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
@@ -62,6 +81,23 @@ export class TodoService {
 	currentFileLastAction = new BehaviorSubject<string>("");
 	currentFilePath = this._currentFilePathSource.asObservable();
 	workspaceFilesWithRecords = this._workspaceFilesWithRecordsSource.asObservable();
+
+	setSelectionState(scope: TodoScope, state: SelectionState): void {
+		this._selectionStateMap[scope].next(state);
+	}
+
+	getSelectionState(scope: TodoScope) {
+		return this._selectionStateMap[scope].asObservable();
+	}
+
+	emitSelectionCommand(scope: TodoScope, command: SelectionCommand): void {
+		this._selectionCommandMap[scope].next(command);
+	}
+
+	selectionCommand(scope: TodoScope) {
+		return this._selectionCommandMap[scope].asObservable();
+	}
+
 
 	constructor() {
 		window.addEventListener("message", this.handleMessage.bind(this));
@@ -245,3 +281,4 @@ export class TodoService {
 		vscode.postMessage(messagesFromWebview.deleteCompleted(scope));
 	}
 }
+

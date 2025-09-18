@@ -1,29 +1,42 @@
 <div
-  cdkDropList
-  (cdkDropListDropped)="onDrop($event)"
-  [cdkDropListSortPredicate]="sortPredicate"
-  [cdkDropListAutoScrollStep]="8"
-  >
-  @for (todo of todos; track trackById($index, todo)) {
+  class="todo-list-container"
+  [class.has-selection]="hasSelection"
+>
+  <div class="todo-list-scroll">
     <div
-      [@leaveAnimation]
-      [@.disabled]="!isLeaveAnimationEnabled"
-      #dragItem
-      [attr.data-id]="todo.id"
-      cdkDrag
-      [cdkDragData]="todo"
-      (cdkDragStarted)="dragStarted()"
-      (cdkDragEnded)="dragEnded()"
-      >
-      <div [@enterAnimation] [@.disabled]="!isEnterAnimationEnabled">
-        <todo-item
-          [todo]="todo"
-          [scope]="scope"
-          (delete)="handleDelete($event)"
-          [ngClass]="{ note: todo.isNote }"
-          >
-        </todo-item>
-      </div>
+      cdkDropList
+      (cdkDropListDropped)="onDrop($event)"
+      [cdkDropListSortPredicate]="sortPredicate"
+      [cdkDropListAutoScrollStep]="8"
+    >
+      @for (todo of todos; track trackById($index, todo)) {
+        <div
+          [@leaveAnimation]
+          [@.disabled]="!isLeaveAnimationEnabled"
+          #dragItem
+          [attr.data-id]="todo.id"
+          cdkDrag
+          [cdkDragData]="todo"
+          (cdkDragStarted)="dragStarted()"
+          (cdkDragEnded)="dragEnded()"
+          [ngClass]="{ 'is-selected': isSelected(todo.id) }"
+          [attr.aria-selected]="isSelected(todo.id) ? 'true' : null"
+          role="listitem"
+        >
+          <div [@enterAnimation] [@.disabled]="!isEnterAnimationEnabled">
+            <todo-item
+              [todo]="todo"
+              [scope]="scope"
+              [selected]="isSelected(todo.id)"
+              [selectionMode]="hasSelection"
+              [selectionCount]="selectedCount"
+              (delete)="handleDelete($event)"
+              [ngClass]="{ note: todo.isNote }"
+            >
+            </todo-item>
+          </div>
+        </div>
+      }
     </div>
-  }
+  </div>
 </div>

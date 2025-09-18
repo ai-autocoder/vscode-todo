@@ -5,7 +5,9 @@
 		'note': todo.isNote,
 		'edit-mode': isEditable,
 		'menu-open': isActionMenuOpen,
+		'selected': selected,
 	}"
+	[attr.aria-selected]="selected ? 'true' : null"
 >
 	@if (!todo.isNote) {
 		<div class="checkbox">
@@ -60,7 +62,7 @@
 		<!-- prettier-ignore -->
 		@if (!isEditable && !todo.collapsed && !todo.isMarkdown) {
       <div
-        (click)="edit()"
+        (click)="edit($event)"
         class="todo-text"
         [class.complete]="todo.completed && !todo.isNote"
       >{{ todo.text }}</div>

@@ -1,13 +1,53 @@
-<div class="new-todo-container">
-	<autosize-text-area
-		[placeholder]="'New todo: Enter | Line break: Shift+Enter'"
-		[(value)]="newTodoText"
-		(keydown.enter)="addTodo($event)"
-	></autosize-text-area>
-	<vscode-button
-		(click)="addTodo($event)"
-		[disabled]="!newTodoText.trim().length || isCurrentFileEmpty"
-		[title]="isCurrentFileEmpty ? 'Please select a file first' : ''"
-		>Add</vscode-button
-	>
+<div class="new-todo-root">
+  @if (hasSelection) {
+    <div class="selection-toolbar" role="status" aria-live="polite" aria-atomic="true">
+      <span class="selection-toolbar__label">{{ selectedCount }} selected</span>
+      <div class="selection-toolbar__actions">
+        <vscode-button
+          class="selection-toolbar__button"
+          appearance="secondary"
+          (click)="onSelectAll()"
+          aria-label="Select all todos"
+          title="Select all"
+          [disabled]="!totalCount || selectedCount === totalCount"
+        >
+          Select all
+        </vscode-button>
+        <vscode-button
+          class="selection-toolbar__button selection-toolbar__button--destructive"
+          appearance="secondary"
+          (click)="onDeleteSelected()"
+          aria-label="Delete selected todos"
+          title="Delete selected"
+          [disabled]="!selectedCount"
+        >
+          Delete
+        </vscode-button>
+        <vscode-button
+          class="selection-toolbar__button"
+          appearance="secondary"
+          (click)="onClearSelection()"
+          aria-label="Clear selection"
+          title="Clear selection (Esc)"
+          [disabled]="!selectedCount"
+        >
+          Clear
+        </vscode-button>
+      </div>
+    </div>
+  }
+
+  <div class="new-todo-container">
+    <autosize-text-area
+      [placeholder]="'New todo: Enter | Line break: Shift+Enter'"
+      [(value)]="newTodoText"
+      (valueChange)="onTextInserted($event)"
+      (keydown.enter)="addTodo($event)"
+    ></autosize-text-area>
+    <vscode-button
+      (click)="addTodo($event)"
+      [disabled]="!newTodoText.trim().length || isCurrentFileEmpty"
+      [title]="isCurrentFileEmpty ? 'Please select a file first' : ''"
+    >Add</vscode-button>
+  </div>
 </div>

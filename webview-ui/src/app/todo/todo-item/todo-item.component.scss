@@ -4,6 +4,17 @@
 	padding: 0.5rem 0.75rem;
 	background-color: inherit;
 
+	transition: background-color 120ms ease, color 120ms ease;
+
+	&.selected {
+		background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-list-focusBackground));
+		color: var(--vscode-list-activeSelectionForeground, inherit);
+	}
+
+	&.selected .icon-button-container {
+		opacity: 1;
+	}
+
 	& > * {
 		display: flex;
 		justify-content: center;
@@ -24,7 +35,11 @@
 		background-color: var(--note-background-color);
 		border-left: 4px solid var(--note-accent-color);
 		padding: 0.5rem 0.75rem 0.5rem calc(0.75rem - 4px);
+		&.selected {
+			background-color: var(--vscode-list-activeSelectionBackground, var(--note-background-color));
+		}
 	}
+
 
 	&.edit-mode {
 		background-color: var(--vscode-menu-background);
@@ -154,3 +169,4 @@
 		}
 	}
 }
+

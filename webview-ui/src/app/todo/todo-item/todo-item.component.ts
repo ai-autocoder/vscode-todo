@@ -3,9 +3,11 @@ import {
 	ElementRef,
 	EventEmitter,
 	Input,
+	OnChanges,
 	OnInit,
 	Output,
 	Renderer2,
+	SimpleChanges,
 } from "@angular/core";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
@@ -16,10 +18,13 @@ import { TodoService } from "../todo.service";
     styleUrls: ["./todo-item.component.scss"],
     standalone: false
 })
-export class TodoItemComponent implements OnInit {
+export class TodoItemComponent implements OnInit, OnChanges {
 	@Input() todo!: Todo;
 	@Input() scope!: TodoScope;
 	@Input() dragging = false;
+	@Input() selected = false;
+	@Input() selectionMode = false;
+	@Input() selectionCount = 0;
 	isEditable = false;
 	footerActive?: boolean;
 	previousText!: string;
@@ -42,6 +47,17 @@ export class TodoItemComponent implements OnInit {
 		this.enableMarkdownDiagrams = this.todoService.config.enableMarkdownDiagrams;
 		this.enableMarkdownKatex = this.todoService.config.enableMarkdownKatex;
 		this.collapsedPreviewLines = this.todoService.config.collapsedPreviewLines ?? 1;
+	}
+
+	ngOnChanges(changes: SimpleChanges) {
+		if (!this.isEditable) {
+			return;
+		}
+
+		const selectionModeChange = changes["selectionMode"];
+		if (selectionModeChange?.currentValue) {
+			this.saveEdit();
+		}
 	}
 
 	collapse(event?: MouseEvent) {
@@ -98,6 +114,22 @@ export class TodoItemComponent implements OnInit {
 	}
 
 	edit(event?: MouseEvent) {
+		if (this.selectionMode) {
+			if (event) {
+				event.preventDefault();
+				event.stopPropagation();
+			}
+			return;
+		}
+
+		if (event) {
+			if (event.defaultPrevented) {
+				return;
+			}
+			if (event.ctrlKey || event.metaKey || event.shiftKey) {
+				return;
+			}
+		}
 		// If clicked on a link don't edit
 		if (event && (event.target as HTMLElement).tagName.toLowerCase() === "a") {
 			return;
