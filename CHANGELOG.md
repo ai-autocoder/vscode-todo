@@ -15,9 +15,9 @@
 
 ## [1.15.0]
 
-- [UI] Angular enter/leave animations + FLIP-based reordering (replaces auto-animate)
-- [UI] Improve drag-preview by removing height cap during drag
-- [UI] Fix Delete All was disabled when list has notes/completed todos only; preserve notes on Clear Completed todos.
+- Webview: Angular enter/leave animations + FLIP-based reordering (replaces auto-animate)
+- Webview: Improve drag-preview by removing height cap during drag
+- Webview: Fix Delete All was disabled when list has notes/completed todos only; preserve notes on Clear Completed todos.
 - Update Angular and other dependencies
 - Update README
 
@@ -27,17 +27,17 @@
 
 ## [1.14.0]
 
-- [UI] Support for Mermaid diagrams rendering
+- Webview: Support for Mermaid diagrams rendering
 
 ## [1.13.1]
 
-- [UI] Prevent drag events in edit mode in text area and footer to avoid unintended dragging during text selection
-- [UI] Remove unnecessary padding from body element to increase usable space
+- Webview: Prevent drag events in edit mode in text area and footer to avoid unintended dragging during text selection
+- Webview: Remove unnecessary padding from body element to increase usable space
 
 ## [1.13.0]
 
-- [UI] Added manual auto-delete feature for completed todos via UI button
-- [UI] Removed drag handle button; the entire todo/note is now draggable
+- Webview: Added manual auto-delete feature for completed todos via UI button
+- Webview: Removed drag handle button; the entire todo/note is now draggable
 
 ## [1.12.0]
 
