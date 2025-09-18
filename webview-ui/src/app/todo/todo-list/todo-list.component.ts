@@ -57,6 +57,7 @@ export class TodoList implements OnInit, AfterViewInit {
     private lastActionName: string | null = null;
     @ViewChildren("dragItem", { read: ElementRef }) private dragItemEls!: QueryList<ElementRef<HTMLElement>>;
     isDragging = false;
+    private readonly reorderAnimationExcludedActions = new Set<string>(["editTodo"]);
 
     selectedTodoIds = new Set<number>();
     private selectionAnchorId: number | null = null;
@@ -126,6 +127,18 @@ export class TodoList implements OnInit, AfterViewInit {
         this.cdRef.detectChanges();
     }
 
+    private shouldRunReorderAnimation(): boolean {
+        if (!this.isInitialized || this.isDragging) {
+            return false;
+        }
+
+        if (!this.lastActionName || this.lastActionName === "loadData") {
+            return false;
+        }
+
+        return !this.reorderAnimationExcludedActions.has(this.lastActionName);
+    }
+
     pullTodos() {
         const prevRects = this.isInitialized ? this.snapshotRects() : new Map<number, DOMRect>();
 
@@ -143,7 +156,7 @@ export class TodoList implements OnInit, AfterViewInit {
         this.syncSelectionWithTodos();
         this.cdRef.detectChanges();
 
-        if (this.isInitialized && this.lastActionName !== "loadData" && !this.isDragging) {
+        if (this.shouldRunReorderAnimation()) {
             this.animateReorder(prevRects);
         }
     }
