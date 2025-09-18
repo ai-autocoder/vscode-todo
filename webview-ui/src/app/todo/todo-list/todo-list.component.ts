@@ -296,7 +296,7 @@ export class TodoList implements OnInit, AfterViewInit {
         });
 
         const message =
-            snapshot.length === 1 ? "Todo deleted" : `${snapshot.length} todos deleted`;
+            snapshot.length === 1 ? "Item deleted" : `${snapshot.length} items deleted`;
 
         const snackBarRef = this.snackBar.open(message, "UNDO", { duration: 5000 });
         snackBarRef.onAction().subscribe(() => {
@@ -550,7 +550,7 @@ export class TodoList implements OnInit, AfterViewInit {
 		}
 		this.todoService.deleteTodo(this.scope, { id: todo.id });
 		// Snackbar with 'UNDO' button
-		const snackBarRef = this.snackBar.open("Todo deleted", "UNDO", {
+		const snackBarRef = this.snackBar.open("Item deleted", "UNDO", {
 			duration: 5000,
 		});
 		snackBarRef.onAction().subscribe(() => {
