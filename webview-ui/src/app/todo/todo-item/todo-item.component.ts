@@ -9,6 +9,7 @@ import {
 	Renderer2,
 	SimpleChanges,
 } from "@angular/core";
+import { Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { TodoService } from "../todo.service";
 
@@ -28,6 +29,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 	isEditable = false;
 	footerActive?: boolean;
 	previousText!: string;
+	private activeEditorSubscription?: Subscription;
 	isActionMenuOpen = false;
 	enableLineNumbers: boolean = false;
 	enableMarkdownDiagrams: boolean = true;
@@ -47,6 +49,11 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		this.enableMarkdownDiagrams = this.todoService.config.enableMarkdownDiagrams;
 		this.enableMarkdownKatex = this.todoService.config.enableMarkdownKatex;
 		this.collapsedPreviewLines = this.todoService.config.collapsedPreviewLines ?? 1;
+		this.activeEditorSubscription = this.todoService.activeEditor(this.scope).subscribe((activeId) => {
+			if (activeId !== this.todo.id && this.isEditable) {
+				this.saveEdit();
+			}
+		});
 	}
 
 	ngOnChanges(changes: SimpleChanges) {
@@ -95,17 +102,20 @@ export class TodoItemComponent implements OnInit, OnChanges {
 			this.todo.text = this.previousText;
 			this.removeGlobalClickListener();
 			this.isEditable = false;
+			this.todoService.clearActiveEditor(this.scope, this.todo.id);
 			this.delete.emit(this.todo);
 			return;
 		}
 		this.todoService.editTodo(this.scope, { id: this.todo.id, newText });
 		this.isEditable = false;
+		this.todoService.clearActiveEditor(this.scope, this.todo.id);
 		this.removeGlobalClickListener();
 	}
 
 	cancelEdit() {
 		this.todo.text = this.previousText;
 		this.isEditable = false;
+		this.todoService.clearActiveEditor(this.scope, this.todo.id);
 		this.removeGlobalClickListener();
 	}
 
@@ -147,6 +157,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 			}
 		}
 		this.previousText = this.todo.text;
+		this.todoService.setActiveEditor(this.scope, this.todo.id);
 		this.isEditable = true;
 		setTimeout(() => {
 			this.globalClickUnlistener = this.renderer.listen("document", "click", (event) => {
@@ -181,5 +192,9 @@ export class TodoItemComponent implements OnInit, OnChanges {
 
 	ngOnDestroy(): void {
 		this.removeGlobalClickListener();
+		if (this.activeEditorSubscription) {
+			this.activeEditorSubscription.unsubscribe();
+		}
+		this.todoService.clearActiveEditor(this.scope, this.todo.id);
 	}
 }

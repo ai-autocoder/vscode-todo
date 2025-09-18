@@ -61,18 +61,24 @@ export class TodoService {
 	>([]);
 	private _enableWideViewSource = new BehaviorSubject<boolean>(this._config.enableWideView);
 
-    private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
+	private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
 
-    private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
-        [TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
-        [TodoScope.workspace]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
-        [TodoScope.currentFile]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
-    };
-    private _selectionCommandMap: Record<TodoScope, Subject<SelectionCommand>> = {
-        [TodoScope.user]: new Subject<SelectionCommand>(),
-        [TodoScope.workspace]: new Subject<SelectionCommand>(),
-        [TodoScope.currentFile]: new Subject<SelectionCommand>(),
-    };
+	private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
+		[TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
+		[TodoScope.workspace]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
+		[TodoScope.currentFile]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
+	};
+	private _selectionCommandMap: Record<TodoScope, Subject<SelectionCommand>> = {
+		[TodoScope.user]: new Subject<SelectionCommand>(),
+		[TodoScope.workspace]: new Subject<SelectionCommand>(),
+		[TodoScope.currentFile]: new Subject<SelectionCommand>(),
+	};
+
+	private _activeEditorMap: Record<TodoScope, BehaviorSubject<number | null>> = {
+		[TodoScope.user]: new BehaviorSubject<number | null>(null),
+		[TodoScope.workspace]: new BehaviorSubject<number | null>(null),
+		[TodoScope.currentFile]: new BehaviorSubject<number | null>(null),
+	};
 
 	enableWideView = this._enableWideViewSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
@@ -96,6 +102,30 @@ export class TodoService {
 
 	selectionCommand(scope: TodoScope) {
 		return this._selectionCommandMap[scope].asObservable();
+	}
+
+
+	setActiveEditor(scope: TodoScope, todoId: number): void {
+		const subject = this._activeEditorMap[scope];
+		if (subject.getValue() === todoId) {
+			return;
+		}
+		subject.next(todoId);
+	}
+
+	clearActiveEditor(scope: TodoScope, expectedId?: number): void {
+		const subject = this._activeEditorMap[scope];
+		if (expectedId !== undefined && subject.getValue() !== expectedId) {
+			return;
+		}
+		if (subject.getValue() === null) {
+			return;
+		}
+		subject.next(null);
+	}
+
+	activeEditor(scope: TodoScope) {
+		return this._activeEditorMap[scope].asObservable();
 	}
 
 
@@ -200,7 +230,7 @@ export class TodoService {
 
     get config(): Config {
         return this._config;
-    }
+	}
 
 	get isPinned(): boolean {
 		return this._currentFileSlice.isPinned;
