@@ -87,9 +87,7 @@ export type Message<
 						type: T;
 						payload: MessagePayload<T, L>;
 					}
-				: T extends
-						| MessageActionsFromWebview.deleteAll
-						| MessageActionsFromWebview.deleteCompleted
+				: T extends MessageActionsFromWebview.deleteCompleted
 					? {
 							type: T;
 							scope: L;
@@ -116,7 +114,6 @@ export const enum MessageActionsFromWebview {
 	export = "export",
 	import = "import",
 	setWideViewEnabled = "setWideViewEnabled",
-	deleteAll = "deleteAll",
 	deleteCompleted = "deleteCompleted",
 }
 export const enum MessageActionsToWebview {
@@ -256,12 +253,6 @@ export const messagesFromWebview = {
 	): Message<MessageActionsFromWebview.setWideViewEnabled> => ({
 		type: MessageActionsFromWebview.setWideViewEnabled,
 		payload: { isEnabled },
-	}),
-	deleteAll: <L extends TodoScope>(
-		scope: L
-	): Message<MessageActionsFromWebview.deleteAll, TodoScope> => ({
-		type: MessageActionsFromWebview.deleteAll,
-		scope,
 	}),
 	deleteCompleted: <L extends TodoScope>(
 		scope: L

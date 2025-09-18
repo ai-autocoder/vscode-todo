@@ -347,29 +347,6 @@ export class HelloWorldPanel {
 						setConfig("enableWideView", payload.isEnabled);
 						break;
 					}
-					case MessageActionsFromWebview.deleteAll: {
-						let scopeDisplay = "";
-						switch (message.scope) {
-							case TodoScope.user:
-								scopeDisplay = "User";
-								break;
-							case TodoScope.workspace:
-								scopeDisplay = "Workspace";
-								break;
-							case TodoScope.currentFile:
-								scopeDisplay = "Current File";
-								break;
-						}
-						const confirmDelete = await window.showWarningMessage(
-							`Are you sure you want to delete all items in the ${scopeDisplay} list? This action cannot be undone.`,
-							{ modal: true },
-							"Yes"
-						);
-						if (confirmDelete === "Yes") {
-							store.dispatch(storeActions!.deleteAll());
-						}
-						break;
-					}
 					case MessageActionsFromWebview.deleteCompleted: {
 						store.dispatch(storeActions!.deleteCompleted());
 						break;

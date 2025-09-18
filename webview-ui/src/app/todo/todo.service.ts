@@ -304,11 +304,30 @@ export class TodoService {
 	}
 
 	deleteAll(scope: TodoScope) {
-		vscode.postMessage(messagesFromWebview.deleteAll(scope));
+		const totalTodos = this.getTodosInScope(scope).length;
+
+		if (!totalTodos) {
+			return;
+		}
+
+		this.emitSelectionCommand(scope, "selectAll");
+		this.emitSelectionCommand(scope, "deleteSelected");
+	}
+
+	private getTodosInScope(scope: TodoScope): Todo[] {
+		switch (scope) {
+			case TodoScope.user:
+				return this._userTodos;
+			case TodoScope.workspace:
+				return this._workspaceTodos;
+			case TodoScope.currentFile:
+				return this._currentFileSlice.todos;
+			default:
+				throw new Error("Invalid todo scope");
+		}
 	}
 
 	deleteCompleted(scope: TodoScope) {
 		vscode.postMessage(messagesFromWebview.deleteCompleted(scope));
 	}
 }
-
