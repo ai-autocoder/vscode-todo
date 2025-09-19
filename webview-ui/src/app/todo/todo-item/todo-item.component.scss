@@ -56,14 +56,6 @@
 		}
 	}
 
-	.chevron-button {
-		margin: 0;
-		padding: 0;
-		width: 24px;
-		height: 24px;
-		align-self: center;
-	}
-
 	.content {
 		justify-content: center;
 		flex-direction: column;
@@ -104,14 +96,6 @@
 			text-overflow: ellipsis;
 			white-space: pre-wrap; /* allow wrapping and preserve newlines */
 			/* clamp value set via inline style from component */
-		}
-
-		.chevron-inline {
-			margin: 0;
-			padding: 0;
-			width: 20px;
-			height: 20px;
-			flex: 0 0 auto;
 		}
 
 		div.markdown-container {

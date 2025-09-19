@@ -14,7 +14,6 @@
 			@if (todo.collapsed) {
 				<vscode-button
 					appearance="icon"
-					class="chevron-button"
 					(click)="expand($event)"
 					aria-label="Expand item"
 					title="Expand item"
@@ -44,7 +43,6 @@
 				@if (todo.isNote) {
 					<vscode-button
 						appearance="icon"
-						class="chevron-inline"
 						(click)="expand($event)"
 						aria-label="Expand item"
 						title="Expand item"

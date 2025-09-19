@@ -171,6 +171,7 @@ button.danger {
 
 vscode-button[appearance="icon"] {
 	display: flex;
+	align-self: center;
 	& > * {
 		display: flex;
 	}
