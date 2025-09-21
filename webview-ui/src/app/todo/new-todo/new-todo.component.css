@@ -20,7 +20,7 @@ autosize-text-area {
 }
 
 vscode-button {
-	padding: 4px;
+	padding: 3px 9px;
 }
 
 vscode-button::part(content) {

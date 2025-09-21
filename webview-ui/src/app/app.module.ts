@@ -15,7 +15,6 @@ import { TodoItemComponent } from "./todo/todo-item/todo-item.component";
 import { CLIPBOARD_OPTIONS, MERMAID_OPTIONS, MarkdownModule } from "ngx-markdown";
 import { FileNamePipe } from "./pipes/file-name.pipe";
 import { FileList } from "./todo/file-list/file-list.component";
-import { CdkTextareaAutosize, TextFieldModule } from "@angular/cdk/text-field";
 import { AngularSplitModule } from "angular-split";
 import { ClipboardButtonComponent } from "./shared/clipboard-button.component";
 import { IconComponent } from "./shared/icon/icon.component";
@@ -44,8 +43,6 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		BrowserAnimationsModule,
 		MatMenuModule,
 		MatDividerModule,
-		TextFieldModule,
-		CdkTextareaAutosize,
 		MarkdownModule.forRoot({
 			clipboardOptions: {
 				provide: CLIPBOARD_OPTIONS,
