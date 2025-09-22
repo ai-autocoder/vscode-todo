@@ -99,7 +99,7 @@ After installing **VS Code Todo**, follow these steps to begin using the extensi
 2. **Select a Tab**
 
    - Use the three tabs at the top to choose where to store your items:
-     - **Global (per profile)**: tasks available across all workspaces in the current VS Code profile. Can sync across devices if Settings Sync is enabled.
+     - **Global (per profile)**: tasks available across all workspaces in the current VS Code profile. The extension opts this data into Settings Sync, so it roams across devices when Settings Sync is enabled.
      - **Workspace**: tasks tied to the current project (default)
      - **File**: tasks associated with the active file
 
@@ -151,7 +151,7 @@ This covers the basic workflow. For advanced functionality such as markdown supp
 
 Tasks and notes are organized across three different scopes, each with its respective tab:
 
-1. **Global Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. It can roam across devices when Settings Sync is enabled.
+1. **Global Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. It roams across devices when Settings Sync is enabled because the extension opts the data into Settings Sync.
 2. **Workspace Tab**: Data tied to the current workspace.
 3. **File-specific Tab**: Data associated with a **specific file** within the current workspace. The file displayed in this tab is **automatically updated** to reflect the **most recently focused file** in the editor. However, you can **pin** the tab to a specific file, preventing it from changing when you switch focus to other files.
 Additionally, you can **manually select** and display data for any file that already has an associated record from the list on the left-hand side.

@@ -33,8 +33,14 @@ import {
 	updateDataForRenamedFile,
 } from "./todo/todoUtils";
 
+const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
+
 export function activate(context: ExtensionContext) {
 	const store = createStore();
+
+	if (typeof context.globalState.setKeysForSync === "function") {
+		context.globalState.setKeysForSync(GLOBAL_STATE_SYNC_KEYS);
+	}
 
 	const commands = [
 		vscode.commands.registerCommand("vsc-todo.openTodo", () =>
