@@ -6,7 +6,7 @@
   >
   <app-header [currentScope]="scope"></app-header>
   <vscode-panels activeid="tab-2">
-    <vscode-panel-tab (click)="selectTab(TodoScope.user)" id="tab-1" [title]="'Global User Data'">
+    <vscode-panel-tab (click)="selectTab(TodoScope.user)" id="tab-1" [title]="'Global data (per VS Code profile)'">
       User
       <vscode-badge [ngStyle]="{ opacity: todoCount.user ? 1 : 0 }">{{ todoCount.user }}</vscode-badge>
     </vscode-panel-tab>

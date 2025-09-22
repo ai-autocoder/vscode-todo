@@ -99,7 +99,7 @@ After installing **VS Code Todo**, follow these steps to begin using the extensi
 2. **Select a Tab**
 
    - Use the three tabs at the top to choose where to store your items:
-     - **Global**: tasks available across all workspaces
+     - **Global (per profile)**: tasks available across all workspaces in the current VS Code profile. Can sync across devices if Settings Sync is enabled.
      - **Workspace**: tasks tied to the current project (default)
      - **File**: tasks associated with the active file
 
@@ -151,7 +151,7 @@ This covers the basic workflow. For advanced functionality such as markdown supp
 
 Tasks and notes are organized across three different scopes, each with its respective tab:
 
-1. **Global Tab**: Data accessible for the user across workspaces.
+1. **Global Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. It can roam across devices when Settings Sync is enabled.
 2. **Workspace Tab**: Data tied to the current workspace.
 3. **File-specific Tab**: Data associated with a **specific file** within the current workspace. The file displayed in this tab is **automatically updated** to reflect the **most recently focused file** in the editor. However, you can **pin** the tab to a specific file, preventing it from changing when you switch focus to other files.
 Additionally, you can **manually select** and display data for any file that already has an associated record from the list on the left-hand side.
@@ -261,7 +261,7 @@ To define the sorting options:
 - **sortType1**: Moves completed todos to the bottom, just on top of the first completed todo.
 - **sortType2**: Similar to Type 1, but groups completed todos with notes, useful for maintaining contextual relationships.
 - **disabled**: Completed todos remain in place, allowing full manual control of the order.
-  
+
 The default sorting option is **sortType1**.
 
 ```json
