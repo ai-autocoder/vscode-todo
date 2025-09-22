@@ -1,17 +1,32 @@
 {
 	"name": "vsc-todo",
-	"displayName": "VS Code Todo",
+	"displayName": "Dev Todo & Notes",
 	"publisher": "FrancescoAnzalone",
-	"description": "The to-do and note manager for VS Code",
+	"description": "Manage todos, notes, and markdown across workspaces, files, and profiles with code highlighting, diagrams and math.",
 	"icon": "icon.png",
+	"galleryBanner": {
+		"color": "#0f172a",
+		"theme": "dark"
+	},
 	"version": "1.16.0",
 	"license": "MIT",
 	"keywords": [
 		"todo",
+		"todos",
+		"notes",
+		"note-taking",
+		"markdown",
+		"prompts",
+		"prompt",
+		"prompt-engineering",
+		"templates",
 		"tasks",
+		"checklist",
 		"productivity",
 		"workspace",
-		"planner"
+		"status-bar",
+		"mermaid",
+		"katex"
 	],
 	"engines": {
 		"vscode": "^1.75.0"
@@ -28,31 +43,31 @@
 			{
 				"command": "vsc-todo.openTodo",
 				"title": "Open Todo",
-				"category": "VS Code Todo"
+				"category": "Dev Todo & Notes"
 			},
 			{
 				"command": "vsc-todo.exportDataToJSON",
 				"title": "Export to JSON",
-				"category": "VS Code Todo"
+				"category": "Dev Todo & Notes"
 			},
 			{
 				"command": "vsc-todo.exportDataToMarkdown",
 				"title": "Export to Markdown",
-				"category": "VS Code Todo"
+				"category": "Dev Todo & Notes"
 			},
 			{
 				"command": "vsc-todo.importDataFromJSON",
 				"title": "Import from JSON",
-				"category": "VS Code Todo"
+				"category": "Dev Todo & Notes"
 			},
 			{
 				"command": "vsc-todo.importDataFromMarkdown",
 				"title": "Import from Markdown",
-				"category": "VS Code Todo"
+				"category": "Dev Todo & Notes"
 			}
 		],
 		"configuration": {
-			"title": "VS Code Todo",
+			"title": "Dev Todo & Notes",
 			"properties": {
 				"vscodeTodo.taskSortingOptions": {
 					"description": "Controls how completed tasks are reordered in the list.",
@@ -136,7 +151,7 @@
 			"activitybar": [
 				{
 					"id": "vsc-todo-sidebar",
-					"title": "VS Code Todo",
+					"title": "Dev Todo & Notes",
 					"icon": "$(checklist)"
 				}
 			]

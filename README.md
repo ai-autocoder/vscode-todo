@@ -2,11 +2,11 @@
 
 <img src="https://github.com/ai-autocoder/vscode-todo/blob/e044e89bdf974a6c6cbc81717be9f44f944fe12f/icon.png?raw=true" width="200" alt="Logo">
 
-VS Code Todo
+Dev Todo & Notes
 
 </h1>
 
-<h3 align="center">The to-do and note manager for VS Code.</h3>
+<h3 align="center">Todo lists, notes, markdown checklists, and reusable AI prompts for Visual Studio Code.</h3>
 
 <p align="center">
   <!-- VS Code Marketplace -->
@@ -84,11 +84,13 @@ VS Code Todo
 
 ## Introduction
 
-**VS Code Todo** is an advanced to-do list and note manager within Visual Studio Code, now featuring **Markdown Support**, **Notes**, and **Code Highlighting**. This extension allows for managing tasks and notes—whether tied to your workspace, the current file, or stored globally—all accessible directly from the VS Code status bar.
+**Dev Todo & Notes** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
+
+Whether you are managing sprint todos, drafting code documentation, or collecting research notes, everything stays searchable. Global (profile) items roam across devices via VS Code Settings Sync; Workspace and File items stay local.
 
 ## Getting Started
 
-After installing **VS Code Todo**, follow these steps to begin using the extension:
+After installing **Dev Todo & Notes**, follow these steps to begin using the extension:
 
 1. **Open the Todo Panel**
 
@@ -128,30 +130,24 @@ After installing **VS Code Todo**, follow these steps to begin using the extensi
      - Delete all items in the current tab
      - Delete completed todos
 
-This covers the basic workflow. For advanced functionality such as markdown support, code highlighting, diagram rendering, auto-deletion, and sorting, see the sections below.
+This covers the essentials; the sections below explore markdown previews, diagrams, automation, and more.
 
 ## Key Features
 
-- **Global, Workspace, and File-specific Scopes Management**
-- **Markdown Support**
-- **Code Syntax Highlighting**
-- **Mermaid Diagram Support**
-- **KaTeX Math Support**
-- **Customizable Sorting**
-- **Drag-and-Drop Functionality**
-- **Multi-item selection toolbar for bulk actions**
-- **Status Bar Integration**
-- **Built-in search** (Ctrl+F on Windows, ⌘F on macOS)
-- **Import and Export** (JSON / Markdown format)
-- **Auto delete completed todos after a specified number of days**
+- **Todo and note scopes (profile, workspace, file)** keep personal, project, and file-linked checklists organised.
+- **Markdown note-taking** with syntax highlighting, Mermaid diagrams, and KaTeX math for rich technical docs.
+- **Keyboard-first capture** with quick add, drag-and-drop ordering, and multi-select bulk actions.
+- **Status bar & activity bar access** keeps your task list one click away anywhere in VS Code.
+- **Search, filters, and auto-cleanup** surface the next task and archive completed work automatically.
+- **Import / export (JSON & Markdown)** to back up, share, or move your todos and notes.
 
-![Image of UI overview](./assets/screenshots/UI-overview.gif)
+![Dev Todo & Notes UI with markdown checklist](./assets/screenshots/UI-overview.gif)
 
-### Global, Workspace & File-specific Management
+### User, Workspace & File-specific Management
 
 Tasks and notes are organized across three different scopes, each with its respective tab:
 
-1. **Global Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. It roams across devices when Settings Sync is enabled because the extension opts the data into Settings Sync.
+1. **User Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. It roams across devices when Settings Sync is enabled because the extension opts the data into Settings Sync.
 2. **Workspace Tab**: Data tied to the current workspace.
 3. **File-specific Tab**: Data associated with a **specific file** within the current workspace. The file displayed in this tab is **automatically updated** to reflect the **most recently focused file** in the editor. However, you can **pin** the tab to a specific file, preventing it from changing when you switch focus to other files.
 Additionally, you can **manually select** and display data for any file that already has an associated record from the list on the left-hand side.

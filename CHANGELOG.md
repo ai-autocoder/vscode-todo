@@ -1,6 +1,11 @@
 # Change Log
 
-##  [1.16.0]
+## [next version]
+
+- Rename the extension branding to **Dev Todo & Notes** in metadata, commands, and UI surfaces.
+- Expanded marketplace keywords and refreshed README intro/feature copy for search visibility.
+
+## [1.16.0]
 
 - Config option `vscodeTodo.enableMarkdownDiagrams` to toggle Mermaid diagram rendering in markdown. When disabled, Mermaid fences are shown with syntax highlighting only.
 - Config option `vscodeTodo.enableMarkdownKatex` to toggle KaTeX math rendering in markdown.
@@ -14,7 +19,7 @@
 - Webview: Enable undo option when using the 'delete all' button.
 - Various bug fixes and improvements.
 
-##  [1.15.3]
+## [1.15.3]
 
 - Minor fixes on Readme
 
