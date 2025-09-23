@@ -3,7 +3,7 @@
 	grid-template-columns: 40px calc(100% - 80px) 40px;
 	padding: 0.5rem 0.75rem;
 	background-color: inherit;
-
+	align-items: start;
 	transition: background-color 120ms ease, color 120ms ease;
 
 	&.selected {
