@@ -38,39 +38,6 @@ export function getNumberOfNotes(state: TodoSlice): number {
 	return state?.todos.filter((todo) => todo.isNote).length ?? 0;
 }
 
-/**
- * Persists the provided slice state to the extension context.
- */
-export function persist(state: TodoSlice | CurrentFileSlice, context: ExtensionContext): void {
-	switch (state.scope) {
-		case TodoScope.user:
-			context.globalState.update("TodoData", state.todos);
-			break;
-		case TodoScope.workspace:
-			context.workspaceState.update("TodoData", state.todos);
-			break;
-		case TodoScope.currentFile: {
-			const currentFileState = state as CurrentFileSlice;
-
-			const data = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
-
-			const updatedData: TodoFilesData = {
-				...data,
-				[currentFileState.filePath]: currentFileState.todos,
-			};
-
-			const sortedResult = sortByFileName(updatedData);
-
-			// Only keep the entry if the todos array is not empty
-			if (currentFileState.todos.length === 0) {
-				delete sortedResult[currentFileState.filePath];
-			}
-
-			context.workspaceState.update("TodoFilesData", sortedResult);
-			break;
-		}
-	}
-}
 
 /**
  * Generates a unique ID that does not already exist in the provided array of todos.

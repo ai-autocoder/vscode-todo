@@ -1,6 +1,7 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
+import StorageSyncManager from "./storage/StorageSyncManager";
 import { tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
 import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
@@ -28,15 +29,16 @@ import {
 	deleteCompletedTodos,
 	deleteCompletedTodosCurrentFile,
 	getWorkspaceFilesWithRecords,
-	persist,
 	removeDataForDeletedFile,
 	updateDataForRenamedFile,
 } from "./todo/todoUtils";
 
 const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
 
-export function activate(context: ExtensionContext) {
+export async function activate(context: ExtensionContext) {
 	const store = createStore();
+	const storageSyncManager = new StorageSyncManager(context, store);
+	await storageSyncManager.initialize();
 
 	if (typeof context.globalState.setKeysForSync === "function") {
 		context.globalState.setKeysForSync(GLOBAL_STATE_SYNC_KEYS);
@@ -72,7 +74,13 @@ export function activate(context: ExtensionContext) {
 			case Slices.user:
 			case Slices.workspace:
 			case Slices.currentFile:
-				handleTodoChange(state, state[state.actionTracker.lastSliceName], store, context);
+				handleTodoChange(
+					state,
+					state[state.actionTracker.lastSliceName],
+					store,
+					context,
+					storageSyncManager
+				);
 				break;
 			case Slices.editorFocusAndRecords:
 				handleEditorFocusAndRecordsChange(state, store, context);
@@ -80,24 +88,28 @@ export function activate(context: ExtensionContext) {
 		}
 	});
 
+	const initialWorkspaceTodos = storageSyncManager.getWorkspaceTodos();
+	const initialUserTodos = storageSyncManager.getUserTodos();
+	const initialWorkspaceFilesData = storageSyncManager.getWorkspaceFilesData();
+
 	// Load workspace slice
 	store.dispatch(
 		workspaceActions.loadData({
-			data: context.workspaceState.get("TodoData") ?? [],
+			data: initialWorkspaceTodos ?? [],
 		})
 	);
 
 	// Load user slice
 	store.dispatch(
 		userActions.loadData({
-			data: context.globalState.get("TodoData") ?? [],
+			data: initialUserTodos ?? [],
 		})
 	);
 
 	// Load list of files with records
 	store.dispatch(
 		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-			getWorkspaceFilesWithRecords(context.workspaceState.get("TodoFilesData") ?? {})
+			getWorkspaceFilesWithRecords(initialWorkspaceFilesData ?? {})
 		)
 	);
 
@@ -137,13 +149,14 @@ function handleTodoChange(
 	state: StoreState,
 	sliceState: TodoSlice | CurrentFileSlice,
 	store: EnhancedStore,
-	context: ExtensionContext
+	context: ExtensionContext,
+	storageSyncManager: StorageSyncManager
 ) {
 	store.dispatch(actionTrackerActions.resetLastSliceName());
 	HelloWorldPanel.currentPanel?.updateWebview(sliceState);
 	TodoViewProvider.currentProvider?.updateWebview(sliceState);
 	updateStatusBarItem(state);
-	persist(sliceState as TodoSlice | CurrentFileSlice, context);
+	void storageSyncManager.persistSlice(sliceState as TodoSlice | CurrentFileSlice);
 	if (sliceState.scope === TodoScope.currentFile) {
 		// Update editorFocusAndRecordsSlice
 		store.dispatch(
