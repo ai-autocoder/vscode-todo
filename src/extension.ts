@@ -10,6 +10,7 @@ import { ExportFormats } from "./todo/todoTypes";
 import { importCommand } from "./todo/importer";
 import { ImportFormats } from "./todo/todoTypes";
 import { TodoViewProvider } from "./panels/TodoViewProvider";
+import { getConfig } from "./utilities/config";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,
@@ -41,7 +42,19 @@ export async function activate(context: ExtensionContext) {
 	await storageSyncManager.initialize();
 
 	if (typeof context.globalState.setKeysForSync === "function") {
-		context.globalState.setKeysForSync(GLOBAL_STATE_SYNC_KEYS);
+		const cfg = getConfig();
+		context.globalState.setKeysForSync(
+			cfg.enableSettingsSync ? GLOBAL_STATE_SYNC_KEYS : []
+		);
+		const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration("vscodeTodo.enableSettingsSync")) {
+				const updated = getConfig();
+				context.globalState.setKeysForSync(
+					updated.enableSettingsSync ? GLOBAL_STATE_SYNC_KEYS : []
+				);
+			}
+		});
+		context.subscriptions.push(configListener);
 	}
 
 	const commands = [

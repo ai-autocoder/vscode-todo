@@ -69,6 +69,11 @@
 		"configuration": {
 			"title": "Dev Todo & Notes",
 			"properties": {
+				"vscodeTodo.enableSettingsSync": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Enable syncing your user-scoped data using VS Code Settings Sync.\n\n**Warning:** enabling this feature might overwrite your existing data on other machines. If you keep different todos/notes on different machines, please back up your data before enabling this feature."
+				},
 				"vscodeTodo.taskSortingOptions": {
 					"description": "Controls how completed tasks are reordered in the list.",
 					"type": "string",

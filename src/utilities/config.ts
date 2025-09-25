@@ -10,6 +10,7 @@ export type Config = {
 	enableMarkdownDiagrams: boolean;
 	enableMarkdownKatex: boolean;
 	enableWideView: boolean;
+	enableSettingsSync: boolean;
 	autoDeleteCompletedAfterDays: number;
 	collapsedPreviewLines: number;
 	// Webview typography
@@ -26,6 +27,7 @@ export function getConfig(): Config {
 	const enableLineNumbers: boolean = config.get("enableLineNumbers", false);
 	const enableMarkdownDiagrams: boolean = config.get("enableMarkdownDiagrams", true);
 	const enableMarkdownKatex: boolean = config.get("enableMarkdownKatex", true);
+	const enableSettingsSync: boolean = config.get("enableSettingsSync", false);
 	const autoDeleteCompletedAfterDays: number = config.get("autoDeleteCompletedAfterDays", 0);
 	const collapsedPreviewLinesRaw: number = config.get("collapsedPreviewLines", 1);
 	const webviewFontFamily: string = config.get("webviewFontFamily", "");
@@ -62,6 +64,7 @@ export function getConfig(): Config {
 		enableMarkdownDiagrams,
 		enableMarkdownKatex,
 		enableWideView,
+		enableSettingsSync,
 		autoDeleteCompletedAfterDays,
 		collapsedPreviewLines,
 		webviewFontFamily,
