@@ -12,7 +12,7 @@ import {
     ViewChildren,
     HostListener,
 } from "@angular/core";
-import { MatSnackBar } from "@angular/material/snack-bar";
+import { MatSnackBar, MatSnackBarRef } from "@angular/material/snack-bar";
 import { firstValueFrom, Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
 import { SelectionCommand, TodoService } from "../todo.service";
@@ -298,8 +298,11 @@ export class TodoList implements OnInit, AfterViewInit {
         const message =
             snapshot.length === 1 ? "Item deleted" : `${snapshot.length} items deleted`;
 
-        const snackBarRef = this.snackBar.open(message, "UNDO", { duration: 5000 });
-        snackBarRef.onAction().subscribe(() => {
+		const snackBarRef = this.snackBar.open(message, "UNDO", {
+			duration: 5000
+		});
+		this.decorateSnackBarOverlay(snackBarRef);
+		snackBarRef.onAction().subscribe(() => {
             const queue = [...snapshot].sort((a, b) => a.position - b.position);
             const restoreNext = () => {
                 const entry = queue.shift();
@@ -553,6 +556,7 @@ export class TodoList implements OnInit, AfterViewInit {
 		const snackBarRef = this.snackBar.open("Item deleted", "UNDO", {
 			duration: 5000,
 		});
+		this.decorateSnackBarOverlay(snackBarRef);
 		snackBarRef.onAction().subscribe(() => {
 			this.todoService.undoDelete(this.scope, {
 				...deletedItem,
@@ -560,6 +564,14 @@ export class TodoList implements OnInit, AfterViewInit {
 				currentFilePath,
 			});
 		});
+	}
+
+	private decorateSnackBarOverlay(snackBarRef: MatSnackBarRef<unknown>): void {
+		const overlayRef = (snackBarRef as unknown as { _overlayRef?: { overlayElement?: HTMLElement } })._overlayRef;
+		const overlayElement = overlayRef?.overlayElement;
+		if (overlayElement) {
+			overlayElement.classList.add("todo-snack-bar-overlay");
+		}
 	}
 
 	ngOnDestroy(): void {

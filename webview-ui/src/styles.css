@@ -236,3 +236,13 @@ span.menu-label {
 		background: var(--vscode-tab-hoverBackground);
 	}
 }
+
+/* Snackbar positioning -> */
+.cdk-overlay-pane.todo-snack-bar-overlay {
+	pointer-events: none;
+	padding: 0 8px 64px;
+	box-sizing: border-box;
+}
+.cdk-overlay-pane.todo-snack-bar-overlay .mat-mdc-snack-bar-container {
+	pointer-events: auto;
+}
