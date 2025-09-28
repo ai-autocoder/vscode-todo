@@ -54,6 +54,7 @@ export class TodoService {
 		webviewFontFamily: "",
 		webviewFontSize: 0,
 		collapsedPreviewLines: 1,
+		enableSettingsSync: false,
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<
