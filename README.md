@@ -82,6 +82,31 @@ VS Code Todo
   <a href="https://github.com/ai-autocoder/vscode-todo/issues">Report an issue</a>
 </p>
 
+## Table of Contents
+- [Introduction](#introduction)
+- [Getting Started](#getting-started)
+- [Key Features](#key-features)
+  - [User, Workspace & File-specific Management](#user-workspace--file-specific-management)
+  - [Sync Modes for User Lists](#sync-modes-for-user-lists)
+  - [Markdown Support for Todos and Notes](#markdown-support-for-todos-and-notes)
+  - [Syntax highlight](#syntax-highlight)
+  - [Mermaid Diagram Support](#mermaid-diagram-support)
+    - [Toggle Diagram Rendering](#toggle-diagram-rendering)
+  - [KaTeX Math Support](#katex-math-support)
+    - [Toggle Math Rendering](#toggle-math-rendering)
+  - [Customizable Sorting](#customizable-sorting)
+  - [Auto delete completed todos after a specified number of days](#auto-delete-completed-todos-after-a-specified-number-of-days)
+  - [Collapsed item preview lines](#collapsed-item-preview-lines)
+  - [Webview Font Settings](#webview-font-settings)
+  - [Status Bar Integration](#status-bar-integration)
+  - [Import from JSON / Markdown](#import-from-json--markdown)
+    - [JSON](#json)
+    - [Markdown](#markdown)
+  - [Export to JSON / Markdown](#export-to-json--markdown)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
+
 ## Introduction
 
 **VS Code Todo** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by User profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
