@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { contributes } from "../../package.json";
 import LogChannel from "../utilities/LogChannel";
 
+export type SyncUserMode = "profile-local" | "profile-sync";
+
 export type Config = {
 	taskSortingOptions: "sortType1" | "sortType2" | "disabled";
 	createMarkdownByDefault: boolean;
@@ -10,13 +12,32 @@ export type Config = {
 	enableMarkdownDiagrams: boolean;
 	enableMarkdownKatex: boolean;
 	enableWideView: boolean;
-	enableSettingsSync: boolean;
+	sync: {
+		user: SyncUserMode;
+	};
 	autoDeleteCompletedAfterDays: number;
 	collapsedPreviewLines: number;
 	// Webview typography
 	webviewFontFamily?: string;
 	webviewFontSize?: number;
 };
+
+type ConfigSectionValueMap = {
+	taskSortingOptions: Config["taskSortingOptions"];
+	createMarkdownByDefault: Config["createMarkdownByDefault"];
+	createPosition: Config["createPosition"];
+	enableLineNumbers: Config["enableLineNumbers"];
+	enableMarkdownDiagrams: Config["enableMarkdownDiagrams"];
+	enableMarkdownKatex: Config["enableMarkdownKatex"];
+	enableWideView: Config["enableWideView"];
+	"sync.user": SyncUserMode;
+	autoDeleteCompletedAfterDays: Config["autoDeleteCompletedAfterDays"];
+	collapsedPreviewLines: Config["collapsedPreviewLines"];
+	webviewFontFamily: Config["webviewFontFamily"];
+	webviewFontSize: Config["webviewFontSize"];
+};
+
+type ConfigSection = keyof ConfigSectionValueMap;
 
 export function getConfig(): Config {
 	const config = vscode.workspace.getConfiguration("vscodeTodo");
@@ -27,11 +48,22 @@ export function getConfig(): Config {
 	const enableLineNumbers: boolean = config.get("enableLineNumbers", false);
 	const enableMarkdownDiagrams: boolean = config.get("enableMarkdownDiagrams", true);
 	const enableMarkdownKatex: boolean = config.get("enableMarkdownKatex", true);
-	const enableSettingsSync: boolean = config.get("enableSettingsSync", false);
+	const enableWideView: boolean = config.get("enableWideView", false);
 	const autoDeleteCompletedAfterDays: number = config.get("autoDeleteCompletedAfterDays", 0);
 	const collapsedPreviewLinesRaw: number = config.get("collapsedPreviewLines", 1);
 	const webviewFontFamily: string = config.get("webviewFontFamily", "");
 	const webviewFontSize: number = config.get("webviewFontSize", 0);
+
+	const syncUserModeEnum = (
+		contributes.configuration.properties["vscodeTodo.sync.user"]["enum"]
+	) as SyncUserMode[];
+	const syncUserModeDefault = (
+		contributes.configuration.properties["vscodeTodo.sync.user"]["default"]
+	) as SyncUserMode;
+	let syncUserMode: SyncUserMode = config.get<SyncUserMode>(
+		"sync.user",
+		syncUserModeDefault
+	);
 
 	const taskSortingOptionsEnum =
 		contributes.configuration.properties["vscodeTodo.taskSortingOptions"]["enum"];
@@ -46,10 +78,13 @@ export function getConfig(): Config {
 
 	// Validate the createPosition value
 	if (!createPositionEnum.includes(createPosition)) {
-		createPosition = contributes.configuration.properties["vscodeTodo.createPosition"]["default"];
+		createPosition =
+			contributes.configuration.properties["vscodeTodo.createPosition"]["default"];
 	}
 
-	const enableWideView: boolean = config.get("enableWideView", false);
+	if (!syncUserModeEnum.includes(syncUserMode)) {
+		syncUserMode = syncUserModeDefault;
+	}
 
 	// Sanitize numeric inputs
 	const collapsedPreviewLines = Number.isFinite(collapsedPreviewLinesRaw)
@@ -64,7 +99,9 @@ export function getConfig(): Config {
 		enableMarkdownDiagrams,
 		enableMarkdownKatex,
 		enableWideView,
-		enableSettingsSync,
+		sync: {
+			user: syncUserMode,
+		},
 		autoDeleteCompletedAfterDays,
 		collapsedPreviewLines,
 		webviewFontFamily,
@@ -72,7 +109,7 @@ export function getConfig(): Config {
 	};
 }
 
-export function setConfig<K extends keyof Config>(section: K, value: Config[K]): void {
+export function setConfig<K extends ConfigSection>(section: K, value: ConfigSectionValueMap[K]): void {
 	const config = vscode.workspace.getConfiguration("vscodeTodo");
 	config.update(section, value, vscode.ConfigurationTarget.Workspace).then(
 		() => {

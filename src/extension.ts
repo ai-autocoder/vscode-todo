@@ -44,13 +44,13 @@ export async function activate(context: ExtensionContext) {
 	if (typeof context.globalState.setKeysForSync === "function") {
 		const cfg = getConfig();
 		context.globalState.setKeysForSync(
-			cfg.enableSettingsSync ? GLOBAL_STATE_SYNC_KEYS : []
+			cfg.sync.user === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
 		);
 		const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration("vscodeTodo.enableSettingsSync")) {
+			if (e.affectsConfiguration("vscodeTodo.sync.user")) {
 				const updated = getConfig();
 				context.globalState.setKeysForSync(
-					updated.enableSettingsSync ? GLOBAL_STATE_SYNC_KEYS : []
+					updated.sync.user === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
 				);
 			}
 		});
@@ -214,3 +214,4 @@ function handleEditorFocusAndRecordsChange(
 		);
 	}
 }
+

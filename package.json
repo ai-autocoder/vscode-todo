@@ -69,10 +69,18 @@
 		"configuration": {
 			"title": "Dev Todo & Notes",
 			"properties": {
-				"vscodeTodo.enableSettingsSync": {
-					"type": "boolean",
-					"default": false,
-					"markdownDescription": "Enable syncing your user-scoped data using VS Code Settings Sync.\n\n**Warning:** enabling this feature might overwrite your existing data on other machines. If you keep different todos/notes on different machines, please back up your data before enabling this feature."
+				"vscodeTodo.sync.user": {
+					"type": "string",
+					"default": "profile-local",
+					"enum": [
+						"profile-local",
+						"profile-sync"
+					],
+					"enumDescriptions": [
+						"Profile (Local): Keep your global lists on this device and profile only.",
+						"Profile (Sync): Sync your global lists with VS Code Settings Sync across devices."
+					],
+					"markdownDescription": "Select how your user lists sync across profiles and machines.\n\n**Profile (Local):** Keeps data only on this VS Code profile and device; use this when you want separate lists per machine.\n**Profile (Sync):** Roams data with VS Code Settings Sync across devices. **Warning:** syncing can overwrite existing todos on other machines that also use Settings Sync. Back up before switching modes."
 				},
 				"vscodeTodo.taskSortingOptions": {
 					"description": "Controls how completed tasks are reordered in the list.",

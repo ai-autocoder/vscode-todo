@@ -50,11 +50,13 @@ export class TodoService {
 		enableMarkdownDiagrams: true,
 		enableMarkdownKatex: true,
 		enableWideView: false,
+		sync: {
+			user: "profile-local",
+		},
 		autoDeleteCompletedAfterDays: 0,
+		collapsedPreviewLines: 1,
 		webviewFontFamily: "",
 		webviewFontSize: 0,
-		collapsedPreviewLines: 1,
-		enableSettingsSync: false,
 	};
 	private _currentFilePathSource = new BehaviorSubject<string>("");
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<
