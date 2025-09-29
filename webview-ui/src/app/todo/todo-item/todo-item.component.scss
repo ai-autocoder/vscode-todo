@@ -114,6 +114,11 @@
 			color: var(--vscode-input-placeholderForeground);
 		}
 
+		span.collapsed-text.complete {
+			text-decoration: line-through;
+			color: var(--vscode-input-placeholderForeground);
+		}
+
 		autosize-text-area {
 			display: flex;
 			width: 100%;
