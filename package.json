@@ -1,8 +1,8 @@
 {
 	"name": "vsc-todo",
-	"displayName": "Dev Todo & Notes",
+	"displayName": "VS Code Todo",
 	"publisher": "FrancescoAnzalone",
-	"description": "Manage todos, notes, and markdown across workspaces, files, and profiles with code highlighting, diagrams and math.",
+	"description": "Markdown notes, todos, tasks, and AI prompt snippets with profile, workspace, and file context. Render inline Mermaid diagrams, KaTeX math, and code highlighting.",
 	"icon": "icon.png",
 	"galleryBanner": {
 		"color": "#0f172a",
@@ -13,20 +13,31 @@
 	"keywords": [
 		"todo",
 		"todos",
+		"note",
 		"notes",
 		"note-taking",
 		"markdown",
-		"prompts",
-		"prompt",
-		"prompt-engineering",
-		"templates",
+		"markdown rendering",
+		"code highlighting",
 		"tasks",
+		"list",
 		"checklist",
 		"productivity",
+		"management",
 		"workspace",
-		"status-bar",
 		"mermaid",
-		"katex"
+		"diagrams",
+		"katex",
+		"math",
+		"code snippets",
+		"snippets",
+		"ai",
+		"ai prompts",
+		"ai snippets",
+		"prompt snippets",
+		"prompts",
+		"prompt",
+		"prompt-engineering"
 	],
 	"engines": {
 		"vscode": "^1.75.0"
@@ -43,31 +54,31 @@
 			{
 				"command": "vsc-todo.openTodo",
 				"title": "Open Todo",
-				"category": "Dev Todo & Notes"
+				"category": "VS Code Todo"
 			},
 			{
 				"command": "vsc-todo.exportDataToJSON",
 				"title": "Export to JSON",
-				"category": "Dev Todo & Notes"
+				"category": "VS Code Todo"
 			},
 			{
 				"command": "vsc-todo.exportDataToMarkdown",
 				"title": "Export to Markdown",
-				"category": "Dev Todo & Notes"
+				"category": "VS Code Todo"
 			},
 			{
 				"command": "vsc-todo.importDataFromJSON",
 				"title": "Import from JSON",
-				"category": "Dev Todo & Notes"
+				"category": "VS Code Todo"
 			},
 			{
 				"command": "vsc-todo.importDataFromMarkdown",
 				"title": "Import from Markdown",
-				"category": "Dev Todo & Notes"
+				"category": "VS Code Todo"
 			}
 		],
 		"configuration": {
-			"title": "Dev Todo & Notes",
+			"title": "VS Code Todo",
 			"properties": {
 				"vscodeTodo.sync.user": {
 					"type": "string",
@@ -164,7 +175,7 @@
 			"activitybar": [
 				{
 					"id": "vsc-todo-sidebar",
-					"title": "Dev Todo & Notes",
+					"title": "VS Code Todo",
 					"icon": "$(checklist)"
 				}
 			]

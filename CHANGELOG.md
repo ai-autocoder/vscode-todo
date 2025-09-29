@@ -2,7 +2,6 @@
 
 ## [next version]
 
-- Rename the extension branding to **Dev Todo & Notes** in metadata, commands, and UI surfaces.
 - Expanded marketplace keywords and refreshed README intro/feature copy for search visibility.
 
 ## [1.16.0]

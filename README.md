@@ -2,7 +2,7 @@
 
 <img src="https://github.com/ai-autocoder/vscode-todo/blob/e044e89bdf974a6c6cbc81717be9f44f944fe12f/icon.png?raw=true" width="200" alt="Logo">
 
-Dev Todo & Notes
+VS Code Todo
 
 </h1>
 
@@ -84,13 +84,13 @@ Dev Todo & Notes
 
 ## Introduction
 
-**Dev Todo & Notes** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
+**VS Code Todo** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
 
 Whether you are managing sprint todos, drafting code documentation, or collecting research notes, everything stays searchable. Global (profile) items roam across devices via VS Code Settings Sync; Workspace and File items stay local.
 
 ## Getting Started
 
-After installing **Dev Todo & Notes**, follow these steps to begin using the extension:
+After installing **VS Code Todo**, follow these steps to begin using the extension:
 
 1. **Open the Todo Panel**
 
@@ -141,7 +141,7 @@ This covers the essentials; the sections below explore markdown previews, diagra
 - **Search, filters, and auto-cleanup** surface the next task and archive completed work automatically.
 - **Import / export (JSON & Markdown)** to back up, share, or move your todos and notes.
 
-![Dev Todo & Notes UI with markdown checklist](./assets/screenshots/UI-overview.gif)
+![VS Code Todo UI with markdown checklist](./assets/screenshots/UI-overview.gif)
 
 ### User, Workspace & File-specific Management
 
