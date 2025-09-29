@@ -84,9 +84,7 @@ VS Code Todo
 
 ## Introduction
 
-**VS Code Todo** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
-
-Whether you are managing sprint todos, drafting code documentation, or collecting research notes, everything stays searchable. Global (profile) items roam across devices via VS Code Settings Sync; Workspace and File items stay local.
+**VS Code Todo** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by User profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
 
 ## Getting Started
 
@@ -101,7 +99,7 @@ After installing **VS Code Todo**, follow these steps to begin using the extensi
 2. **Select a Tab**
 
    - Use the three tabs at the top to choose where to store your items:
-     - **Global (per profile)**: tasks available across all workspaces in the current VS Code profile. The extension opts this data into Settings Sync, so it roams across devices when Settings Sync is enabled.
+     - **User (per profile)**: tasks available across all workspaces in the current VS Code profile. By default they stay local; see [Sync Modes for User Lists](#sync-modes-for-user-lists) to enable roaming.
      - **Workspace**: tasks tied to the current project (default)
      - **File**: tasks associated with the active file
 
@@ -147,10 +145,25 @@ This covers the essentials; the sections below explore markdown previews, diagra
 
 Tasks and notes are organized across three different scopes, each with its respective tab:
 
-1. **User Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. It roams across devices when Settings Sync is enabled because the extension opts the data into Settings Sync.
+1. **User Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. By default it stays local; see [Sync Modes for User Lists](#sync-modes-for-user-lists) to make it roam with Settings Sync.
 2. **Workspace Tab**: Data tied to the current workspace.
 3. **File-specific Tab**: Data associated with a **specific file** within the current workspace. The file displayed in this tab is **automatically updated** to reflect the **most recently focused file** in the editor. However, you can **pin** the tab to a specific file, preventing it from changing when you switch focus to other files.
 Additionally, you can **manually select** and display data for any file that already has an associated record from the list on the left-hand side.
+
+### Sync Modes for User Lists
+
+Control how user-scoped data moves between machines with the `vscodeTodo.sync.user` setting.
+
+- `profile-local` (default): keep your user lists on the current VS Code profile and device.
+- `profile-sync`: opt user lists into VS Code Settings Sync so they roam with the rest of your profile data.
+
+Change the mode from **Settings > Extensions > VS Code Todo > User sync mode**, or update your settings JSON:
+
+```json
+"vscodeTodo.sync.user": "profile-sync"
+```
+
+**Warning:** switching to `profile-sync` syncs immediately with any other machine using the same VS Code profile and Settings Sync. Back up or export your data first if you need to keep separate copies.
 
 ### Markdown Support for Todos and Notes
 
@@ -400,3 +413,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ## Support
 
 For support, feature requests, or bug reporting, please visit the [GitHub issues page](https://github.com/ai-autocoder/vscode-todo/issues).
+
+
+
+
