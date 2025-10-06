@@ -1,10 +1,14 @@
 .todo-container {
 	display: grid;
-	grid-template-columns: 40px calc(100% - 80px) 40px;
-	padding: 0.5rem 0.75rem;
+	grid-template-columns: 40px 1fr min-content;
+	padding: .25rem .125rem;
 	background-color: inherit;
 	align-items: start;
 	transition: background-color 120ms ease, color 120ms ease;
+
+	&.edit-mode .icon-button-container {
+		display: none;
+	}
 
 	&.selected {
 		background-color: var(--vscode-list-activeSelectionBackground, var(--vscode-list-focusBackground));
@@ -31,10 +35,10 @@
 	}
 
 	&.note {
-		grid-template-columns: calc(100% - 40px) 40px;
+		grid-template-columns: 1fr min-content;
 		background-color: var(--note-background-color);
 		border-left: 4px solid var(--note-accent-color);
-		padding: 0.5rem 0.75rem 0.5rem calc(0.75rem - 4px);
+		padding: .25rem .125rem;
 		&.selected {
 			background-color: var(--vscode-list-activeSelectionBackground, var(--note-background-color));
 		}
