@@ -63,6 +63,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		}),
 		AngularSplitModule,
 		IconComponent,
+		ClipboardButtonComponent
 	],
 	providers: [],
 	bootstrap: [AppComponent],
