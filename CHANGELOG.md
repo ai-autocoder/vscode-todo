@@ -1,8 +1,11 @@
 # Change Log
 
-## [next version]
+## [1.17.0]
 
-- Expanded marketplace keywords and refreshed README intro/feature copy for search visibility.
+- Added configuration option to enable cross device sync for user scoped data (per profile - via VS Code Settings Sync)
+- Webview: Added "Copy to clipboard" button to all items (todo and note)
+- Webview: styling and layout improvements
+- Updated README for new features.
 
 ## [1.16.0]
 
