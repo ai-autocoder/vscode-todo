@@ -1,5 +1,10 @@
 # Change Log
 
+## [1.17.1]
+
+- Layout improvements for overflow handling in webview
+- Updated dependencies
+
 ## [1.17.0]
 
 - Added configuration option to enable cross device sync for user scoped data (per profile - via VS Code Settings Sync)
