@@ -236,10 +236,18 @@ export class SyncStorageManager {
 	}
 
 	/**
-	 * Helper: Get from global state
+	 * Helper: Get from global state with defined default
 	 */
-	private getFromGlobalState<T>(key: string, defaultValue: T): T {
-		return this.context.globalState.get<T>(key, defaultValue);
+	private getFromGlobalState<T>(key: string, defaultValue: T): T;
+	/**
+	 * Helper: Get from global state with undefined default
+	 */
+	private getFromGlobalState<T>(key: string, defaultValue: undefined): T | undefined;
+	/**
+	 * Implementation
+	 */
+	private getFromGlobalState<T>(key: string, defaultValue: T | undefined): T | undefined {
+		return this.context.globalState.get<T>(key) ?? defaultValue;
 	}
 
 	/**
@@ -250,10 +258,18 @@ export class SyncStorageManager {
 	}
 
 	/**
-	 * Helper: Get from workspace state
+	 * Helper: Get from workspace state with defined default
 	 */
-	private getFromWorkspaceState<T>(key: string, defaultValue: T): T {
-		return this.context.workspaceState.get<T>(key, defaultValue);
+	private getFromWorkspaceState<T>(key: string, defaultValue: T): T;
+	/**
+	 * Helper: Get from workspace state with undefined default
+	 */
+	private getFromWorkspaceState<T>(key: string, defaultValue: undefined): T | undefined;
+	/**
+	 * Implementation
+	 */
+	private getFromWorkspaceState<T>(key: string, defaultValue: T | undefined): T | undefined {
+		return this.context.workspaceState.get<T>(key) ?? defaultValue;
 	}
 
 	/**

@@ -177,18 +177,139 @@ Additionally, you can **manually select** and display data for any file that alr
 
 ### Sync Modes for User Lists
 
-Control how user-scoped data moves between machines with the `vscodeTodo.sync.user` setting.
+Control how your todos sync across devices with three sync modes: **Local**, **Profile Sync**, and **GitHub Gist**. Each mode stores data separately—switching modes does not migrate your existing todos.
 
-- `profile-local` (default): keep your user lists on the current VS Code profile and device.
-- `profile-sync`: opt user lists into VS Code Settings Sync so they roam with the rest of your profile data.
+#### Local Mode (Default)
 
-Change the mode from **Settings > Extensions > VS Code Todo > User sync mode**, or update your settings JSON:
+Your todos stay on the current VS Code profile and device only. Best for device-specific lists or when you don't need cross-device sync.
+
+#### Profile Sync Mode
+
+Opt user lists into VS Code Settings Sync so they roam with the rest of your profile data. Change the mode from **Settings > Extensions > VS Code Todo > User sync mode**, or update your settings JSON:
 
 ```json
 "vscodeTodo.sync.user": "profile-sync"
 ```
 
 **Warning:** switching to `profile-sync` syncs immediately with any other machine using the same VS Code profile and Settings Sync. Back up or export your data first if you need to keep separate copies.
+
+#### GitHub Gist Sync Mode ⭐ NEW
+
+Sync your todos via a **manually-created GitHub Gist**. This mode provides:
+
+- **Team collaboration**: Share a gist with teammates for shared project todos
+- **Multiple lists**: Use different files within the gist (`global/Work.json`, `global/Personal.json`, etc.)
+- **Cross-device sync**: Independent of VS Code Settings Sync
+- **Manual control**: You create and manage the gist on GitHub
+
+##### Setup Instructions
+
+1. **Create a Secret Gist**
+   - Go to https://gist.github.com
+   - Create a new **secret** gist (recommended for privacy)
+   - The gist will store your todos in JSON files organized by directory:
+     - `global/` - for user-scoped todos (e.g., `global/todos.json`, `global/Work.json`)
+     - `workspace/` - for workspace-scoped todos (e.g., `workspace/ProjectA.json`)
+
+2. **Connect GitHub**
+   - Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+   - Run command: **VS Code Todo: Connect GitHub**
+   - Authenticate with GitHub (requires `gist` scope)
+
+3. **Configure Gist ID**
+   - Copy your gist ID from the URL (e.g., `https://gist.github.com/username/abc123def456` → ID is `abc123def456`)
+   - Run command: **VS Code Todo: Set Gist ID**
+   - Paste the gist ID and choose where to save it:
+     - **User Settings**: All workspaces use this gist by default
+     - **Workspace Settings**: Only this workspace uses this gist
+
+4. **Enable GitHub Sync**
+   - Run command: **VS Code Todo: Select Global Sync Mode** → Choose "GitHub Gist"
+   - Run command: **VS Code Todo: Select Workspace Sync Mode** → Choose "GitHub Gist" (optional)
+
+5. **Select Files** (Optional)
+   - Run command: **VS Code Todo: Set Global File** to choose which file in your gist to use for user todos
+   - Run command: **VS Code Todo: Set Workspace File** to choose which file for workspace todos
+   - Files are auto-created on first sync if they don't exist
+
+##### Managing Your Gist
+
+- **View on GitHub**: Run command **VS Code Todo: View Gist on GitHub** to open your gist in the browser
+- **Sync Manually**: Run command **VS Code Todo: Sync Now** to force immediate sync
+- **Create New Files**: Use the GitHub web interface to create new JSON files in the `global/` or `workspace/` directories
+- **Rename Files**: Rename files on GitHub, then update your settings to point to the new file names
+
+##### Status Bar Indicators
+
+When GitHub sync is enabled, the status bar shows:
+- `☁️✓` - Synced and up-to-date
+- `☁️⚠️` - Unsaved local changes pending sync
+- `☁️⟳` - Sync in progress
+- `☁️❌` - Sync error occurred
+
+Hover over the status bar icon for detailed sync status.
+
+##### Settings
+
+```json
+{
+  // Enable GitHub Gist sync
+  "vscodeTodo.sync.githubEnabled": true,
+
+  // Your gist ID (32-character hex string)
+  // CRITICAL: Never commit this to source control!
+  "vscodeTodo.sync.gistId": "abc123def456...",
+
+  // Global file path in gist (must be in global/ directory)
+  "vscodeTodo.sync.globalFile": "global/todos.json",
+
+  // Workspace file path in gist (must be in workspace/ directory)
+  "vscodeTodo.sync.workspaceFile": "workspace/ProjectAlpha.json",
+
+  // Poll interval in seconds (30-600)
+  "vscodeTodo.sync.pollInterval": 180
+}
+```
+
+##### Security Warnings ⚠️
+
+- **Plaintext Storage**: Todos synced to GitHub are stored in **plaintext JSON**. Never store passwords, API keys, tokens, or sensitive personal information in synced todos.
+- **Gist ID Sensitivity**: Your gist ID grants access to your todos. **Never commit** `.vscode/settings.json` containing your gist ID to source control. Add it to `.gitignore`.
+- **Secret vs Public Gists**: Use **secret gists** (not public) to prevent your todos from being indexed by search engines. Secret gists are still accessible to anyone with the link.
+- **Team Sharing**: When sharing a gist with teammates, understand that all members with the gist ID can read and write todos. Coordinate to avoid conflicts.
+
+##### Conflict Resolution
+
+The extension uses a **last-writer-wins** strategy based on GitHub's `updated_at` timestamp:
+- If remote has changes and local is clean → downloads remote changes
+- If remote is unchanged and local is dirty → uploads local changes
+- If **both** have changes → **remote wins**, local changes are discarded (warning shown)
+
+To avoid conflicts:
+- Use **Sync Now** before making major changes
+- Coordinate with team members when editing shared gists
+- Export your todos regularly as backups
+
+##### Troubleshooting
+
+**"Not authenticated"**
+- Run **VS Code Todo: Connect GitHub** and sign in
+
+**"Gist ID not configured"**
+- Run **VS Code Todo: Set Gist ID** and paste your gist ID
+
+**"File not found in gist"**
+- The file will be auto-created on first sync, or create it manually on GitHub
+
+**Sync not happening**
+- Check status bar for error indicators
+- Run **VS Code Todo: Sync Now** to force sync
+- Verify poll interval is not too high (default: 180 seconds)
+
+**Lost local changes after sync**
+- This happens when both remote and local have changes (conflict scenario)
+- The extension prioritizes remote data in conflicts
+- Solution: Export your todos regularly as backups
 
 ### Markdown Support for Todos and Notes
 

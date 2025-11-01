@@ -4,7 +4,7 @@ import { ExtensionContext } from "vscode";
 import StorageSyncManager from "./storage/StorageSyncManager";
 import { tabChangeHandler } from "./editorHandler";
 import { HelloWorldPanel } from "./panels/HelloWorldPanel";
-import { initStatusBarItem, updateStatusBarItem } from "./statusBarItem";
+import { initStatusBarItem, updateStatusBarItem, updateSyncStatus } from "./statusBarItem";
 import { exportCommand } from "./todo/exporter";
 import { ExportFormats } from "./todo/todoTypes";
 import { importCommand } from "./todo/importer";
@@ -33,6 +33,7 @@ import {
 	removeDataForDeletedFile,
 	updateDataForRenamedFile,
 } from "./todo/todoUtils";
+import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands } from "./sync";
 
 const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
 
@@ -40,6 +41,28 @@ export async function activate(context: ExtensionContext) {
 	const store = createStore();
 	const storageSyncManager = new StorageSyncManager(context, store);
 	await storageSyncManager.initialize();
+
+	// Initialize GitHub sync modules
+	const authManager = GitHubAuthManager.getInstance(context);
+	const apiClient = new GitHubApiClient(context);
+	const syncManager = new SyncManager(context);
+	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager);
+
+	// Start GitHub sync polling if enabled
+	const syncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
+	const githubEnabled = syncConfig.get<boolean>("githubEnabled", false);
+	if (githubEnabled) {
+		const pollInterval = syncConfig.get<number>("pollInterval", 180);
+		syncManager.startPolling("global", pollInterval);
+		syncManager.startPolling("workspace", pollInterval);
+	}
+
+	// Listen for sync status changes and update status bar
+	const syncStatusListener = syncManager.onStatusChange((event) => {
+		updateSyncStatus(event.scope, event.status);
+		updateStatusBarItem(store.getState());
+	});
+	context.subscriptions.push(syncStatusListener);
 
 	if (typeof context.globalState.setKeysForSync === "function") {
 		const cfg = getConfig();
@@ -52,6 +75,20 @@ export async function activate(context: ExtensionContext) {
 				context.globalState.setKeysForSync(
 					updated.sync.user === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
 				);
+			}
+			// Handle GitHub sync configuration changes
+			if (e.affectsConfiguration("vscodeTodo.sync.githubEnabled") || e.affectsConfiguration("vscodeTodo.sync.pollInterval")) {
+				const updatedSyncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
+				const updatedGithubEnabled = updatedSyncConfig.get<boolean>("githubEnabled", false);
+				const updatedPollInterval = updatedSyncConfig.get<number>("pollInterval", 180);
+
+				if (updatedGithubEnabled) {
+					syncManager.startPolling("global", updatedPollInterval);
+					syncManager.startPolling("workspace", updatedPollInterval);
+				} else {
+					syncManager.stopPolling("global");
+					syncManager.stopPolling("workspace");
+				}
 			}
 		});
 		context.subscriptions.push(configListener);
@@ -92,7 +129,8 @@ export async function activate(context: ExtensionContext) {
 					state[state.actionTracker.lastSliceName],
 					store,
 					context,
-					storageSyncManager
+					storageSyncManager,
+					syncManager
 				);
 				break;
 			case Slices.editorFocusAndRecords:
@@ -101,9 +139,9 @@ export async function activate(context: ExtensionContext) {
 		}
 	});
 
-	const initialWorkspaceTodos = storageSyncManager.getWorkspaceTodos();
-	const initialUserTodos = storageSyncManager.getUserTodos();
-	const initialWorkspaceFilesData = storageSyncManager.getWorkspaceFilesData();
+	const initialWorkspaceTodos = await storageSyncManager.getWorkspaceTodos();
+	const initialUserTodos = await storageSyncManager.getUserTodos();
+	const initialWorkspaceFilesData = await storageSyncManager.getWorkspaceFilesData();
 
 	// Load workspace slice
 	store.dispatch(
@@ -148,14 +186,20 @@ export async function activate(context: ExtensionContext) {
 
 	context.subscriptions.push(
 		...commands,
+		...syncCommands.registerCommands(),
 		statusBarItem,
 		onDidChangeActiveTextEditorSubscription,
 		onDidRenameFilesSubscription,
 		onDidDeleteFilesSubscription,
-		vscode.window.registerWebviewViewProvider(TodoViewProvider.viewType, provider)
+		vscode.window.registerWebviewViewProvider(TodoViewProvider.viewType, provider),
+		{ dispose: () => syncManager.dispose() }
 	);
 
 	deleteCompletedTodos(store);
+}
+
+export function deactivate() {
+	// Cleanup is handled by dispose methods in context.subscriptions
 }
 
 function handleTodoChange(
@@ -163,13 +207,26 @@ function handleTodoChange(
 	sliceState: TodoSlice | CurrentFileSlice,
 	store: EnhancedStore,
 	context: ExtensionContext,
-	storageSyncManager: StorageSyncManager
+	storageSyncManager: StorageSyncManager,
+	syncManager: SyncManager
 ) {
 	store.dispatch(actionTrackerActions.resetLastSliceName());
 	HelloWorldPanel.currentPanel?.updateWebview(sliceState);
 	TodoViewProvider.currentProvider?.updateWebview(sliceState);
 	updateStatusBarItem(state);
 	void storageSyncManager.persistSlice(sliceState as TodoSlice | CurrentFileSlice);
+
+	// Trigger GitHub sync if enabled
+	const syncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
+	const githubEnabled = syncConfig.get<boolean>("githubEnabled", false);
+	if (githubEnabled) {
+		if (sliceState.scope === TodoScope.user) {
+			syncManager.triggerDebounceSync("global");
+		} else if (sliceState.scope === TodoScope.workspace || sliceState.scope === TodoScope.currentFile) {
+			syncManager.triggerDebounceSync("workspace");
+		}
+	}
+
 	if (sliceState.scope === TodoScope.currentFile) {
 		// Update editorFocusAndRecordsSlice
 		store.dispatch(
