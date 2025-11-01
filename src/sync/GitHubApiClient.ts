@@ -149,6 +149,19 @@ export class GitHubApiClient {
 			};
 		}
 
+		// Validate content is not empty
+		if (!content || content.trim().length === 0) {
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.ValidationError,
+					message: "File content cannot be empty. GitHub requires at least 1 byte of content.",
+					timestamp: new Date().toISOString(),
+					retryable: false,
+				},
+			};
+		}
+
 		try {
 			const response = await fetch(GitHubAPI.gist(gistId), {
 				method: "PATCH",
@@ -239,12 +252,25 @@ export class GitHubApiClient {
 	private async handleErrorResponse(response: Response): Promise<SyncResult<never>> {
 		const statusCode = response.status;
 		let errorMessage = `HTTP ${statusCode}: ${response.statusText}`;
+		let errorDetails: any = null;
 
 		try {
 			const errorData = await response.json();
+			errorDetails = errorData;
 			if (errorData.message) {
 				errorMessage = errorData.message;
 			}
+			// GitHub often provides more details in the errors array
+			if (errorData.errors && Array.isArray(errorData.errors)) {
+				const errorsList = errorData.errors.map((e: any) => e.message || e.code || JSON.stringify(e)).join(", ");
+				errorMessage += ` - Details: ${errorsList}`;
+			}
+			// Log for debugging (useful for future issues)
+			console.log("GitHub API Error:", {
+				status: statusCode,
+				message: errorMessage,
+				details: errorData.errors,
+			});
 		} catch {
 			// Ignore JSON parse errors
 		}
@@ -260,6 +286,10 @@ export class GitHubApiClient {
 				break;
 			case 404:
 				errorType = SyncErrorType.NotFoundError;
+				retryable = false;
+				break;
+			case 422:
+				errorType = SyncErrorType.ValidationError;
 				retryable = false;
 				break;
 			case 429:

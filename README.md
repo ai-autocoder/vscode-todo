@@ -230,13 +230,17 @@ Sync your todos via a **manually-created GitHub Gist**. This mode provides:
 5. **Select Files** (Optional)
    - Run command: **VS Code Todo: Set Global File** to choose which file in your gist to use for user todos
    - Run command: **VS Code Todo: Set Workspace File** to choose which file for workspace todos
-   - Files are auto-created on first sync if they don't exist
+   - If no files exist, you'll be prompted to create a new one directly from VS Code
+   - Workspace files are automatically prefilled with your workspace name for convenience
 
 ##### Managing Your Gist
 
 - **View on GitHub**: Run command **VS Code Todo: View Gist on GitHub** to open your gist in the browser
 - **Sync Manually**: Run command **VS Code Todo: Sync Now** to force immediate sync
-- **Create New Files**: Use the GitHub web interface to create new JSON files in the `global/` or `workspace/` directories
+- **Create New Files**:
+  - Use the file selection commands (Set Global File / Set Workspace File) and choose "Create New File"
+  - Or create files manually on the GitHub web interface in the `global/` or `workspace/` directories
+  - Workspace files are automatically prefilled with your workspace name
 - **Rename Files**: Rename files on GitHub, then update your settings to point to the new file names
 
 ##### Status Bar Indicators

@@ -7,7 +7,7 @@ import * as vscode from "vscode";
 import { GitHubAuthManager } from "./GitHubAuthManager";
 import { GitHubApiClient } from "./GitHubApiClient";
 import { SyncManager } from "./SyncManager";
-import { GlobalSyncMode, WorkspaceSyncMode, GIST_ID_REGEX } from "./syncTypes";
+import { GlobalSyncMode, WorkspaceSyncMode, GIST_ID_REGEX, SyncErrorType } from "./syncTypes";
 
 export class SyncCommands {
 	private authManager: GitHubAuthManager;
@@ -357,32 +357,103 @@ export class SyncCommands {
 				}
 
 				if (filesResult.data.length === 0) {
+					// No files found - prompt to create new file
+					const fileName = await vscode.window.showInputBox({
+						prompt: "No global files found in gist. Enter a name for your new global list",
+						placeHolder: "todos",
+						validateInput: (value) => {
+							if (!value || value.trim().length === 0) {
+								return "File name cannot be empty";
+							}
+							if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+								return "File name can only contain letters, numbers, hyphens, and underscores";
+							}
+							return null;
+						},
+					});
+
+					if (!fileName) {
+						return;
+					}
+
+					const fullPath = `global-${fileName}.json`;
+					await config.update("globalFile", fullPath, vscode.ConfigurationTarget.Global);
 					vscode.window.showInformationMessage(
-						"No global files found in gist. Create files on GitHub first."
+						`Global file set to: ${fileName}. It will be created on first sync.`
 					);
+
+					// Trigger immediate sync to create the file
+					await this.syncManager.sync("global");
 					return;
 				}
 
-				const currentFile = config.get<string>("globalFile", "global/todos.json");
-				const items = filesResult.data.map((file) => ({
-					label: `$(file) ${file.displayName}`,
-					description: file.fullPath === currentFile ? "✓ Currently selected" : undefined,
-					file,
-				}));
+				const currentFile = config.get<string>("globalFile", "global-todos.json");
+				const items: Array<
+					| { label: string; description: string; isNew: true; file?: never }
+					| { label: string; description?: string; isNew: false; file: typeof filesResult.data[number] }
+				> = [
+					{
+						label: "$(add) Create New File",
+						description: "Create a new global list file",
+						isNew: true,
+					},
+					...filesResult.data.map((file) => ({
+						label: `$(file) ${file.displayName}`,
+						description: file.fullPath === currentFile ? "✓ Currently selected" : undefined,
+						file,
+						isNew: false as const,
+					})),
+				];
 
 				const selected = await vscode.window.showQuickPick(items, {
-					placeHolder: "Select global list from gist",
+					placeHolder: "Select global list from gist or create new",
 				});
 
 				if (!selected) {
 					return;
 				}
 
-				await config.update("globalFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
-				vscode.window.showInformationMessage(`Global file set to: ${selected.file.displayName}`);
+				if (selected.isNew) {
+					// Create new file
+					const fileName = await vscode.window.showInputBox({
+						prompt: "Enter a name for your new global list",
+						placeHolder: "todos",
+						validateInput: (value) => {
+							if (!value || value.trim().length === 0) {
+								return "File name cannot be empty";
+							}
+							if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+								return "File name can only contain letters, numbers, hyphens, and underscores";
+							}
+							// Check if file already exists
+							const exists = filesResult.data?.some(f => f.displayName === value);
+							if (exists) {
+								return "A file with this name already exists";
+							}
+							return null;
+						},
+					});
 
-				// Trigger immediate sync
-				await this.syncManager.sync("global");
+					if (!fileName) {
+						return;
+					}
+
+					const fullPath = `global-${fileName}.json`;
+					await config.update("globalFile", fullPath, vscode.ConfigurationTarget.Global);
+					vscode.window.showInformationMessage(
+						`Global file set to: ${fileName}. It will be created on first sync.`
+					);
+
+					// Trigger immediate sync to create the file
+					await this.syncManager.sync("global");
+				} else {
+					// Select existing file
+					await config.update("globalFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
+					vscode.window.showInformationMessage(`Global file set to: ${selected.file.displayName}`);
+
+					// Trigger immediate sync
+					await this.syncManager.sync("global");
+				}
 			}
 		);
 	}
@@ -420,34 +491,106 @@ export class SyncCommands {
 					return;
 				}
 
+				const workspaceName = vscode.workspace.name || "default";
+
 				if (filesResult.data.length === 0) {
+					// No files found - prompt to create new file with workspace name prefilled
+					const fileName = await vscode.window.showInputBox({
+						prompt: "No workspace files found in gist. Enter a name for your new workspace list",
+						value: workspaceName, // Prefill with workspace name
+						validateInput: (value) => {
+							if (!value || value.trim().length === 0) {
+								return "File name cannot be empty";
+							}
+							if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+								return "File name can only contain letters, numbers, hyphens, and underscores";
+							}
+							return null;
+						},
+					});
+
+					if (!fileName) {
+						return;
+					}
+
+					const fullPath = `workspace-${fileName}.json`;
+					await config.update("workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
 					vscode.window.showInformationMessage(
-						"No workspace files found in gist. Create files on GitHub first."
+						`Workspace file set to: ${fileName}. It will be created on first sync.`
 					);
+
+					// Trigger immediate sync to create the file
+					await this.syncManager.sync("workspace");
 					return;
 				}
 
-				const workspaceName = vscode.workspace.name || "default";
-				const currentFile = config.get<string>("workspaceFile") || `workspace/${workspaceName}.json`;
-				const items = filesResult.data.map((file) => ({
-					label: `$(file) ${file.displayName}`,
-					description: file.fullPath === currentFile ? "✓ Currently selected" : undefined,
-					file,
-				}));
+				const currentFile = config.get<string>("workspaceFile") || `workspace-${workspaceName}.json`;
+				const items: Array<
+					| { label: string; description: string; isNew: true; file?: never }
+					| { label: string; description?: string; isNew: false; file: typeof filesResult.data[number] }
+				> = [
+					{
+						label: "$(add) Create New File",
+						description: "Create a new workspace list file",
+						isNew: true,
+					},
+					...filesResult.data.map((file) => ({
+						label: `$(file) ${file.displayName}`,
+						description: file.fullPath === currentFile ? "✓ Currently selected" : undefined,
+						file,
+						isNew: false as const,
+					})),
+				];
 
 				const selected = await vscode.window.showQuickPick(items, {
-					placeHolder: "Select workspace list from gist",
+					placeHolder: "Select workspace list from gist or create new",
 				});
 
 				if (!selected) {
 					return;
 				}
 
-				await config.update("workspaceFile", selected.file.fullPath, vscode.ConfigurationTarget.Workspace);
-				vscode.window.showInformationMessage(`Workspace file set to: ${selected.file.displayName}`);
+				if (selected.isNew) {
+					// Create new file with workspace name prefilled
+					const fileName = await vscode.window.showInputBox({
+						prompt: "Enter a name for your new workspace list",
+						value: workspaceName, // Prefill with workspace name
+						validateInput: (value) => {
+							if (!value || value.trim().length === 0) {
+								return "File name cannot be empty";
+							}
+							if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+								return "File name can only contain letters, numbers, hyphens, and underscores";
+							}
+							// Check if file already exists
+							const exists = filesResult.data?.some(f => f.displayName === value);
+							if (exists) {
+								return "A file with this name already exists";
+							}
+							return null;
+						},
+					});
 
-				// Trigger immediate sync
-				await this.syncManager.sync("workspace");
+					if (!fileName) {
+						return;
+					}
+
+					const fullPath = `workspace-${fileName}.json`;
+					await config.update("workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
+					vscode.window.showInformationMessage(
+						`Workspace file set to: ${fileName}. It will be created on first sync.`
+					);
+
+					// Trigger immediate sync to create the file
+					await this.syncManager.sync("workspace");
+				} else {
+					// Select existing file
+					await config.update("workspaceFile", selected.file.fullPath, vscode.ConfigurationTarget.Workspace);
+					vscode.window.showInformationMessage(`Workspace file set to: ${selected.file.displayName}`);
+
+					// Trigger immediate sync
+					await this.syncManager.sync("workspace");
+				}
 			}
 		);
 	}
@@ -478,11 +621,70 @@ export class SyncCommands {
 				if (globalResult.success && workspaceResult.success) {
 					vscode.window.showInformationMessage("Synced successfully.");
 				} else if (!globalResult.success) {
-					vscode.window.showErrorMessage(`Sync failed: ${globalResult.error?.message}`);
+					this.showSyncError("Global", globalResult.error);
 				} else if (!workspaceResult.success) {
-					vscode.window.showErrorMessage(`Sync failed: ${workspaceResult.error?.message}`);
+					this.showSyncError("Workspace", workspaceResult.error);
 				}
 			}
 		);
+	}
+
+	/**
+	 * Show sync error with helpful guidance
+	 */
+	private showSyncError(scope: string, error?: { type: SyncErrorType; message: string }): void {
+		if (!error) {
+			vscode.window.showErrorMessage(`${scope} sync failed: Unknown error`);
+			return;
+		}
+
+		let message = `${scope} sync failed: ${error.message}`;
+		let actions: string[] = [];
+
+		switch (error.type) {
+			case SyncErrorType.ValidationError:
+				// Show the actual error message, not a generic one
+				message = `${scope} sync failed: ${error.message}`;
+				actions = ["View Gist", "Retry Sync"];
+				break;
+			case SyncErrorType.AuthError:
+				message = `${scope} sync failed: Authentication error. Please reconnect GitHub.`;
+				actions = ["Connect GitHub"];
+				break;
+			case SyncErrorType.NotFoundError:
+				message = `${scope} sync failed: Gist not found. Please check your gist ID.`;
+				actions = ["Set Gist ID"];
+				break;
+			case SyncErrorType.RateLimitError:
+				message = `${scope} sync failed: GitHub rate limit exceeded. Please try again later.`;
+				break;
+			case SyncErrorType.NetworkError:
+				message = `${scope} sync failed: Network error. Please check your connection.`;
+				actions = ["Retry Sync"];
+				break;
+			default:
+				actions = ["Retry Sync", "View Gist"];
+		}
+
+		if (actions.length > 0) {
+			vscode.window.showErrorMessage(message, ...actions).then(async (action) => {
+				switch (action) {
+					case "Connect GitHub":
+						await this.connectGitHub();
+						break;
+					case "Set Gist ID":
+						await this.setGistId();
+						break;
+					case "View Gist":
+						await this.viewGistOnGitHub();
+						break;
+					case "Retry Sync":
+						await this.syncNow();
+						break;
+				}
+			});
+		} else {
+			vscode.window.showErrorMessage(message);
+		}
 	}
 }

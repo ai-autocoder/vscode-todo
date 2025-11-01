@@ -147,6 +147,7 @@ export enum SyncErrorType {
 	ConflictError = "conflict",
 	InvalidGistIdError = "invalid-gist-id",
 	FileNotFoundError = "file-not-found",
+	ValidationError = "validation",
 	UnknownError = "unknown",
 }
 
@@ -195,18 +196,20 @@ export const StorageKeys = {
 
 /**
  * Directory prefixes for gist files
+ * NOTE: GitHub Gist does not support actual directories (no forward slashes allowed)
+ * Using hyphen separator instead to organize files logically
  */
 export const GistDirectories = {
-	global: "global/",
-	workspace: "workspace/",
+	global: "global-",
+	workspace: "workspace-",
 } as const;
 
 /**
  * Default file names
  */
 export const DefaultFileNames = {
-	global: "global/todos.json",
-	workspace: (workspaceName: string) => `workspace/${workspaceName}.json`,
+	global: "global-todos.json",
+	workspace: (workspaceName: string) => `workspace-${workspaceName}.json`,
 } as const;
 
 /**

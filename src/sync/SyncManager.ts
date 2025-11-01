@@ -136,7 +136,7 @@ export class SyncManager {
 		this.updateStatus("global", SyncStatus.Syncing);
 
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const fileName = config.get<string>("globalFile", "global/todos.json");
+		const fileName = config.get<string>("globalFile", "global-todos.json");
 
 		try {
 			// Get local cache
@@ -252,11 +252,44 @@ export class SyncManager {
 	 * Upload global data to gist
 	 */
 	private async uploadGlobal(gistId: string, fileName: string, cache: GistCache<GlobalGistData>): Promise<SyncResult<void>> {
+		// Validate cache structure
+		if (!cache || !cache.data) {
+			this.updateStatus("global", SyncStatus.Error);
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.ValidationError,
+					message: `Invalid cache structure: cache=${!!cache}, cache.data=${!!(cache?.data)}`,
+					timestamp: new Date().toISOString(),
+					retryable: false,
+				},
+			};
+		}
+
 		// Update _lastSynced timestamp
 		cache.data._lastSynced = new Date().toISOString();
 
+		// Ensure userTodos is initialized
+		if (!cache.data.userTodos) {
+			cache.data.userTodos = [];
+		}
+
 		// Serialize with pretty-printing
 		const content = JSON.stringify(cache.data, null, 2);
+
+		// Validate serialized content is not empty
+		if (!content || content.trim().length === 0) {
+			this.updateStatus("global", SyncStatus.Error);
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.ValidationError,
+					message: `Failed to serialize data: content length=${content?.length ?? 0}, trimmed length=${content?.trim().length ?? 0}`,
+					timestamp: new Date().toISOString(),
+					retryable: false,
+				},
+			};
+		}
 
 		const writeResult = await this.apiClient.writeFile(gistId, fileName, content);
 		if (!writeResult.success || !writeResult.data) {
@@ -282,7 +315,7 @@ export class SyncManager {
 
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
 		const workspaceName = vscode.workspace.name || "default";
-		const fileName = config.get<string>("workspaceFile") || `workspace/${workspaceName}.json`;
+		const fileName = config.get<string>("workspaceFile") || `workspace-${workspaceName}.json`;
 
 		try {
 			// Get local cache
@@ -413,6 +446,20 @@ export class SyncManager {
 
 		// Serialize with pretty-printing
 		const content = JSON.stringify(cache.data, null, 2);
+
+		// Validate serialized content is not empty
+		if (!content || content.trim().length === 0) {
+			this.updateStatus("workspace", SyncStatus.Error);
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.ValidationError,
+					message: "Failed to serialize data: content is empty",
+					timestamp: new Date().toISOString(),
+					retryable: false,
+				},
+			};
+		}
 
 		const writeResult = await this.apiClient.writeFile(gistId, fileName, content);
 		if (!writeResult.success || !writeResult.data) {
