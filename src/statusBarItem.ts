@@ -3,8 +3,9 @@ import { StoreState } from "./todo/todoTypes";
 import { SyncStatus, GlobalSyncMode, WorkspaceSyncMode } from "./sync/syncTypes";
 
 let _statusBarItem: vscode.StatusBarItem | undefined;
-let _globalSyncStatus: SyncStatus = SyncStatus.Offline;
+let _userSyncStatus: SyncStatus = SyncStatus.Offline;
 let _workspaceSyncStatus: SyncStatus = SyncStatus.Offline;
+let _context: vscode.ExtensionContext | undefined;
 
 /**
  * Creates a status bar item and adds it to the vscode extension context.
@@ -13,6 +14,7 @@ let _workspaceSyncStatus: SyncStatus = SyncStatus.Offline;
  * @return {void} There is no return value.
  */
 export function initStatusBarItem(context: vscode.ExtensionContext) {
+	_context = context;
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	statusBarItem.command = "vsc-todo.openTodo";
 	statusBarItem.text = "";
@@ -32,25 +34,26 @@ export function updateStatusBarItem(state: StoreState) {
 	const currentFileTodos = `${state.currentFile.filePath === "" ? "-" : state.currentFile.numberOfTodos}`;
 	const currentFileNotes = `${state.currentFile.filePath === "" ? "-" : state.currentFile.numberOfNotes}`;
 
-	// Get sync mode and status
-	const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-	const githubEnabled = config.get<boolean>("githubEnabled", false);
-	const syncMode = githubEnabled ? "GitHub" : (config.get<string>("user", "profile-local") === "profile-sync" ? "Profile Sync" : "Local");
+	// Get sync mode from internal storage
+	const userSyncMode = _context?.globalState.get<string>("syncMode", "profile-local") || "profile-local";
+	const workspaceSyncMode = _context?.workspaceState.get<string>("syncMode", "local") || "local";
+	const isGitHubEnabled = userSyncMode === "github" || workspaceSyncMode === "github";
+	const syncMode = userSyncMode === "github" ? "GitHub" : (userSyncMode === "profile-sync" ? "Profile Sync" : "Local");
 
 	// Determine sync icon and status indicator
 	let syncIcon = "$(archive)"; // Local mode
 	let statusIndicator = "";
 
-	if (githubEnabled) {
+	if (isGitHubEnabled) {
 		syncIcon = "$(cloud)"; // GitHub mode
 		// Show status indicator for GitHub mode
-		if (_globalSyncStatus === SyncStatus.Synced || _workspaceSyncStatus === SyncStatus.Synced) {
+		if (_userSyncStatus === SyncStatus.Synced || _workspaceSyncStatus === SyncStatus.Synced) {
 			statusIndicator = "$(check)"; // Synced
-		} else if (_globalSyncStatus === SyncStatus.Dirty || _workspaceSyncStatus === SyncStatus.Dirty) {
+		} else if (_userSyncStatus === SyncStatus.Dirty || _workspaceSyncStatus === SyncStatus.Dirty) {
 			statusIndicator = "$(warning)"; // Unsaved changes
-		} else if (_globalSyncStatus === SyncStatus.Syncing || _workspaceSyncStatus === SyncStatus.Syncing) {
+		} else if (_userSyncStatus === SyncStatus.Syncing || _workspaceSyncStatus === SyncStatus.Syncing) {
 			statusIndicator = "$(sync~spin)"; // Syncing
-		} else if (_globalSyncStatus === SyncStatus.Error || _workspaceSyncStatus === SyncStatus.Error) {
+		} else if (_userSyncStatus === SyncStatus.Error || _workspaceSyncStatus === SyncStatus.Error) {
 			statusIndicator = "$(error)"; // Error
 		}
 	} else if (syncMode === "Profile Sync") {
@@ -61,8 +64,8 @@ export function updateStatusBarItem(state: StoreState) {
 
 	// Build tooltip with sync info
 	let syncInfo = `**Sync Mode:** ${syncMode}\n\n`;
-	if (githubEnabled) {
-		const globalStatusText = getSyncStatusText(_globalSyncStatus);
+	if (isGitHubEnabled) {
+		const globalStatusText = getSyncStatusText(_userSyncStatus);
 		const workspaceStatusText = getSyncStatusText(_workspaceSyncStatus);
 		syncInfo += `- Global: ${globalStatusText}\n`;
 		syncInfo += `- Workspace: ${workspaceStatusText}\n\n`;
@@ -89,9 +92,9 @@ View Todos and Notes
 /**
  * Update sync status for status bar display
  */
-export function updateSyncStatus(scope: "global" | "workspace", status: SyncStatus) {
-	if (scope === "global") {
-		_globalSyncStatus = status;
+export function updateSyncStatus(scope: "user" | "workspace", status: SyncStatus) {
+	if (scope === "user") {
+		_userSyncStatus = status;
 	} else {
 		_workspaceSyncStatus = status;
 	}

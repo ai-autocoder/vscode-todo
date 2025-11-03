@@ -97,8 +97,8 @@
 				"category": "VS Code Todo"
 			},
 			{
-				"command": "vsc-todo.selectGlobalSyncMode",
-				"title": "Select Global Sync Mode",
+				"command": "vsc-todo.selectUserSyncMode",
+				"title": "Select User Sync Mode",
 				"category": "VS Code Todo"
 			},
 			{
@@ -107,8 +107,8 @@
 				"category": "VS Code Todo"
 			},
 			{
-				"command": "vsc-todo.setGlobalFile",
-				"title": "Set Global File",
+				"command": "vsc-todo.setUserFile",
+				"title": "Set User File",
 				"category": "VS Code Todo"
 			},
 			{
@@ -125,40 +125,22 @@
 		"configuration": {
 			"title": "VS Code Todo",
 			"properties": {
-				"vscodeTodo.sync.user": {
-					"type": "string",
-					"default": "profile-local",
-					"enum": [
-						"profile-local",
-						"profile-sync"
-					],
-					"enumDescriptions": [
-						"Profile (Local): Keep your global lists on this device and profile only.",
-						"Profile (Sync): Sync your global lists with VS Code Settings Sync across devices."
-					],
-					"markdownDescription": "Select how your user lists sync across profiles and machines.\n\n**Profile (Local):** Keeps data only on this VS Code profile and device; use this when you want separate lists per machine.\n**Profile (Sync):** Roams data with VS Code Settings Sync across devices. **Warning:** syncing can overwrite existing todos on other machines that also use Settings Sync. Back up before switching modes."
-				},
-				"vscodeTodo.sync.githubEnabled": {
-					"type": "boolean",
-					"default": false,
-					"markdownDescription": "Enable GitHub Gist sync. When enabled, todos are synced via a manually-created GitHub gist instead of local or profile sync.\n\n**Important:** Requires GitHub authentication and gist ID configuration. See commands: `Todo: Connect GitHub` and `Todo: Set Gist ID`.\n\n**Security Notice:** Todos synced to GitHub are stored in plaintext. Never store passwords, API keys, or sensitive personal information in synced todos."
-				},
-				"vscodeTodo.sync.gistId": {
+				"vscodeTodo.sync.github.gistId": {
 					"type": "string",
 					"default": "",
 					"markdownDescription": "GitHub Gist ID for sync (32-character hex string). Can be set in User Settings (global default) or Workspace Settings (override).\n\n**CRITICAL:** Never commit this to source control. Add `.vscode/settings.json` to `.gitignore` if it contains gist ID.\n\nTo get your gist ID:\n1. Create a secret gist at https://gist.github.com\n2. Copy the ID from the URL (e.g., `abc123def456`)\n3. Use command `Todo: Set Gist ID` or paste here"
 				},
-				"vscodeTodo.sync.globalFile": {
+				"vscodeTodo.sync.github.userFile": {
 					"type": "string",
-					"default": "global/todos.json",
-					"markdownDescription": "Global file path to use from gist. Must be in `global/` directory.\n\nExamples: `global/todos.json`, `global/Work.json`, `global/Personal.json`\n\nUse command `Todo: Set Global File` to select from existing files in your gist."
+					"default": "user-todos.json",
+					"markdownDescription": "User file name in gist for syncing global/user-scope todos.\n\nExamples: `user-todos.json`, `user-Work.json`, `user-Personal.json`\n\nUse command `Todo: Set User File` to select from existing files in your gist or create a new one."
 				},
-				"vscodeTodo.sync.workspaceFile": {
+				"vscodeTodo.sync.github.workspaceFile": {
 					"type": "string",
 					"default": "",
-					"markdownDescription": "Workspace file path to use from gist. Must be in `workspace/` directory. Auto-derived from workspace name if not set.\n\nExamples: `workspace/ProjectAlpha.json`, `workspace/BugTracking.json`\n\nUse command `Todo: Set Workspace File` to select from existing files in your gist."
+					"markdownDescription": "Workspace file name in gist for syncing workspace-scope todos. Auto-derived from workspace name if not set.\n\nExamples: `workspace-ProjectAlpha.json`, `workspace-BugTracking.json`\n\nUse command `Todo: Set Workspace File` to select from existing files in your gist or create a new one."
 				},
-				"vscodeTodo.sync.pollInterval": {
+				"vscodeTodo.sync.github.pollInterval": {
 					"type": "number",
 					"default": 180,
 					"minimum": 30,

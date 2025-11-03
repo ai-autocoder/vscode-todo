@@ -200,7 +200,7 @@ export const StorageKeys = {
  * Using hyphen separator instead to organize files logically
  */
 export const GistDirectories = {
-	global: "global-",
+	user: "user-",
 	workspace: "workspace-",
 } as const;
 
@@ -208,7 +208,7 @@ export const GistDirectories = {
  * Default file names
  */
 export const DefaultFileNames = {
-	global: "global-todos.json",
+	user: "user-todos.json",
 	workspace: (workspaceName: string) => `workspace-${workspaceName}.json`,
 } as const;
 

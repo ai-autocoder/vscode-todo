@@ -37,10 +37,111 @@ import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands } from ".
 
 const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
 
+/**
+ * Migrate old sync settings to new internal storage structure
+ */
+async function migrateSyncSettings(context: vscode.ExtensionContext): Promise<void> {
+	const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+	let hasChanges = false;
+
+	// === Migrate User/Global Sync Mode ===
+	const oldGithubEnabledGlobal = config.inspect<boolean>("githubEnabled")?.globalValue;
+	const oldUserMode = config.inspect<string>("user")?.globalValue;
+
+	if (oldGithubEnabledGlobal !== undefined || oldUserMode !== undefined) {
+		const newMode = oldGithubEnabledGlobal ? "github" : (oldUserMode || "profile-local");
+		await context.globalState.update("syncMode", newMode);
+
+		// Remove old settings
+		if (oldGithubEnabledGlobal !== undefined) {
+			await config.update("githubEnabled", undefined, vscode.ConfigurationTarget.Global);
+		}
+		if (oldUserMode !== undefined) {
+			await config.update("user", undefined, vscode.ConfigurationTarget.Global);
+		}
+		hasChanges = true;
+	}
+
+	// === Migrate Workspace Sync Mode ===
+	const oldGithubEnabledWorkspace = config.inspect<boolean>("githubEnabled")?.workspaceValue;
+	if (oldGithubEnabledWorkspace !== undefined) {
+		const newMode = oldGithubEnabledWorkspace ? "github" : "local";
+		await context.workspaceState.update("syncMode", newMode);
+
+		await config.update("githubEnabled", undefined, vscode.ConfigurationTarget.Workspace);
+		hasChanges = true;
+	}
+
+	// === Migrate Renamed Settings ===
+
+	// Migrate gistId → github.gistId
+	const oldGistIdGlobal = config.inspect<string>("gistId")?.globalValue;
+	const oldGistIdWorkspace = config.inspect<string>("gistId")?.workspaceValue;
+
+	if (oldGistIdGlobal !== undefined) {
+		await config.update("github.gistId", oldGistIdGlobal, vscode.ConfigurationTarget.Global);
+		await config.update("gistId", undefined, vscode.ConfigurationTarget.Global);
+		hasChanges = true;
+	}
+	if (oldGistIdWorkspace !== undefined) {
+		await config.update("github.gistId", oldGistIdWorkspace, vscode.ConfigurationTarget.Workspace);
+		await config.update("gistId", undefined, vscode.ConfigurationTarget.Workspace);
+		hasChanges = true;
+	}
+
+	// Migrate globalFile → github.userFile (and rename global- to user-)
+	const oldGlobalFile = config.inspect<string>("globalFile")?.globalValue;
+	if (oldGlobalFile !== undefined) {
+		let newUserFile = oldGlobalFile;
+		if (oldGlobalFile.startsWith("global-")) {
+			newUserFile = oldGlobalFile.replace("global-", "user-");
+		} else if (oldGlobalFile.startsWith("global/")) {
+			newUserFile = oldGlobalFile.replace("global/", "user-");
+		}
+
+		await config.update("github.userFile", newUserFile, vscode.ConfigurationTarget.Global);
+		await config.update("globalFile", undefined, vscode.ConfigurationTarget.Global);
+		hasChanges = true;
+	}
+
+	// Migrate workspaceFile → github.workspaceFile
+	const oldWorkspaceFileGlobal = config.inspect<string>("workspaceFile")?.globalValue;
+	const oldWorkspaceFileWorkspace = config.inspect<string>("workspaceFile")?.workspaceValue;
+
+	if (oldWorkspaceFileGlobal !== undefined) {
+		await config.update("github.workspaceFile", oldWorkspaceFileGlobal, vscode.ConfigurationTarget.Global);
+		await config.update("workspaceFile", undefined, vscode.ConfigurationTarget.Global);
+		hasChanges = true;
+	}
+	if (oldWorkspaceFileWorkspace !== undefined) {
+		await config.update("github.workspaceFile", oldWorkspaceFileWorkspace, vscode.ConfigurationTarget.Workspace);
+		await config.update("workspaceFile", undefined, vscode.ConfigurationTarget.Workspace);
+		hasChanges = true;
+	}
+
+	// Migrate pollInterval → github.pollInterval
+	const oldPollInterval = config.inspect<number>("pollInterval")?.globalValue;
+	if (oldPollInterval !== undefined) {
+		await config.update("github.pollInterval", oldPollInterval, vscode.ConfigurationTarget.Global);
+		await config.update("pollInterval", undefined, vscode.ConfigurationTarget.Global);
+		hasChanges = true;
+	}
+
+	// Show one-time message if any migrations occurred
+	if (hasChanges) {
+		vscode.window.showInformationMessage(
+			"VS Code Todo: Sync settings have been updated for improved clarity. GitHub sync configuration has been reorganized."
+		);
+	}
+}
+
 export async function activate(context: ExtensionContext) {
 	const store = createStore();
 	const storageSyncManager = new StorageSyncManager(context, store);
 	await storageSyncManager.initialize();
+
+	// Migrate old sync settings to new structure
+	await migrateSyncSettings(context);
 
 	// Initialize GitHub sync modules
 	const authManager = GitHubAuthManager.getInstance(context);
@@ -49,12 +150,19 @@ export async function activate(context: ExtensionContext) {
 	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager);
 
 	// Start GitHub sync polling if enabled
+	// Start polling if GitHub sync is enabled
+	const userSyncMode = context.globalState.get<string>("syncMode", "profile-local");
+	const workspaceSyncMode = context.workspaceState.get<string>("syncMode", "local");
 	const syncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
-	const githubEnabled = syncConfig.get<boolean>("githubEnabled", false);
-	if (githubEnabled) {
-		const pollInterval = syncConfig.get<number>("pollInterval", 180);
-		syncManager.startPolling("global", pollInterval);
-		syncManager.startPolling("workspace", pollInterval);
+
+	if (userSyncMode === "github" || workspaceSyncMode === "github") {
+		const pollInterval = syncConfig.get<number>("github.pollInterval", 180);
+		if (userSyncMode === "github") {
+			syncManager.startPolling("user", pollInterval);
+		}
+		if (workspaceSyncMode === "github") {
+			syncManager.startPolling("workspace", pollInterval);
+		}
 	}
 
 	// Listen for sync status changes and update status bar
@@ -65,29 +173,25 @@ export async function activate(context: ExtensionContext) {
 	context.subscriptions.push(syncStatusListener);
 
 	if (typeof context.globalState.setKeysForSync === "function") {
-		const cfg = getConfig();
+		// Enable VS Code Settings Sync for TodoData if using profile-sync mode
+		const currentSyncMode = context.globalState.get<string>("syncMode", "profile-local");
 		context.globalState.setKeysForSync(
-			cfg.sync.user === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
+			currentSyncMode === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
 		);
 		const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration("vscodeTodo.sync.user")) {
-				const updated = getConfig();
-				context.globalState.setKeysForSync(
-					updated.sync.user === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
-				);
-			}
-			// Handle GitHub sync configuration changes
-			if (e.affectsConfiguration("vscodeTodo.sync.githubEnabled") || e.affectsConfiguration("vscodeTodo.sync.pollInterval")) {
+			// Handle GitHub sync poll interval changes
+			if (e.affectsConfiguration("vscodeTodo.sync.github.pollInterval")) {
 				const updatedSyncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
-				const updatedGithubEnabled = updatedSyncConfig.get<boolean>("githubEnabled", false);
-				const updatedPollInterval = updatedSyncConfig.get<number>("pollInterval", 180);
+				const updatedPollInterval = updatedSyncConfig.get<number>("github.pollInterval", 180);
 
-				if (updatedGithubEnabled) {
-					syncManager.startPolling("global", updatedPollInterval);
+				const currentUserMode = context.globalState.get<string>("syncMode", "profile-local");
+				const currentWorkspaceMode = context.workspaceState.get<string>("syncMode", "local");
+
+				if (currentUserMode === "github") {
+					syncManager.startPolling("user", updatedPollInterval);
+				}
+				if (currentWorkspaceMode === "github") {
 					syncManager.startPolling("workspace", updatedPollInterval);
-				} else {
-					syncManager.stopPolling("global");
-					syncManager.stopPolling("workspace");
 				}
 			}
 		});
@@ -218,13 +322,14 @@ function handleTodoChange(
 
 	// Trigger GitHub sync if enabled
 	const syncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
-	const githubEnabled = syncConfig.get<boolean>("githubEnabled", false);
-	if (githubEnabled) {
-		if (sliceState.scope === TodoScope.user) {
-			syncManager.triggerDebounceSync("global");
-		} else if (sliceState.scope === TodoScope.workspace || sliceState.scope === TodoScope.currentFile) {
-			syncManager.triggerDebounceSync("workspace");
-		}
+	// Trigger sync if GitHub mode is enabled for the scope
+	const userMode = context.globalState.get<string>("syncMode", "profile-local");
+	const workspaceMode = context.workspaceState.get<string>("syncMode", "local");
+
+	if (sliceState.scope === TodoScope.user && userMode === "github") {
+		syncManager.triggerDebounceSync("user");
+	} else if ((sliceState.scope === TodoScope.workspace || sliceState.scope === TodoScope.currentFile) && workspaceMode === "github") {
+		syncManager.triggerDebounceSync("workspace");
 	}
 
 	if (sliceState.scope === TodoScope.currentFile) {

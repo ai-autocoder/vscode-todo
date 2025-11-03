@@ -60,7 +60,7 @@ utilities/              - Config, theme, logging, helpers
 
 ### Redux Store Slices
 
-user            - Global todos (per profile, optionally synced)
+user            - User-scope todos (per profile, synced via profile-sync or GitHub)
 workspace       - Workspace-scoped todos
 currentFile     - File-specific todos (auto-updates)
 editorFocusAndRecords - Internal tracking
@@ -140,7 +140,10 @@ webview-ui/build/       - Built webview (generated)
 
 All settings under vscodeTodo.*:
 
-sync.user                      - profile-local or profile-sync
+sync.github.gistId             - GitHub gist ID (32-char hex string)
+sync.github.userFile           - User file in gist (default: user-todos.json)
+sync.github.workspaceFile      - Workspace file in gist (auto-derived if not set)
+sync.github.pollInterval       - Poll interval in seconds (30-600)
 taskSortingOptions             - sortType1, sortType2, disabled
 createMarkdownByDefault         - boolean
 createPosition                 - top or bottom
@@ -152,6 +155,9 @@ autoDeleteCompletedAfterDays   - number (0 = disabled)
 collapsedPreviewLines          - number (min 1)
 webviewFontFamily              - string
 webviewFontSize                - number
+
+Note: User and workspace sync modes are stored in extension internal storage, not settings.
+Access via commands: "Todo: Select User Sync Mode" / "Todo: Select Workspace Sync Mode"
 
 ---
 

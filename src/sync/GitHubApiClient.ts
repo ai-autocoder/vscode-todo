@@ -203,14 +203,14 @@ export class GitHubApiClient {
 	/**
 	 * List all files in gist filtered by directory
 	 */
-	public async listFiles(gistId: string, directory: "global" | "workspace"): Promise<SyncResult<GistFileInfo[]>> {
+	public async listFiles(gistId: string, directory: "user" | "workspace"): Promise<SyncResult<GistFileInfo[]>> {
 		const gistResult = await this.fetchGist(gistId);
 
 		if (!gistResult.success || !gistResult.data) {
 			return { success: false, error: gistResult.error };
 		}
 
-		const prefix = directory === "global" ? GistDirectories.global : GistDirectories.workspace;
+		const prefix = directory === "user" ? GistDirectories.user : GistDirectories.workspace;
 		const files: GistFileInfo[] = [];
 
 		for (const [fileName, fileData] of Object.entries(gistResult.data.files)) {

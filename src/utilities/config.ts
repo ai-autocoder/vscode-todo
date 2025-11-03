@@ -2,8 +2,6 @@ import * as vscode from "vscode";
 import { contributes } from "../../package.json";
 import LogChannel from "../utilities/LogChannel";
 
-export type SyncUserMode = "profile-local" | "profile-sync";
-
 export type Config = {
 	taskSortingOptions: "sortType1" | "sortType2" | "disabled";
 	createMarkdownByDefault: boolean;
@@ -12,9 +10,6 @@ export type Config = {
 	enableMarkdownDiagrams: boolean;
 	enableMarkdownKatex: boolean;
 	enableWideView: boolean;
-	sync: {
-		user: SyncUserMode;
-	};
 	autoDeleteCompletedAfterDays: number;
 	collapsedPreviewLines: number;
 	// Webview typography
@@ -30,7 +25,6 @@ type ConfigSectionValueMap = {
 	enableMarkdownDiagrams: Config["enableMarkdownDiagrams"];
 	enableMarkdownKatex: Config["enableMarkdownKatex"];
 	enableWideView: Config["enableWideView"];
-	"sync.user": SyncUserMode;
 	autoDeleteCompletedAfterDays: Config["autoDeleteCompletedAfterDays"];
 	collapsedPreviewLines: Config["collapsedPreviewLines"];
 	webviewFontFamily: Config["webviewFontFamily"];
@@ -54,17 +48,6 @@ export function getConfig(): Config {
 	const webviewFontFamily: string = config.get("webviewFontFamily", "");
 	const webviewFontSize: number = config.get("webviewFontSize", 0);
 
-	const syncUserModeEnum = (
-		contributes.configuration.properties["vscodeTodo.sync.user"]["enum"]
-	) as SyncUserMode[];
-	const syncUserModeDefault = (
-		contributes.configuration.properties["vscodeTodo.sync.user"]["default"]
-	) as SyncUserMode;
-	let syncUserMode: SyncUserMode = config.get<SyncUserMode>(
-		"sync.user",
-		syncUserModeDefault
-	);
-
 	const taskSortingOptionsEnum =
 		contributes.configuration.properties["vscodeTodo.taskSortingOptions"]["enum"];
 	const createPositionEnum =
@@ -82,10 +65,6 @@ export function getConfig(): Config {
 			contributes.configuration.properties["vscodeTodo.createPosition"]["default"];
 	}
 
-	if (!syncUserModeEnum.includes(syncUserMode)) {
-		syncUserMode = syncUserModeDefault;
-	}
-
 	// Sanitize numeric inputs
 	const collapsedPreviewLines = Number.isFinite(collapsedPreviewLinesRaw)
 		? Math.max(1, Math.floor(collapsedPreviewLinesRaw))
@@ -99,9 +78,6 @@ export function getConfig(): Config {
 		enableMarkdownDiagrams,
 		enableMarkdownKatex,
 		enableWideView,
-		sync: {
-			user: syncUserMode,
-		},
 		autoDeleteCompletedAfterDays,
 		collapsedPreviewLines,
 		webviewFontFamily,

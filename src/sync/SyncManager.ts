@@ -22,7 +22,7 @@ export class SyncManager {
 	private context: vscode.ExtensionContext;
 
 	// Polling timers
-	private globalPollTimer: NodeJS.Timeout | undefined;
+	private userPollTimer: NodeJS.Timeout | undefined;
 	private workspacePollTimer: NodeJS.Timeout | undefined;
 
 	// Debounce timers
@@ -35,7 +35,7 @@ export class SyncManager {
 
 	// Event emitters for status changes
 	private onStatusChangeEmitter = new vscode.EventEmitter<{
-		scope: "global" | "workspace";
+		scope: "user" | "workspace";
 		status: SyncStatus;
 	}>();
 	public readonly onStatusChange = this.onStatusChangeEmitter.event;
@@ -49,7 +49,7 @@ export class SyncManager {
 	/**
 	 * Start polling for a scope
 	 */
-	public startPolling(scope: "global" | "workspace", intervalSeconds: number): void {
+	public startPolling(scope: "user" | "workspace", intervalSeconds: number): void {
 		this.stopPolling(scope);
 
 		const interval = Math.max(
@@ -59,8 +59,8 @@ export class SyncManager {
 
 		const pollFn = () => this.sync(scope);
 
-		if (scope === "global") {
-			this.globalPollTimer = setInterval(pollFn, interval * 1000);
+		if (scope === "user") {
+			this.userPollTimer = setInterval(pollFn, interval * 1000);
 		} else {
 			this.workspacePollTimer = setInterval(pollFn, interval * 1000);
 		}
@@ -72,10 +72,10 @@ export class SyncManager {
 	/**
 	 * Stop polling for a scope
 	 */
-	public stopPolling(scope: "global" | "workspace"): void {
-		if (scope === "global" && this.globalPollTimer) {
-			clearInterval(this.globalPollTimer);
-			this.globalPollTimer = undefined;
+	public stopPolling(scope: "user" | "workspace"): void {
+		if (scope === "user" && this.userPollTimer) {
+			clearInterval(this.userPollTimer);
+			this.userPollTimer = undefined;
 		} else if (scope === "workspace" && this.workspacePollTimer) {
 			clearInterval(this.workspacePollTimer);
 			this.workspacePollTimer = undefined;
@@ -85,13 +85,13 @@ export class SyncManager {
 	/**
 	 * Trigger debounced sync after local changes
 	 */
-	public triggerDebounceSync(scope: "global" | "workspace"): void {
-		if (scope === "global") {
+	public triggerDebounceSync(scope: "user" | "workspace"): void {
+		if (scope === "user") {
 			if (this.globalDebounceTimer) {
 				clearTimeout(this.globalDebounceTimer);
 			}
 			this.globalDebounceTimer = setTimeout(() => {
-				void this.sync("global");
+				void this.sync("user");
 			}, SyncConstants.debounceDelay);
 		} else {
 			if (this.workspaceDebounceTimer) {
@@ -106,9 +106,9 @@ export class SyncManager {
 	/**
 	 * Perform immediate sync for a scope
 	 */
-	public async sync(scope: "global" | "workspace"): Promise<SyncResult<void>> {
+	public async sync(scope: "user" | "workspace"): Promise<SyncResult<void>> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const gistId = config.get<string>("gistId");
+		const gistId = config.get<string>("github.gistId");
 
 		if (!gistId) {
 			return {
@@ -122,8 +122,8 @@ export class SyncManager {
 			};
 		}
 
-		if (scope === "global") {
-			return await this.syncGlobal(gistId);
+		if (scope === "user") {
+			return await this.syncUser(gistId);
 		} else {
 			return await this.syncWorkspace(gistId);
 		}
@@ -132,11 +132,11 @@ export class SyncManager {
 	/**
 	 * Sync global scope
 	 */
-	private async syncGlobal(gistId: string): Promise<SyncResult<void>> {
-		this.updateStatus("global", SyncStatus.Syncing);
+	private async syncUser(gistId: string): Promise<SyncResult<void>> {
+		this.updateStatus("user", SyncStatus.Syncing);
 
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const fileName = config.get<string>("globalFile", "global-todos.json");
+		const fileName = config.get<string>("github.userFile", "user-todos.json");
 
 		try {
 			// Get local cache
@@ -145,7 +145,7 @@ export class SyncManager {
 			// Fetch remote gist
 			const gistResult = await this.apiClient.fetchGist(gistId);
 			if (!gistResult.success || !gistResult.data) {
-				this.updateStatus("global", SyncStatus.Error);
+				this.updateStatus("user", SyncStatus.Error);
 				return { success: false, error: gistResult.error };
 			}
 
@@ -153,7 +153,7 @@ export class SyncManager {
 
 			// If no cache, download from remote
 			if (!cache) {
-				return await this.downloadGlobal(gistId, fileName, remoteUpdatedAt.toISOString());
+				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
 			}
 
 			const localLastSynced = new Date(cache.lastSynced);
@@ -164,24 +164,24 @@ export class SyncManager {
 				vscode.window.showWarningMessage(
 					"Remote changes detected. Local unsaved changes will be overwritten."
 				);
-				return await this.downloadGlobal(gistId, fileName, remoteUpdatedAt.toISOString());
+				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
 			}
 
 			// Remote has changes, local is clean
 			if (remoteUpdatedAt > localLastSynced) {
-				return await this.downloadGlobal(gistId, fileName, remoteUpdatedAt.toISOString());
+				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
 			}
 
 			// Local has changes, upload to remote
 			if (cache.isDirty) {
-				return await this.uploadGlobal(gistId, fileName, cache);
+				return await this.uploadUser(gistId, fileName, cache);
 			}
 
 			// Both in sync
-			this.updateStatus("global", SyncStatus.Synced);
+			this.updateStatus("user", SyncStatus.Synced);
 			return { success: true };
 		} catch (error) {
-			this.updateStatus("global", SyncStatus.Error);
+			this.updateStatus("user", SyncStatus.Error);
 			return {
 				success: false,
 				error: {
@@ -198,7 +198,7 @@ export class SyncManager {
 	/**
 	 * Download global data from gist
 	 */
-	private async downloadGlobal(gistId: string, fileName: string, remoteUpdatedAt: string): Promise<SyncResult<void>> {
+	private async downloadUser(gistId: string, fileName: string, remoteUpdatedAt: string): Promise<SyncResult<void>> {
 		const fileResult = await this.apiClient.readFile(gistId, fileName);
 		if (!fileResult.success || !fileResult.data) {
 			// File not found - create empty file
@@ -214,11 +214,11 @@ export class SyncManager {
 					remoteUpdatedAt,
 				};
 				await this.storageManager.setGlobalGistCache(fileName, cache);
-				this.updateStatus("global", SyncStatus.Dirty);
+				this.updateStatus("user", SyncStatus.Dirty);
 				return { success: true };
 			}
 
-			this.updateStatus("global", SyncStatus.Error);
+			this.updateStatus("user", SyncStatus.Error);
 			return { success: false, error: fileResult.error };
 		}
 
@@ -231,10 +231,10 @@ export class SyncManager {
 				remoteUpdatedAt,
 			};
 			await this.storageManager.setGlobalGistCache(fileName, cache);
-			this.updateStatus("global", SyncStatus.Synced);
+			this.updateStatus("user", SyncStatus.Synced);
 			return { success: true };
 		} catch (error) {
-			this.updateStatus("global", SyncStatus.Error);
+			this.updateStatus("user", SyncStatus.Error);
 			return {
 				success: false,
 				error: {
@@ -251,10 +251,10 @@ export class SyncManager {
 	/**
 	 * Upload global data to gist
 	 */
-	private async uploadGlobal(gistId: string, fileName: string, cache: GistCache<GlobalGistData>): Promise<SyncResult<void>> {
+	private async uploadUser(gistId: string, fileName: string, cache: GistCache<GlobalGistData>): Promise<SyncResult<void>> {
 		// Validate cache structure
 		if (!cache || !cache.data) {
-			this.updateStatus("global", SyncStatus.Error);
+			this.updateStatus("user", SyncStatus.Error);
 			return {
 				success: false,
 				error: {
@@ -279,7 +279,7 @@ export class SyncManager {
 
 		// Validate serialized content is not empty
 		if (!content || content.trim().length === 0) {
-			this.updateStatus("global", SyncStatus.Error);
+			this.updateStatus("user", SyncStatus.Error);
 			return {
 				success: false,
 				error: {
@@ -293,7 +293,7 @@ export class SyncManager {
 
 		const writeResult = await this.apiClient.writeFile(gistId, fileName, content);
 		if (!writeResult.success || !writeResult.data) {
-			this.updateStatus("global", SyncStatus.Error);
+			this.updateStatus("user", SyncStatus.Error);
 			return { success: false, error: writeResult.error };
 		}
 
@@ -303,7 +303,7 @@ export class SyncManager {
 		cache.remoteUpdatedAt = new Date(writeResult.data.updated_at).toISOString();
 		await this.storageManager.setGlobalGistCache(fileName, cache);
 
-		this.updateStatus("global", SyncStatus.Synced);
+		this.updateStatus("user", SyncStatus.Synced);
 		return { success: true };
 	}
 
@@ -315,7 +315,7 @@ export class SyncManager {
 
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
 		const workspaceName = vscode.workspace.name || "default";
-		const fileName = config.get<string>("workspaceFile") || `workspace-${workspaceName}.json`;
+		const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 
 		try {
 			// Get local cache
@@ -480,15 +480,15 @@ export class SyncManager {
 	/**
 	 * Get current sync status
 	 */
-	public getStatus(scope: "global" | "workspace"): SyncStatus {
-		return scope === "global" ? this.globalStatus : this.workspaceStatus;
+	public getStatus(scope: "user" | "workspace"): SyncStatus {
+		return scope === "user" ? this.globalStatus : this.workspaceStatus;
 	}
 
 	/**
 	 * Update sync status and emit event
 	 */
-	private updateStatus(scope: "global" | "workspace", status: SyncStatus): void {
-		if (scope === "global") {
+	private updateStatus(scope: "user" | "workspace", status: SyncStatus): void {
+		if (scope === "user") {
 			this.globalStatus = status;
 		} else {
 			this.workspaceStatus = status;
@@ -500,7 +500,7 @@ export class SyncManager {
 	 * Dispose timers and resources
 	 */
 	public dispose(): void {
-		this.stopPolling("global");
+		this.stopPolling("user");
 		this.stopPolling("workspace");
 		if (this.globalDebounceTimer) {
 			clearTimeout(this.globalDebounceTimer);

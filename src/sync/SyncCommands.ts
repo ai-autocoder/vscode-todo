@@ -36,9 +36,9 @@ export class SyncCommands {
 			vscode.commands.registerCommand("vsc-todo.disconnectGitHub", () => this.disconnectGitHub()),
 			vscode.commands.registerCommand("vsc-todo.setGistId", () => this.setGistId()),
 			vscode.commands.registerCommand("vsc-todo.viewGistOnGitHub", () => this.viewGistOnGitHub()),
-			vscode.commands.registerCommand("vsc-todo.selectGlobalSyncMode", () => this.selectGlobalSyncMode()),
+			vscode.commands.registerCommand("vsc-todo.selectUserSyncMode", () => this.selectUserSyncMode()),
 			vscode.commands.registerCommand("vsc-todo.selectWorkspaceSyncMode", () => this.selectWorkspaceSyncMode()),
-			vscode.commands.registerCommand("vsc-todo.setGlobalFile", () => this.setGlobalFile()),
+			vscode.commands.registerCommand("vsc-todo.setUserFile", () => this.setUserFile()),
 			vscode.commands.registerCommand("vsc-todo.setWorkspaceFile", () => this.setWorkspaceFile()),
 			vscode.commands.registerCommand("vsc-todo.syncNow", () => this.syncNow()),
 		];
@@ -74,12 +74,12 @@ export class SyncCommands {
 		if (confirm === "Disconnect") {
 			await this.authManager.disconnect();
 
-			// Revert sync modes to local
-			const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-			await config.update("githubEnabled", false, vscode.ConfigurationTarget.Global);
+			// Revert sync modes to local/profile-local
+			await this.context.globalState.update("syncMode", "profile-local");
+			await this.context.workspaceState.update("syncMode", "local");
 
 			// Stop polling
-			this.syncManager.stopPolling("global");
+			this.syncManager.stopPolling("user");
 			this.syncManager.stopPolling("workspace");
 		}
 	}
@@ -146,7 +146,7 @@ export class SyncCommands {
 				}
 
 				const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-				await config.update("gistId", gistId, scope.target);
+				await config.update("github.gistId", gistId, scope.target);
 
 				vscode.window.showInformationMessage(
 					"Gist ID saved. Use sync mode commands to enable GitHub sync."
@@ -160,7 +160,7 @@ export class SyncCommands {
 	 */
 	private async viewGistOnGitHub(): Promise<void> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const gistId = config.get<string>("gistId");
+		const gistId = config.get<string>("github.gistId");
 
 		if (!gistId) {
 			vscode.window.showErrorMessage("Gist ID not configured. Use 'Set Gist ID' command first.");
@@ -172,36 +172,35 @@ export class SyncCommands {
 	}
 
 	/**
-	 * Command: Select Global Sync Mode
+	 * Command: Select User Sync Mode
 	 */
-	private async selectGlobalSyncMode(): Promise<void> {
+	private async selectUserSyncMode(): Promise<void> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const currentMode = config.get<string>("user", "profile-local");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const currentMode = this.context.globalState.get<string>("syncMode", "profile-local");
 
 		const items = [
 			{
 				label: "$(archive) Local",
 				description: "This device only",
-				detail: currentMode === "profile-local" && !githubEnabled ? "✓ Currently selected" : undefined,
+				detail: currentMode === "profile-local" ? "✓ Currently selected" : undefined,
 				mode: GlobalSyncMode.Local,
 			},
 			{
 				label: "$(sync) Profile Sync",
 				description: "Syncs via VS Code Settings Sync",
-				detail: currentMode === "profile-sync" && !githubEnabled ? "✓ Currently selected" : undefined,
+				detail: currentMode === "profile-sync" ? "✓ Currently selected" : undefined,
 				mode: GlobalSyncMode.ProfileSync,
 			},
 			{
 				label: "$(github) GitHub Gist",
 				description: "Syncs via manually-created gist",
-				detail: githubEnabled ? "✓ Currently selected" : "[Requires gist ID configuration]",
+				detail: currentMode === "github" ? "✓ Currently selected" : "[Requires gist ID configuration]",
 				mode: GlobalSyncMode.GitHub,
 			},
 		];
 
 		const selected = await vscode.window.showQuickPick(items, {
-			placeHolder: "Select sync mode for global lists",
+			placeHolder: "Select sync mode for user lists",
 		});
 
 		if (!selected) {
@@ -216,7 +215,7 @@ export class SyncCommands {
 			}
 
 			// Ensure gist ID is configured
-			const gistId = config.get<string>("gistId");
+			const gistId = config.get<string>("github.gistId");
 			if (!gistId) {
 				const setup = await vscode.window.showInformationMessage(
 					"Gist ID not configured. Would you like to set it now?",
@@ -229,8 +228,8 @@ export class SyncCommands {
 				return;
 			}
 
-			// Enable GitHub sync
-			await config.update("githubEnabled", true, vscode.ConfigurationTarget.Global);
+			// Enable GitHub sync via internal storage
+			await this.context.globalState.update("syncMode", "github");
 
 			// Show security warning
 			vscode.window.showWarningMessage(
@@ -239,19 +238,19 @@ export class SyncCommands {
 			);
 
 			// Start polling
-			const pollInterval = config.get<number>("pollInterval", 180);
-			this.syncManager.startPolling("global", pollInterval);
+			const pollInterval = config.get<number>("github.pollInterval", 180);
+			this.syncManager.startPolling("user", pollInterval);
 
-			vscode.window.showInformationMessage("GitHub sync enabled for global lists.");
+			vscode.window.showInformationMessage("GitHub sync enabled for user lists.");
 		} else {
 			// Switch to local or profile sync
-			await config.update("githubEnabled", false, vscode.ConfigurationTarget.Global);
-			await config.update("user", selected.mode === GlobalSyncMode.Local ? "profile-local" : "profile-sync");
+			const newMode = selected.mode === GlobalSyncMode.Local ? "profile-local" : "profile-sync";
+			await this.context.globalState.update("syncMode", newMode);
 
 			// Stop polling
-			this.syncManager.stopPolling("global");
+			this.syncManager.stopPolling("user");
 
-			vscode.window.showInformationMessage(`Switched to ${selected.label} mode for global lists.`);
+			vscode.window.showInformationMessage(`Switched to ${selected.label} mode for user lists.`);
 		}
 	}
 
@@ -260,19 +259,19 @@ export class SyncCommands {
 	 */
 	private async selectWorkspaceSyncMode(): Promise<void> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const currentMode = this.context.workspaceState.get<string>("syncMode", "local");
 
 		const items = [
 			{
 				label: "$(archive) Local",
 				description: "This workspace only",
-				detail: !githubEnabled ? "✓ Currently selected" : undefined,
+				detail: currentMode === "local" ? "✓ Currently selected" : undefined,
 				mode: WorkspaceSyncMode.Local,
 			},
 			{
 				label: "$(github) GitHub Gist",
 				description: "Syncs via manually-created gist",
-				detail: githubEnabled ? "✓ Currently selected" : "[Requires gist ID configuration]",
+				detail: currentMode === "github" ? "✓ Currently selected" : "[Requires gist ID configuration]",
 				mode: WorkspaceSyncMode.GitHub,
 			},
 		];
@@ -293,7 +292,7 @@ export class SyncCommands {
 			}
 
 			// Ensure gist ID is configured
-			const gistId = config.get<string>("gistId");
+			const gistId = config.get<string>("github.gistId");
 			if (!gistId) {
 				const setup = await vscode.window.showInformationMessage(
 					"Gist ID not configured. Would you like to set it now?",
@@ -306,17 +305,17 @@ export class SyncCommands {
 				return;
 			}
 
-			// Enable GitHub sync for workspace
-			await config.update("githubEnabled", true, vscode.ConfigurationTarget.Workspace);
+			// Enable GitHub sync for workspace via internal storage
+			await this.context.workspaceState.update("syncMode", "github");
 
 			// Start polling
-			const pollInterval = config.get<number>("pollInterval", 180);
+			const pollInterval = config.get<number>("github.pollInterval", 180);
 			this.syncManager.startPolling("workspace", pollInterval);
 
 			vscode.window.showInformationMessage("GitHub sync enabled for workspace lists.");
 		} else {
 			// Switch to local
-			await config.update("githubEnabled", false, vscode.ConfigurationTarget.Workspace);
+			await this.context.workspaceState.update("syncMode", "local");
 
 			// Stop polling
 			this.syncManager.stopPolling("workspace");
@@ -326,18 +325,18 @@ export class SyncCommands {
 	}
 
 	/**
-	 * Command: Set Global File
+	 * Command: Set User File
 	 */
-	private async setGlobalFile(): Promise<void> {
+	private async setUserFile(): Promise<void> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const syncMode = this.context.globalState.get<string>("syncMode", "profile-local");
 
-		if (!githubEnabled) {
-			vscode.window.showErrorMessage("GitHub sync is not enabled. Enable it first using 'Select Global Sync Mode'.");
+		if (syncMode !== "github") {
+			vscode.window.showErrorMessage("GitHub sync is not enabled. Enable it first using 'Select User Sync Mode'.");
 			return;
 		}
 
-		const gistId = config.get<string>("gistId");
+		const gistId = config.get<string>("github.gistId");
 		if (!gistId) {
 			vscode.window.showErrorMessage("Gist ID not configured.");
 			return;
@@ -350,7 +349,7 @@ export class SyncCommands {
 				cancellable: false,
 			},
 			async () => {
-				const filesResult = await this.apiClient.listFiles(gistId, "global");
+				const filesResult = await this.apiClient.listFiles(gistId, "user");
 				if (!filesResult.success || !filesResult.data) {
 					vscode.window.showErrorMessage(`Failed to load files: ${filesResult.error?.message}`);
 					return;
@@ -359,7 +358,7 @@ export class SyncCommands {
 				if (filesResult.data.length === 0) {
 					// No files found - prompt to create new file
 					const fileName = await vscode.window.showInputBox({
-						prompt: "No global files found in gist. Enter a name for your new global list",
+						prompt: "No user files found in gist. Enter a name for your new user list",
 						placeHolder: "todos",
 						validateInput: (value) => {
 							if (!value || value.trim().length === 0) {
@@ -376,25 +375,25 @@ export class SyncCommands {
 						return;
 					}
 
-					const fullPath = `global-${fileName}.json`;
-					await config.update("globalFile", fullPath, vscode.ConfigurationTarget.Global);
+					const fullPath = `user-${fileName}.json`;
+					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
 					vscode.window.showInformationMessage(
-						`Global file set to: ${fileName}. It will be created on first sync.`
+						`User file set to: ${fileName}. It will be created on first sync.`
 					);
 
 					// Trigger immediate sync to create the file
-					await this.syncManager.sync("global");
+					await this.syncManager.sync("user");
 					return;
 				}
 
-				const currentFile = config.get<string>("globalFile", "global-todos.json");
+				const currentFile = config.get<string>("github.userFile", "user-todos.json");
 				const items: Array<
 					| { label: string; description: string; isNew: true; file?: never }
 					| { label: string; description?: string; isNew: false; file: typeof filesResult.data[number] }
 				> = [
 					{
 						label: "$(add) Create New File",
-						description: "Create a new global list file",
+						description: "Create a new user list file",
 						isNew: true,
 					},
 					...filesResult.data.map((file) => ({
@@ -406,7 +405,7 @@ export class SyncCommands {
 				];
 
 				const selected = await vscode.window.showQuickPick(items, {
-					placeHolder: "Select global list from gist or create new",
+					placeHolder: "Select user list from gist or create new",
 				});
 
 				if (!selected) {
@@ -416,7 +415,7 @@ export class SyncCommands {
 				if (selected.isNew) {
 					// Create new file
 					const fileName = await vscode.window.showInputBox({
-						prompt: "Enter a name for your new global list",
+						prompt: "Enter a name for your new user list",
 						placeHolder: "todos",
 						validateInput: (value) => {
 							if (!value || value.trim().length === 0) {
@@ -438,21 +437,21 @@ export class SyncCommands {
 						return;
 					}
 
-					const fullPath = `global-${fileName}.json`;
-					await config.update("globalFile", fullPath, vscode.ConfigurationTarget.Global);
+					const fullPath = `user-${fileName}.json`;
+					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
 					vscode.window.showInformationMessage(
-						`Global file set to: ${fileName}. It will be created on first sync.`
+						`User file set to: ${fileName}. It will be created on first sync.`
 					);
 
 					// Trigger immediate sync to create the file
-					await this.syncManager.sync("global");
+					await this.syncManager.sync("user");
 				} else {
 					// Select existing file
-					await config.update("globalFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
-					vscode.window.showInformationMessage(`Global file set to: ${selected.file.displayName}`);
+					await config.update("github.userFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
+					vscode.window.showInformationMessage(`User file set to: ${selected.file.displayName}`);
 
 					// Trigger immediate sync
-					await this.syncManager.sync("global");
+					await this.syncManager.sync("user");
 				}
 			}
 		);
@@ -463,16 +462,16 @@ export class SyncCommands {
 	 */
 	private async setWorkspaceFile(): Promise<void> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const syncMode = this.context.workspaceState.get<string>("syncMode", "local");
 
-		if (!githubEnabled) {
+		if (syncMode !== "github") {
 			vscode.window.showErrorMessage(
 				"GitHub sync is not enabled. Enable it first using 'Select Workspace Sync Mode'."
 			);
 			return;
 		}
 
-		const gistId = config.get<string>("gistId");
+		const gistId = config.get<string>("github.gistId");
 		if (!gistId) {
 			vscode.window.showErrorMessage("Gist ID not configured.");
 			return;
@@ -514,7 +513,7 @@ export class SyncCommands {
 					}
 
 					const fullPath = `workspace-${fileName}.json`;
-					await config.update("workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
+					await config.update("github.workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
 					vscode.window.showInformationMessage(
 						`Workspace file set to: ${fileName}. It will be created on first sync.`
 					);
@@ -524,7 +523,7 @@ export class SyncCommands {
 					return;
 				}
 
-				const currentFile = config.get<string>("workspaceFile") || `workspace-${workspaceName}.json`;
+				const currentFile = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 				const items: Array<
 					| { label: string; description: string; isNew: true; file?: never }
 					| { label: string; description?: string; isNew: false; file: typeof filesResult.data[number] }
@@ -576,7 +575,7 @@ export class SyncCommands {
 					}
 
 					const fullPath = `workspace-${fileName}.json`;
-					await config.update("workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
+					await config.update("github.workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
 					vscode.window.showInformationMessage(
 						`Workspace file set to: ${fileName}. It will be created on first sync.`
 					);
@@ -585,7 +584,7 @@ export class SyncCommands {
 					await this.syncManager.sync("workspace");
 				} else {
 					// Select existing file
-					await config.update("workspaceFile", selected.file.fullPath, vscode.ConfigurationTarget.Workspace);
+					await config.update("github.workspaceFile", selected.file.fullPath, vscode.ConfigurationTarget.Workspace);
 					vscode.window.showInformationMessage(`Workspace file set to: ${selected.file.displayName}`);
 
 					// Trigger immediate sync
@@ -599,11 +598,11 @@ export class SyncCommands {
 	 * Command: Sync Now
 	 */
 	private async syncNow(): Promise<void> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const userMode = this.context.globalState.get<string>("syncMode", "profile-local");
+		const workspaceMode = this.context.workspaceState.get<string>("syncMode", "local");
 
-		if (!githubEnabled) {
-			vscode.window.showInformationMessage("GitHub sync is not enabled.");
+		if (userMode !== "github" && workspaceMode !== "github") {
+			vscode.window.showInformationMessage("GitHub sync is not enabled for any scope.");
 			return;
 		}
 
@@ -614,14 +613,18 @@ export class SyncCommands {
 				cancellable: false,
 			},
 			async () => {
-				// Sync both scopes
-				const globalResult = await this.syncManager.sync("global");
-				const workspaceResult = await this.syncManager.sync("workspace");
+				// Sync both scopes if enabled
+				const userResult = userMode === "github"
+					? await this.syncManager.sync("user")
+					: { success: true };
+				const workspaceResult = workspaceMode === "github"
+					? await this.syncManager.sync("workspace")
+					: { success: true };
 
-				if (globalResult.success && workspaceResult.success) {
+				if (userResult.success && workspaceResult.success) {
 					vscode.window.showInformationMessage("Synced successfully.");
-				} else if (!globalResult.success) {
-					this.showSyncError("Global", globalResult.error);
+				} else if (!userResult.success) {
+					this.showSyncError("User", userResult.error);
 				} else if (!workspaceResult.success) {
 					this.showSyncError("Workspace", workspaceResult.error);
 				}
