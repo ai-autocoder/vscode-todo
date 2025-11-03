@@ -45,6 +45,7 @@ export class SyncCommands {
 		if (scope === "user") {
 			// Reload user todos
 			const userTodos = await this.storageSyncManager.getUserTodos();
+			console.log(`[SyncCommands] Reloading user data, found ${userTodos.length} todos`);
 			this.storageSyncManager.suppressNextPersistForScope(TodoScope.user);
 			this.store.dispatch(userActions.loadData({ data: userTodos }));
 		} else {
@@ -443,11 +444,14 @@ export class SyncCommands {
 					const fullPath = `user-${fileName}.json`;
 					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
 					vscode.window.showInformationMessage(
-						`User file set to: ${fileName}. It will be created on first sync.`
+						`User file set to: ${fileName}. Empty list created.`
 					);
 
 					// Trigger immediate sync to create the file
 					await this.syncManager.sync("user");
+
+					// Reload store data from new file
+					await this.reloadStoreData("user");
 					return;
 				}
 
@@ -505,7 +509,7 @@ export class SyncCommands {
 					const fullPath = `user-${fileName}.json`;
 					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
 					vscode.window.showInformationMessage(
-						`User file set to: ${fileName}. It will be created on first sync.`
+						`User file set to: ${fileName}. Empty list created.`
 					);
 
 					// Trigger immediate sync to create the file
@@ -586,11 +590,14 @@ export class SyncCommands {
 					const fullPath = `workspace-${fileName}.json`;
 					await config.update("github.workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
 					vscode.window.showInformationMessage(
-						`Workspace file set to: ${fileName}. It will be created on first sync.`
+						`Workspace file set to: ${fileName}. Empty list created.`
 					);
 
 					// Trigger immediate sync to create the file
 					await this.syncManager.sync("workspace");
+
+					// Reload store data from new file
+					await this.reloadStoreData("workspace");
 					return;
 				}
 
@@ -648,7 +655,7 @@ export class SyncCommands {
 					const fullPath = `workspace-${fileName}.json`;
 					await config.update("github.workspaceFile", fullPath, vscode.ConfigurationTarget.Workspace);
 					vscode.window.showInformationMessage(
-						`Workspace file set to: ${fileName}. It will be created on first sync.`
+						`Workspace file set to: ${fileName}. Empty list created.`
 					);
 
 					// Trigger immediate sync to create the file

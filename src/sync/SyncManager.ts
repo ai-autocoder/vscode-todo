@@ -221,6 +221,8 @@ export class SyncManager {
 				};
 				await this.storageManager.setGlobalGistCache(fileName, cache);
 				this.updateStatus("user", SyncStatus.Dirty);
+				// Emit data downloaded event for new empty file
+				this.onDataDownloadedEmitter.fire({ scope: "user" });
 				return { success: true };
 			}
 
@@ -403,6 +405,8 @@ export class SyncManager {
 				};
 				await this.storageManager.setWorkspaceGistCache(fileName, cache);
 				this.updateStatus("workspace", SyncStatus.Dirty);
+				// Emit data downloaded event for new empty file
+				this.onDataDownloadedEmitter.fire({ scope: "workspace" });
 				return { success: true };
 			}
 
