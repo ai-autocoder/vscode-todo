@@ -147,7 +147,7 @@ export async function activate(context: ExtensionContext) {
 	const authManager = GitHubAuthManager.getInstance(context);
 	const apiClient = new GitHubApiClient(context);
 	const syncManager = new SyncManager(context);
-	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager);
+	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager, store, storageSyncManager);
 
 	// Start GitHub sync polling if enabled
 	// Start polling if GitHub sync is enabled
@@ -171,6 +171,47 @@ export async function activate(context: ExtensionContext) {
 		updateStatusBarItem(store.getState());
 	});
 	context.subscriptions.push(syncStatusListener);
+
+	// Listen for data downloads and reload store
+	const dataDownloadListener = syncManager.onDataDownloaded(async (event) => {
+		if (event.scope === "user") {
+			// Reload user todos
+			const userTodos = await storageSyncManager.getUserTodos();
+			storageSyncManager.suppressNextPersistForScope(TodoScope.user);
+			store.dispatch(userActions.loadData({ data: userTodos }));
+		} else {
+			// Reload workspace todos
+			const workspaceTodos = await storageSyncManager.getWorkspaceTodos();
+			storageSyncManager.suppressNextPersistForScope(TodoScope.workspace);
+			store.dispatch(workspaceActions.loadData({ data: workspaceTodos }));
+
+			// Reload workspace files data
+			const filesData = await storageSyncManager.getWorkspaceFilesData();
+			store.dispatch(
+				editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
+					getWorkspaceFilesWithRecords(filesData)
+				)
+			);
+
+			// Reload current file if any
+			const currentState = store.getState();
+			const targetFilePath =
+				currentState.currentFile.filePath ||
+				currentState.editorFocusAndRecords.editorFocusedFilePath;
+
+			if (targetFilePath) {
+				const todos = filesData[targetFilePath] ?? [];
+				storageSyncManager.suppressNextPersistForScope(TodoScope.currentFile);
+				store.dispatch(
+					currentFileActions.loadData({
+						filePath: targetFilePath,
+						data: todos,
+					})
+				);
+			}
+		}
+	});
+	context.subscriptions.push(dataDownloadListener);
 
 	if (typeof context.globalState.setKeysForSync === "function") {
 		// Enable VS Code Settings Sync for TodoData if using profile-sync mode

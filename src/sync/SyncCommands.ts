@@ -4,27 +4,80 @@
  */
 
 import * as vscode from "vscode";
+import { EnhancedStore } from "@reduxjs/toolkit";
 import { GitHubAuthManager } from "./GitHubAuthManager";
 import { GitHubApiClient } from "./GitHubApiClient";
 import { SyncManager } from "./SyncManager";
 import { GlobalSyncMode, WorkspaceSyncMode, GIST_ID_REGEX, SyncErrorType } from "./syncTypes";
+import { StoreState, TodoScope } from "../todo/todoTypes";
+import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFileActions } from "../todo/store";
+import StorageSyncManager from "../storage/StorageSyncManager";
+import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
 
 export class SyncCommands {
 	private authManager: GitHubAuthManager;
 	private apiClient: GitHubApiClient;
 	private syncManager: SyncManager;
 	private context: vscode.ExtensionContext;
+	private store: EnhancedStore<StoreState>;
+	private storageSyncManager: StorageSyncManager;
 
 	constructor(
 		context: vscode.ExtensionContext,
 		authManager: GitHubAuthManager,
 		apiClient: GitHubApiClient,
-		syncManager: SyncManager
+		syncManager: SyncManager,
+		store: EnhancedStore<StoreState>,
+		storageSyncManager: StorageSyncManager
 	) {
 		this.context = context;
 		this.authManager = authManager;
 		this.apiClient = apiClient;
 		this.syncManager = syncManager;
+		this.store = store;
+		this.storageSyncManager = storageSyncManager;
+	}
+
+	/**
+	 * Reload store data from current sync mode
+	 */
+	private async reloadStoreData(scope: "user" | "workspace"): Promise<void> {
+		if (scope === "user") {
+			// Reload user todos
+			const userTodos = await this.storageSyncManager.getUserTodos();
+			this.storageSyncManager.suppressNextPersistForScope(TodoScope.user);
+			this.store.dispatch(userActions.loadData({ data: userTodos }));
+		} else {
+			// Reload workspace todos
+			const workspaceTodos = await this.storageSyncManager.getWorkspaceTodos();
+			this.storageSyncManager.suppressNextPersistForScope(TodoScope.workspace);
+			this.store.dispatch(workspaceActions.loadData({ data: workspaceTodos }));
+
+			// Reload workspace files data
+			const filesData = await this.storageSyncManager.getWorkspaceFilesData();
+			this.store.dispatch(
+				editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
+					getWorkspaceFilesWithRecords(filesData)
+				)
+			);
+
+			// Reload current file if any
+			const currentState = this.store.getState();
+			const targetFilePath =
+				currentState.currentFile.filePath ||
+				currentState.editorFocusAndRecords.editorFocusedFilePath;
+
+			if (targetFilePath) {
+				const todos = filesData[targetFilePath] ?? [];
+				this.storageSyncManager.suppressNextPersistForScope(TodoScope.currentFile);
+				this.store.dispatch(
+					currentFileActions.loadData({
+						filePath: targetFilePath,
+						data: todos,
+					})
+				);
+			}
+		}
 	}
 
 	/**
@@ -231,6 +284,9 @@ export class SyncCommands {
 			// Enable GitHub sync via internal storage
 			await this.context.globalState.update("syncMode", "github");
 
+			// Reload store data from GitHub cache
+			await this.reloadStoreData("user");
+
 			// Show security warning
 			vscode.window.showWarningMessage(
 				"Security Notice: Todos synced to GitHub are stored in plaintext. " +
@@ -246,6 +302,9 @@ export class SyncCommands {
 			// Switch to local or profile sync
 			const newMode = selected.mode === GlobalSyncMode.Local ? "profile-local" : "profile-sync";
 			await this.context.globalState.update("syncMode", newMode);
+
+			// Reload store data from local storage
+			await this.reloadStoreData("user");
 
 			// Stop polling
 			this.syncManager.stopPolling("user");
@@ -308,6 +367,9 @@ export class SyncCommands {
 			// Enable GitHub sync for workspace via internal storage
 			await this.context.workspaceState.update("syncMode", "github");
 
+			// Reload store data from GitHub cache
+			await this.reloadStoreData("workspace");
+
 			// Start polling
 			const pollInterval = config.get<number>("github.pollInterval", 180);
 			this.syncManager.startPolling("workspace", pollInterval);
@@ -316,6 +378,9 @@ export class SyncCommands {
 		} else {
 			// Switch to local
 			await this.context.workspaceState.update("syncMode", "local");
+
+			// Reload store data from local storage
+			await this.reloadStoreData("workspace");
 
 			// Stop polling
 			this.syncManager.stopPolling("workspace");
@@ -445,6 +510,9 @@ export class SyncCommands {
 
 					// Trigger immediate sync to create the file
 					await this.syncManager.sync("user");
+
+					// Reload store data from new file
+					await this.reloadStoreData("user");
 				} else {
 					// Select existing file
 					await config.update("github.userFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
@@ -452,6 +520,9 @@ export class SyncCommands {
 
 					// Trigger immediate sync
 					await this.syncManager.sync("user");
+
+					// Reload store data from new file
+					await this.reloadStoreData("user");
 				}
 			}
 		);
@@ -582,6 +653,9 @@ export class SyncCommands {
 
 					// Trigger immediate sync to create the file
 					await this.syncManager.sync("workspace");
+
+					// Reload store data from new file
+					await this.reloadStoreData("workspace");
 				} else {
 					// Select existing file
 					await config.update("github.workspaceFile", selected.file.fullPath, vscode.ConfigurationTarget.Workspace);
@@ -589,6 +663,9 @@ export class SyncCommands {
 
 					// Trigger immediate sync
 					await this.syncManager.sync("workspace");
+
+					// Reload store data from new file
+					await this.reloadStoreData("workspace");
 				}
 			}
 		);

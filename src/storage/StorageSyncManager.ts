@@ -55,13 +55,13 @@ export default class StorageSyncManager {
 	}
 
 	public async getWorkspaceTodos(): Promise<Todo[]> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const workspaceSyncMode = this.context.workspaceState.get<string>("syncMode", "local");
 
-		if (githubEnabled) {
+		if (workspaceSyncMode === "github") {
 			const workspaceMode = WorkspaceSyncMode.GitHub;
+			const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
 			const workspaceName = vscode.workspace.name || "default";
-			const fileName = config.get<string>("workspaceFile") || `workspace/${workspaceName}.json`;
+			const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 			return await this.syncStorageManager.getWorkspaceTodos(workspaceMode, fileName);
 		}
 
@@ -69,13 +69,13 @@ export default class StorageSyncManager {
 	}
 
 	public async getWorkspaceFilesData(): Promise<TodoFilesData> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const workspaceSyncMode = this.context.workspaceState.get<string>("syncMode", "local");
 
-		if (githubEnabled) {
+		if (workspaceSyncMode === "github") {
 			const workspaceMode = WorkspaceSyncMode.GitHub;
+			const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
 			const workspaceName = vscode.workspace.name || "default";
-			const fileName = config.get<string>("workspaceFile") || `workspace/${workspaceName}.json`;
+			const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 			return await this.syncStorageManager.getFilesData(workspaceMode, fileName);
 		}
 
@@ -83,12 +83,12 @@ export default class StorageSyncManager {
 	}
 
 	public async getUserTodos(): Promise<Todo[]> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const userSyncMode = this.context.globalState.get<string>("syncMode", "profile-local");
 
-		if (githubEnabled) {
+		if (userSyncMode === "github") {
 			const globalMode = GlobalSyncMode.GitHub;
-			const fileName = config.get<string>("globalFile", "global/todos.json");
+			const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+			const fileName = config.get<string>("github.userFile", "user-todos.json");
 			return await this.syncStorageManager.getGlobalTodos(globalMode, fileName);
 		}
 
@@ -106,17 +106,18 @@ export default class StorageSyncManager {
 		}
 
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const githubEnabled = config.get<boolean>("githubEnabled", false);
+		const userSyncMode = this.context.globalState.get<string>("syncMode", "profile-local");
+		const workspaceSyncMode = this.context.workspaceState.get<string>("syncMode", "local");
 
 		try {
 			switch (state.scope) {
 				case TodoScope.user: {
 					await this.context.globalState.update("TodoData", state.todos);
 
-					if (githubEnabled) {
+					if (userSyncMode === "github") {
 						// Write to gist cache
 						const globalMode = GlobalSyncMode.GitHub;
-						const fileName = config.get<string>("globalFile", "global/todos.json");
+						const fileName = config.get<string>("github.userFile", "user-todos.json");
 						await this.syncStorageManager.setGlobalTodos(globalMode, state.todos, fileName);
 					} else {
 						// Write to local file
@@ -127,11 +128,11 @@ export default class StorageSyncManager {
 				case TodoScope.workspace: {
 					await this.context.workspaceState.update("TodoData", state.todos);
 
-					if (githubEnabled) {
+					if (workspaceSyncMode === "github") {
 						// Write to gist cache
 						const workspaceMode = WorkspaceSyncMode.GitHub;
 						const workspaceName = vscode.workspace.name || "default";
-						const fileName = config.get<string>("workspaceFile") || `workspace/${workspaceName}.json`;
+						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 						await this.syncStorageManager.setWorkspaceTodos(workspaceMode, state.todos, fileName);
 					} else {
 						// Write to local file
@@ -146,11 +147,11 @@ export default class StorageSyncManager {
 					const currentFileState = state as CurrentFileSlice;
 					let filesData: TodoFilesData;
 
-					if (githubEnabled) {
+					if (workspaceSyncMode === "github") {
 						// Get current files data from gist cache
 						const workspaceMode = WorkspaceSyncMode.GitHub;
 						const workspaceName = vscode.workspace.name || "default";
-						const fileName = config.get<string>("workspaceFile") || `workspace/${workspaceName}.json`;
+						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 						filesData = await this.syncStorageManager.getFilesData(workspaceMode, fileName);
 					} else {
 						filesData = { ...this.cachedWorkspaceData.filesData };
@@ -164,11 +165,11 @@ export default class StorageSyncManager {
 
 					await this.context.workspaceState.update("TodoFilesData", sortedResult);
 
-					if (githubEnabled) {
+					if (workspaceSyncMode === "github") {
 						// Write to gist cache
 						const workspaceMode = WorkspaceSyncMode.GitHub;
 						const workspaceName = vscode.workspace.name || "default";
-						const fileName = config.get<string>("workspaceFile") || `workspace/${workspaceName}.json`;
+						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 						await this.syncStorageManager.setFilesData(workspaceMode, sortedResult, fileName);
 					} else {
 						// Write to local file

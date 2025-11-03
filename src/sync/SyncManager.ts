@@ -40,6 +40,12 @@ export class SyncManager {
 	}>();
 	public readonly onStatusChange = this.onStatusChangeEmitter.event;
 
+	// Event emitter for data downloads
+	private onDataDownloadedEmitter = new vscode.EventEmitter<{
+		scope: "user" | "workspace";
+	}>();
+	public readonly onDataDownloaded = this.onDataDownloadedEmitter.event;
+
 	constructor(context: vscode.ExtensionContext) {
 		this.context = context;
 		this.apiClient = new GitHubApiClient(context);
@@ -232,6 +238,8 @@ export class SyncManager {
 			};
 			await this.storageManager.setGlobalGistCache(fileName, cache);
 			this.updateStatus("user", SyncStatus.Synced);
+			// Emit data downloaded event
+			this.onDataDownloadedEmitter.fire({ scope: "user" });
 			return { success: true };
 		} catch (error) {
 			this.updateStatus("user", SyncStatus.Error);
@@ -412,6 +420,8 @@ export class SyncManager {
 			};
 			await this.storageManager.setWorkspaceGistCache(fileName, cache);
 			this.updateStatus("workspace", SyncStatus.Synced);
+			// Emit data downloaded event
+			this.onDataDownloadedEmitter.fire({ scope: "workspace" });
 			return { success: true };
 		} catch (error) {
 			this.updateStatus("workspace", SyncStatus.Error);
@@ -509,5 +519,6 @@ export class SyncManager {
 			clearTimeout(this.workspaceDebounceTimer);
 		}
 		this.onStatusChangeEmitter.dispose();
+		this.onDataDownloadedEmitter.dispose();
 	}
 }
