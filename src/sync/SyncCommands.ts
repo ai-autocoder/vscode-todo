@@ -443,6 +443,14 @@ export class SyncCommands {
 
 					const fullPath = `user-${fileName}.json`;
 					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
+
+					// Clear any workspace override that might exist
+					const workspaceOverride = config.inspect("github.userFile")?.workspaceValue;
+					if (workspaceOverride !== undefined) {
+						await config.update("github.userFile", undefined, vscode.ConfigurationTarget.Workspace);
+						console.log(`[SyncCommands] Cleared workspace override for userFile`);
+					}
+
 					vscode.window.showInformationMessage(
 						`User file set to: ${fileName}. Empty list created.`
 					);
@@ -508,6 +516,14 @@ export class SyncCommands {
 
 					const fullPath = `user-${fileName}.json`;
 					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
+
+					// Clear any workspace override that might exist
+					const workspaceOverride = config.inspect("github.userFile")?.workspaceValue;
+					if (workspaceOverride !== undefined) {
+						await config.update("github.userFile", undefined, vscode.ConfigurationTarget.Workspace);
+						console.log(`[SyncCommands] Cleared workspace override for userFile from picker`);
+					}
+
 					vscode.window.showInformationMessage(
 						`User file set to: ${fileName}. Empty list created.`
 					);
@@ -520,6 +536,14 @@ export class SyncCommands {
 				} else {
 					// Select existing file
 					await config.update("github.userFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
+
+					// Clear any workspace override that might exist
+					const workspaceOverride = config.inspect("github.userFile")?.workspaceValue;
+					if (workspaceOverride !== undefined) {
+						await config.update("github.userFile", undefined, vscode.ConfigurationTarget.Workspace);
+						console.log(`[SyncCommands] Cleared workspace override for userFile (existing file)`);
+					}
+
 					vscode.window.showInformationMessage(`User file set to: ${selected.file.displayName}`);
 
 					// Trigger immediate sync
