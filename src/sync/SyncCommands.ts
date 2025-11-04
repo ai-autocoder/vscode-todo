@@ -13,6 +13,7 @@ import { StoreState, TodoScope } from "../todo/todoTypes";
 import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFileActions } from "../todo/store";
 import StorageSyncManager from "../storage/StorageSyncManager";
 import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
+import { reloadScopeData, clearWorkspaceOverride } from "../utilities/syncUtils";
 
 export class SyncCommands {
 	private authManager: GitHubAuthManager;
@@ -42,43 +43,7 @@ export class SyncCommands {
 	 * Reload store data from current sync mode
 	 */
 	private async reloadStoreData(scope: "user" | "workspace"): Promise<void> {
-		if (scope === "user") {
-			// Reload user todos
-			const userTodos = await this.storageSyncManager.getUserTodos();
-			console.log(`[SyncCommands] Reloading user data, found ${userTodos.length} todos`);
-			this.storageSyncManager.suppressNextPersistForScope(TodoScope.user);
-			this.store.dispatch(userActions.loadData({ data: userTodos }));
-		} else {
-			// Reload workspace todos
-			const workspaceTodos = await this.storageSyncManager.getWorkspaceTodos();
-			this.storageSyncManager.suppressNextPersistForScope(TodoScope.workspace);
-			this.store.dispatch(workspaceActions.loadData({ data: workspaceTodos }));
-
-			// Reload workspace files data
-			const filesData = await this.storageSyncManager.getWorkspaceFilesData();
-			this.store.dispatch(
-				editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-					getWorkspaceFilesWithRecords(filesData)
-				)
-			);
-
-			// Reload current file if any
-			const currentState = this.store.getState();
-			const targetFilePath =
-				currentState.currentFile.filePath ||
-				currentState.editorFocusAndRecords.editorFocusedFilePath;
-
-			if (targetFilePath) {
-				const todos = filesData[targetFilePath] ?? [];
-				this.storageSyncManager.suppressNextPersistForScope(TodoScope.currentFile);
-				this.store.dispatch(
-					currentFileActions.loadData({
-						filePath: targetFilePath,
-						data: todos,
-					})
-				);
-			}
-		}
+		await reloadScopeData(scope, this.store, this.storageSyncManager);
 	}
 
 	/**
@@ -445,11 +410,7 @@ export class SyncCommands {
 					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
 
 					// Clear any workspace override that might exist
-					const workspaceOverride = config.inspect("github.userFile")?.workspaceValue;
-					if (workspaceOverride !== undefined) {
-						await config.update("github.userFile", undefined, vscode.ConfigurationTarget.Workspace);
-						console.log(`[SyncCommands] Cleared workspace override for userFile`);
-					}
+					await clearWorkspaceOverride("github.userFile");
 
 					vscode.window.showInformationMessage(
 						`User file set to: ${fileName}. Empty list created.`
@@ -518,11 +479,7 @@ export class SyncCommands {
 					await config.update("github.userFile", fullPath, vscode.ConfigurationTarget.Global);
 
 					// Clear any workspace override that might exist
-					const workspaceOverride = config.inspect("github.userFile")?.workspaceValue;
-					if (workspaceOverride !== undefined) {
-						await config.update("github.userFile", undefined, vscode.ConfigurationTarget.Workspace);
-						console.log(`[SyncCommands] Cleared workspace override for userFile from picker`);
-					}
+					await clearWorkspaceOverride("github.userFile");
 
 					vscode.window.showInformationMessage(
 						`User file set to: ${fileName}. Empty list created.`
@@ -538,11 +495,7 @@ export class SyncCommands {
 					await config.update("github.userFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
 
 					// Clear any workspace override that might exist
-					const workspaceOverride = config.inspect("github.userFile")?.workspaceValue;
-					if (workspaceOverride !== undefined) {
-						await config.update("github.userFile", undefined, vscode.ConfigurationTarget.Workspace);
-						console.log(`[SyncCommands] Cleared workspace override for userFile (existing file)`);
-					}
+					await clearWorkspaceOverride("github.userFile");
 
 					vscode.window.showInformationMessage(`User file set to: ${selected.file.displayName}`);
 

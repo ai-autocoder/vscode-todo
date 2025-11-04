@@ -13,6 +13,7 @@ import {
 	GistDirectories,
 	GIST_ID_REGEX,
 } from "./syncTypes";
+import LogChannel from "../utilities/LogChannel";
 import { GitHubAuthManager } from "./GitHubAuthManager";
 
 export class GitHubApiClient {
@@ -266,11 +267,7 @@ export class GitHubApiClient {
 				errorMessage += ` - Details: ${errorsList}`;
 			}
 			// Log for debugging (useful for future issues)
-			console.log("GitHub API Error:", {
-				status: statusCode,
-				message: errorMessage,
-				details: errorData.errors,
-			});
+			LogChannel.log(`[GitHubApiClient] GitHub API Error: status=${statusCode}, message=${errorMessage}, details=${JSON.stringify(errorData.errors || {})}`);
 		} catch {
 			// Ignore JSON parse errors
 		}
