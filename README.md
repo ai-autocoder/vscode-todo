@@ -564,6 +564,14 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 For support, feature requests, or bug reporting, please visit the [GitHub issues page](https://github.com/ai-autocoder/vscode-todo/issues).
 
+## ⚠️ Important Notice
 
+**Data Safety**: This extension is provided "as-is" under the MIT License. While we strive for reliability, we recommend maintaining regular backups of your todos using the export feature. The GitHub Gist sync feature depends on GitHub's service availability and uses last-writer-wins conflict resolution, which may result in data loss when simultaneous edits occur across devices.
 
+**Security**: Never store passwords, API keys, tokens, or other sensitive information in your todos. Data synced to GitHub Gists is stored in plaintext JSON format.
 
+**Backups**: Use the "Export to JSON" or "Export to Markdown" commands regularly to maintain local backups of your data. See our [Security Warnings](#security-warnings-%EF%B8%8F) section for more details.
+
+---
+
+**Legal**: [DISCLAIMER](DISCLAIMER.md) | [LICENSE](LICENSE)
