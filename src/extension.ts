@@ -34,7 +34,8 @@ import {
 	removeDataForDeletedFile,
 	updateDataForRenamedFile,
 } from "./todo/todoUtils";
-import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands } from "./sync";
+import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands, SyncStatus } from "./sync";
+import { messagesToWebview } from "./panels/message";
 
 const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
 
@@ -68,6 +69,12 @@ export async function activate(context: ExtensionContext) {
 	const syncStatusListener = syncManager.onStatusChange((event) => {
 		updateSyncStatus(event.scope, event.status);
 		updateStatusBarItem(store.getState());
+
+		// Notify webviews of sync status
+		const isSyncing = event.status === SyncStatus.Syncing;
+		const message = messagesToWebview.updateSyncStatus(isSyncing);
+		TodoViewProvider.currentProvider?.updateSyncStatus(isSyncing);
+		HelloWorldPanel.currentPanel?.updateSyncStatus(isSyncing);
 	});
 	context.subscriptions.push(syncStatusListener);
 

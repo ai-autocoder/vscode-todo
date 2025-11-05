@@ -152,6 +152,10 @@ export class HelloWorldPanel {
 		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
 	}
 
+	public updateSyncStatus(isSyncing: boolean) {
+		this._panel.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
+	}
+
 	public dispose() {
 		HelloWorldPanel.currentPanel = undefined;
 
@@ -389,6 +393,10 @@ export class HelloWorldPanel {
 					}
 					case MessageActionsFromWebview.setWorkspaceFile: {
 						commands.executeCommand("vsc-todo.setWorkspaceFile");
+						break;
+					}
+					case MessageActionsFromWebview.syncNow: {
+						commands.executeCommand("vsc-todo.syncNow");
 						break;
 					}
 					default:

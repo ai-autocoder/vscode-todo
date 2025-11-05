@@ -38,6 +38,17 @@
 
 	<vscode-button
 		appearance="icon"
+		[aria-label]="'Sync Now'"
+		[title]="'Sync Now'"
+		(click)="syncNow()"
+	>
+		<span>
+			<app-icon name="sync" [class.spinning]="isSyncing | async"></app-icon>
+		</span>
+	</vscode-button>
+
+	<vscode-button
+		appearance="icon"
 		[matMenuTriggerFor]="settingsMenu"
 		[aria-label]="'Settings'"
 		[title]="'Settings'"

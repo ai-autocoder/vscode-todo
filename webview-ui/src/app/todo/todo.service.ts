@@ -65,6 +65,8 @@ export class TodoService {
 
 	private _isGitHubConnectedSource = new BehaviorSubject<boolean>(false);
 
+	private _isSyncingSource = new BehaviorSubject<boolean>(false);
+
 	private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
 		[TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
 		[TodoScope.workspace]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
@@ -85,6 +87,7 @@ export class TodoService {
 	enableWideView = this._enableWideViewSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
 	isGitHubConnected = this._isGitHubConnectedSource.asObservable();
+	isSyncing = this._isSyncingSource.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
 	currentFileLastAction = new BehaviorSubject<string>("");
@@ -155,6 +158,9 @@ export class TodoService {
 			case MessageActionsToWebview.updateGitHubStatus:
 				this.handleUpdateGitHubStatus(data.payload);
 				break;
+			case MessageActionsToWebview.updateSyncStatus:
+				this.handleUpdateSyncStatus(data.payload);
+				break;
 			default:
 				console.warn("Unhandled message type:", data.type);
 		}
@@ -220,6 +226,10 @@ export class TodoService {
 
 	private handleUpdateGitHubStatus(payload: { isConnected: boolean }) {
 		this._isGitHubConnectedSource.next(payload.isConnected);
+	}
+
+	private handleUpdateSyncStatus(payload: { isSyncing: boolean }) {
+		this._isSyncingSource.next(payload.isSyncing);
 	}
 
 	get userTodos(): Todo[] {
@@ -367,5 +377,9 @@ export class TodoService {
 
 	setWorkspaceFile() {
 		vscode.postMessage(messagesFromWebview.setWorkspaceFile());
+	}
+
+	syncNow() {
+		vscode.postMessage(messagesFromWebview.syncNow());
 	}
 }

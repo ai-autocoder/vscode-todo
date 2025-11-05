@@ -93,6 +93,12 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
+	public updateSyncStatus(isSyncing: boolean) {
+		if (this._view) {
+			this._view.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
+		}
+	}
+
 	private _getHtmlForWebview(webview: vscode.Webview) {
 		const stylesUri = getUri(webview, this._extensionUri, [
 			"webview-ui",

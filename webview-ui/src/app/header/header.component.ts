@@ -17,6 +17,7 @@ export class HeaderComponent implements OnInit {
 	isSettingsMenuOpen = false;
 	enableWideView!: Observable<boolean>;
 	isGitHubConnected!: Observable<boolean>;
+	isSyncing!: Observable<boolean>;
 	@Input() currentScope!: TodoScope;
 
 	constructor(readonly todoService: TodoService) {}
@@ -24,6 +25,7 @@ export class HeaderComponent implements OnInit {
 	ngOnInit(): void {
 		this.enableWideView = this.todoService.enableWideView;
 		this.isGitHubConnected = this.todoService.isGitHubConnected;
+		this.isSyncing = this.todoService.isSyncing;
 	}
 
 	import(format: ImportFormats) {
@@ -150,5 +152,9 @@ export class HeaderComponent implements OnInit {
 
 	setWorkspaceFile() {
 		this.todoService.setWorkspaceFile();
+	}
+
+	syncNow() {
+		this.todoService.syncNow();
 	}
 }

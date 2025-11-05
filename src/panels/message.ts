@@ -61,7 +61,9 @@ type MessagePayload<T, L> = T extends
 									? StoreState
 									: T extends MessageActionsToWebview.updateGitHubStatus
 										? { isConnected: boolean }
-										: never;
+										: T extends MessageActionsToWebview.updateSyncStatus
+											? { isSyncing: boolean }
+											: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -76,6 +78,7 @@ export type Message<
 				| MessageActionsToWebview.syncTodoData
 				| MessageActionsToWebview.syncEditorFocusAndRecords
 				| MessageActionsToWebview.updateGitHubStatus
+				| MessageActionsToWebview.updateSyncStatus
 		? {
 				type: T;
 				payload: MessagePayload<T, L>;
@@ -125,12 +128,14 @@ export const enum MessageActionsFromWebview {
 	setGistId = "setGistId",
 	setUserFile = "setUserFile",
 	setWorkspaceFile = "setWorkspaceFile",
+	syncNow = "syncNow",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
 	syncTodoData = "syncTodoData",
 	syncEditorFocusAndRecords = "syncEditorFocusAndRecords",
 	updateGitHubStatus = "updateGitHubStatus",
+	updateSyncStatus = "updateSyncStatus",
 }
 
 // Message creators from Webview to Extension
@@ -292,6 +297,9 @@ export const messagesFromWebview = {
 	setWorkspaceFile: (): { type: MessageActionsFromWebview.setWorkspaceFile } => ({
 		type: MessageActionsFromWebview.setWorkspaceFile,
 	}),
+	syncNow: (): { type: MessageActionsFromWebview.syncNow } => ({
+		type: MessageActionsFromWebview.syncNow,
+	}),
 };
 export const messagesToWebview = {
 	// Message creators from extension to UI
@@ -318,5 +326,9 @@ export const messagesToWebview = {
 	updateGitHubStatus: (isConnected: boolean): { type: MessageActionsToWebview.updateGitHubStatus; payload: { isConnected: boolean } } => ({
 		type: MessageActionsToWebview.updateGitHubStatus,
 		payload: { isConnected },
+	}),
+	updateSyncStatus: (isSyncing: boolean): { type: MessageActionsToWebview.updateSyncStatus; payload: { isSyncing: boolean } } => ({
+		type: MessageActionsToWebview.updateSyncStatus,
+		payload: { isSyncing },
 	}),
 };
