@@ -38,38 +38,52 @@ export function updateStatusBarItem(state: StoreState) {
 	const userSyncMode = _context?.globalState.get<string>("syncMode", "profile-local") || "profile-local";
 	const workspaceSyncMode = _context?.workspaceState.get<string>("syncMode", "local") || "local";
 	const isGitHubEnabled = userSyncMode === "github" || workspaceSyncMode === "github";
-	const syncMode = userSyncMode === "github" ? "GitHub" : (userSyncMode === "profile-sync" ? "Profile Sync" : "Local");
 
-	// Determine sync icon and status indicator
-	let syncIcon = "$(archive)"; // Local mode
+	// Show only actionable status indicators (no mode icons, no "synced" check)
 	let statusIndicator = "";
 
 	if (isGitHubEnabled) {
-		syncIcon = "$(cloud)"; // GitHub mode
-		// Show status indicator for GitHub mode
-		if (_userSyncStatus === SyncStatus.Synced || _workspaceSyncStatus === SyncStatus.Synced) {
-			statusIndicator = "$(check)"; // Synced
-		} else if (_userSyncStatus === SyncStatus.Dirty || _workspaceSyncStatus === SyncStatus.Dirty) {
-			statusIndicator = "$(warning)"; // Unsaved changes
+		// Only show icon when user attention is needed - prioritize most important status
+		if (_userSyncStatus === SyncStatus.Error || _workspaceSyncStatus === SyncStatus.Error) {
+			statusIndicator = "$(error) "; // Error (highest priority)
 		} else if (_userSyncStatus === SyncStatus.Syncing || _workspaceSyncStatus === SyncStatus.Syncing) {
-			statusIndicator = "$(sync~spin)"; // Syncing
-		} else if (_userSyncStatus === SyncStatus.Error || _workspaceSyncStatus === SyncStatus.Error) {
-			statusIndicator = "$(error)"; // Error
+			statusIndicator = "$(sync~spin) "; // Syncing (second priority)
+		} else if (_userSyncStatus === SyncStatus.Dirty || _workspaceSyncStatus === SyncStatus.Dirty) {
+			statusIndicator = "$(warning) "; // Unsaved changes
 		}
-	} else if (syncMode === "Profile Sync") {
-		syncIcon = "$(sync)"; // Profile Sync mode
+		// No icon for synced state - this is the normal/expected state
 	}
 
-	_statusBarItem.text = `${syncIcon}${statusIndicator} ☑️ ${state.user.numberOfTodos}/${state.workspace.numberOfTodos}/${currentFileTodos} | 📒 ${state.user.numberOfNotes}/${state.workspace.numberOfNotes}/${currentFileNotes}`;
+	_statusBarItem.text = `${statusIndicator}☑️ ${state.user.numberOfTodos}/${state.workspace.numberOfTodos}/${currentFileTodos} | 📒 ${state.user.numberOfNotes}/${state.workspace.numberOfNotes}/${currentFileNotes}`;
 
 	// Build tooltip with sync info
-	let syncInfo = `**Sync Mode:** ${syncMode}\n\n`;
-	if (isGitHubEnabled) {
+	// Helper function to get icon + label for sync mode (using emoji for tooltip compatibility)
+	const getUserSyncModeDisplay = (mode: string) => {
+		if (mode === "github") return "☁️ GitHub";
+		if (mode === "profile-sync") return "🔄 Profile Sync";
+		return "📁 Local (Profile)";
+	};
+	const getWorkspaceSyncModeDisplay = (mode: string) => {
+		if (mode === "github") return "☁️ GitHub";
+		return "📁 Local (Workspace)";
+	};
+
+	const userSyncModeDisplay = getUserSyncModeDisplay(userSyncMode);
+	const workspaceSyncModeDisplay = getWorkspaceSyncModeDisplay(workspaceSyncMode);
+
+	// Show both sync modes clearly with header, icons, and text labels
+	let syncInfo = `**Sync Modes**\n\n`;
+	syncInfo += `**User:** ${userSyncModeDisplay}`;
+	if (userSyncMode === "github") {
 		const globalStatusText = getSyncStatusText(_userSyncStatus);
-		const workspaceStatusText = getSyncStatusText(_workspaceSyncStatus);
-		syncInfo += `- Global: ${globalStatusText}\n`;
-		syncInfo += `- Workspace: ${workspaceStatusText}\n\n`;
+		syncInfo += ` ${globalStatusText}`;
 	}
+	syncInfo += `\n\n**Workspace:** ${workspaceSyncModeDisplay}`;
+	if (workspaceSyncMode === "github") {
+		const workspaceStatusText = getSyncStatusText(_workspaceSyncStatus);
+		syncInfo += ` ${workspaceStatusText}`;
+	}
+	syncInfo += `\n\n---\n\n`;
 
 	_statusBarItem.tooltip = new vscode.MarkdownString(
 		`${syncInfo}**Todo**☑️
