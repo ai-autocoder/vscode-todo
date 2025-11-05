@@ -10,6 +10,8 @@ import {
 import { TodoScope } from "../todo/todoTypes";
 import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
 import LogChannel from "./LogChannel";
+import { HelloWorldPanel } from "../panels/HelloWorldPanel";
+import { TodoViewProvider } from "../panels/TodoViewProvider";
 
 /**
  * Reload store data from storage for a specific scope
@@ -71,4 +73,14 @@ export async function clearWorkspaceOverride(setting: string): Promise<void> {
 		await config.update(setting, undefined, vscode.ConfigurationTarget.Workspace);
 		LogChannel.log(`[SyncUtils] Cleared workspace override for ${setting}`);
 	}
+}
+
+/**
+ * Notify webviews about GitHub connection status change
+ * @param isConnected - Whether GitHub is connected
+ */
+export function notifyGitHubStatusChange(isConnected: boolean): void {
+	HelloWorldPanel.currentPanel?.updateGitHubStatus(isConnected);
+	TodoViewProvider.currentProvider?.updateGitHubStatus(isConnected);
+	LogChannel.log(`[SyncUtils] Notified webviews of GitHub status: ${isConnected}`);
 }

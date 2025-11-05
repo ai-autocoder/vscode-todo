@@ -13,7 +13,7 @@ import { StoreState, TodoScope } from "../todo/todoTypes";
 import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFileActions } from "../todo/store";
 import StorageSyncManager from "../storage/StorageSyncManager";
 import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
-import { reloadScopeData, clearWorkspaceOverride } from "../utilities/syncUtils";
+import { reloadScopeData, clearWorkspaceOverride, notifyGitHubStatusChange } from "../utilities/syncUtils";
 
 export class SyncCommands {
 	private authManager: GitHubAuthManager;
@@ -74,7 +74,10 @@ export class SyncCommands {
 				cancellable: false,
 			},
 			async () => {
-				await this.authManager.connect();
+				const success = await this.authManager.connect();
+				if (success) {
+					notifyGitHubStatusChange(true);
+				}
 			}
 		);
 	}
@@ -100,6 +103,9 @@ export class SyncCommands {
 			// Stop polling
 			this.syncManager.stopPolling("user");
 			this.syncManager.stopPolling("workspace");
+
+			// Notify webviews
+			notifyGitHubStatusChange(false);
 		}
 	}
 

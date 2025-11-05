@@ -59,7 +59,9 @@ type MessagePayload<T, L> = T extends
 								? EditorFocusAndRecordsSlice
 								: T extends MessageActionsToWebview.reloadWebview
 									? StoreState
-									: never;
+									: T extends MessageActionsToWebview.updateGitHubStatus
+										? { isConnected: boolean }
+										: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -73,6 +75,7 @@ export type Message<
 	: T extends
 				| MessageActionsToWebview.syncTodoData
 				| MessageActionsToWebview.syncEditorFocusAndRecords
+				| MessageActionsToWebview.updateGitHubStatus
 		? {
 				type: T;
 				payload: MessagePayload<T, L>;
@@ -115,11 +118,19 @@ export const enum MessageActionsFromWebview {
 	import = "import",
 	setWideViewEnabled = "setWideViewEnabled",
 	deleteCompleted = "deleteCompleted",
+	selectUserSyncMode = "selectUserSyncMode",
+	selectWorkspaceSyncMode = "selectWorkspaceSyncMode",
+	connectGitHub = "connectGitHub",
+	disconnectGitHub = "disconnectGitHub",
+	setGistId = "setGistId",
+	setUserFile = "setUserFile",
+	setWorkspaceFile = "setWorkspaceFile",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
 	syncTodoData = "syncTodoData",
 	syncEditorFocusAndRecords = "syncEditorFocusAndRecords",
+	updateGitHubStatus = "updateGitHubStatus",
 }
 
 // Message creators from Webview to Extension
@@ -260,6 +271,27 @@ export const messagesFromWebview = {
 		type: MessageActionsFromWebview.deleteCompleted,
 		scope,
 	}),
+	selectUserSyncMode: (): { type: MessageActionsFromWebview.selectUserSyncMode } => ({
+		type: MessageActionsFromWebview.selectUserSyncMode,
+	}),
+	selectWorkspaceSyncMode: (): { type: MessageActionsFromWebview.selectWorkspaceSyncMode } => ({
+		type: MessageActionsFromWebview.selectWorkspaceSyncMode,
+	}),
+	connectGitHub: (): { type: MessageActionsFromWebview.connectGitHub } => ({
+		type: MessageActionsFromWebview.connectGitHub,
+	}),
+	disconnectGitHub: (): { type: MessageActionsFromWebview.disconnectGitHub } => ({
+		type: MessageActionsFromWebview.disconnectGitHub,
+	}),
+	setGistId: (): { type: MessageActionsFromWebview.setGistId } => ({
+		type: MessageActionsFromWebview.setGistId,
+	}),
+	setUserFile: (): { type: MessageActionsFromWebview.setUserFile } => ({
+		type: MessageActionsFromWebview.setUserFile,
+	}),
+	setWorkspaceFile: (): { type: MessageActionsFromWebview.setWorkspaceFile } => ({
+		type: MessageActionsFromWebview.setWorkspaceFile,
+	}),
 };
 export const messagesToWebview = {
 	// Message creators from extension to UI
@@ -282,5 +314,9 @@ export const messagesToWebview = {
 	): Message<MessageActionsToWebview.syncEditorFocusAndRecords> => ({
 		type: MessageActionsToWebview.syncEditorFocusAndRecords,
 		payload,
+	}),
+	updateGitHubStatus: (isConnected: boolean): { type: MessageActionsToWebview.updateGitHubStatus; payload: { isConnected: boolean } } => ({
+		type: MessageActionsToWebview.updateGitHubStatus,
+		payload: { isConnected },
 	}),
 };

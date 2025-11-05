@@ -29,6 +29,7 @@ import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
 import { deleteCompletedTodos } from "../todo/todoUtils";
+import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -45,10 +46,12 @@ export class HelloWorldPanel {
 	private readonly _panel: WebviewPanel;
 	private _disposables: Disposable[] = [];
 	private _store: EnhancedStore;
+	private _context: ExtensionContext;
 
 	private constructor(panel: WebviewPanel, context: ExtensionContext, store: EnhancedStore) {
 		this._panel = panel;
 		this._store = store;
+		this._context = context;
 		const extensionUri = context.extensionUri;
 
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -116,10 +119,15 @@ export class HelloWorldPanel {
 	/**
 	 * Sends the full state of the store and config to the webview.
 	 */
-	private reloadWebview() {
+	private async reloadWebview() {
 		const currentState = this._store.getState();
 		const config = getConfig();
 		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
+
+		// Send GitHub connection status
+		const authManager = GitHubAuthManager.getInstance(this._context);
+		const isConnected = await authManager.isAuthenticated();
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
 	}
 
 	/**
@@ -138,6 +146,10 @@ export class HelloWorldPanel {
 				? messagesToWebview.syncEditorFocusAndRecords(newSliceState as EditorFocusAndRecordsSlice)
 				: messagesToWebview.syncTodoData(newSliceState as TodoSlice | CurrentFileSlice);
 		this._panel.webview.postMessage(message);
+	}
+
+	public updateGitHubStatus(isConnected: boolean) {
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
 	}
 
 	public dispose() {
@@ -349,6 +361,34 @@ export class HelloWorldPanel {
 					}
 					case MessageActionsFromWebview.deleteCompleted: {
 						store.dispatch(storeActions!.deleteCompleted());
+						break;
+					}
+					case MessageActionsFromWebview.selectUserSyncMode: {
+						commands.executeCommand("vsc-todo.selectUserSyncMode");
+						break;
+					}
+					case MessageActionsFromWebview.selectWorkspaceSyncMode: {
+						commands.executeCommand("vsc-todo.selectWorkspaceSyncMode");
+						break;
+					}
+					case MessageActionsFromWebview.connectGitHub: {
+						commands.executeCommand("vsc-todo.connectGitHub");
+						break;
+					}
+					case MessageActionsFromWebview.disconnectGitHub: {
+						commands.executeCommand("vsc-todo.disconnectGitHub");
+						break;
+					}
+					case MessageActionsFromWebview.setGistId: {
+						commands.executeCommand("vsc-todo.setGistId");
+						break;
+					}
+					case MessageActionsFromWebview.setUserFile: {
+						commands.executeCommand("vsc-todo.setUserFile");
+						break;
+					}
+					case MessageActionsFromWebview.setWorkspaceFile: {
+						commands.executeCommand("vsc-todo.setWorkspaceFile");
 						break;
 					}
 					default:

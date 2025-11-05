@@ -8,6 +8,7 @@ import { getConfig } from "../utilities/config";
 import { messagesToWebview } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
 import { deleteCompletedTodos } from "../todo/todoUtils";
+import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
@@ -60,11 +61,16 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		);
 	}
 
-	public reloadWebview() {
+	public async reloadWebview() {
 		if (this._view) {
 			const currentState = this._store.getState();
 			const config = getConfig();
 			this._view.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
+
+			// Send GitHub connection status
+			const authManager = GitHubAuthManager.getInstance(this._context);
+			const isConnected = await authManager.isAuthenticated();
+			this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
 		}
 	}
 
@@ -78,6 +84,12 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 					? messagesToWebview.syncEditorFocusAndRecords(newSliceState as EditorFocusAndRecordsSlice)
 					: messagesToWebview.syncTodoData(newSliceState as TodoSlice | CurrentFileSlice);
 			this._view.webview.postMessage(message);
+		}
+	}
+
+	public updateGitHubStatus(isConnected: boolean) {
+		if (this._view) {
+			this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
 		}
 	}
 

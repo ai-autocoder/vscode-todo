@@ -26,54 +26,111 @@
 
 	<vscode-button
 		appearance="icon"
-		[matMenuTriggerFor]="importMenu"
-		[aria-label]="'Import'"
-		[title]="'Import'"
-		(menuOpened)="onImportMenuOpened()"
-		(menuClosed)="onImportMenuClosed()"
-		[ngClass]="{ 'menu-open': isImportMenuOpen }"
+		[matMenuTriggerFor]="settingsMenu"
+		[aria-label]="'Settings'"
+		[title]="'Settings'"
+		(menuOpened)="onSettingsMenuOpened()"
+		(menuClosed)="onSettingsMenuClosed()"
+		[ngClass]="{ 'menu-open': isSettingsMenuOpen }"
 	>
 		<span>
-			<app-icon name="import"></app-icon>
+			<app-icon name="settings"></app-icon>
 		</span>
 	</vscode-button>
-	<!-- Export menu -->
-	<mat-menu #importMenu="matMenu" yPosition="below" xPosition="before">
+	<!-- Settings menu -->
+	<mat-menu #settingsMenu="matMenu" yPosition="below" xPosition="before">
+		<!-- Export submenu -->
+		<button mat-menu-item [matMenuTriggerFor]="exportMenu" aria-label="Export" class="submenu-item">
+			<span class="submenu-content">
+				<app-icon name="export"></app-icon>
+				<span style="margin-left: 8px;">Export</span>
+			</span>
+			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
+		</button>
+
+		<!-- Import submenu -->
+		<button mat-menu-item [matMenuTriggerFor]="importMenu" aria-label="Import" class="submenu-item">
+			<span class="submenu-content">
+				<app-icon name="import"></app-icon>
+				<span style="margin-left: 8px;">Import</span>
+			</span>
+			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
+		</button>
+
+		<mat-divider></mat-divider>
+
+		<!-- Sync mode options -->
+		<button mat-menu-item (click)="selectUserSyncMode()" aria-label="Select User Sync Mode">
+			Select User Sync Mode
+		</button>
+		<button mat-menu-item (click)="selectWorkspaceSyncMode()" aria-label="Select Workspace Sync Mode">
+			Select Workspace Sync Mode
+		</button>
+
+		<mat-divider></mat-divider>
+
+		<!-- GitHub section -->
 		<fieldset>
-			<legend>Import From</legend>
-			<button mat-menu-item (click)="import(ImportFormats.JSON)" aria-label="Import to JSON">
-				Json
+			<legend>GitHub</legend>
+
+			<!-- GitHub connect/disconnect -->
+			@if (!(isGitHubConnected | async)) {
+				<button mat-menu-item (click)="connectGitHub()" aria-label="Connect to GitHub">
+					Connect to GitHub
+				</button>
+			}
+			@if (isGitHubConnected | async) {
+				<button mat-menu-item (click)="disconnectGitHub()" aria-label="Disconnect from GitHub">
+					Disconnect from GitHub
+				</button>
+			}
+
+			<!-- GitHub configuration options (disabled when not connected) -->
+			<button
+				mat-menu-item
+				(click)="setGistId()"
+				[disabled]="!(isGitHubConnected | async)"
+				aria-label="Set Gist ID"
+			>
+				Set Gist ID
 			</button>
-			<button mat-menu-item (click)="import(ImportFormats.MARKDOWN)" aria-label="Import to Markdown">
-				Markdown
+			<button
+				mat-menu-item
+				(click)="setUserFile()"
+				[disabled]="!(isGitHubConnected | async)"
+				aria-label="Set User File"
+			>
+				Set User File
+			</button>
+			<button
+				mat-menu-item
+				(click)="setWorkspaceFile()"
+				[disabled]="!(isGitHubConnected | async)"
+				aria-label="Set Workspace File"
+			>
+				Set Workspace File
 			</button>
 		</fieldset>
 	</mat-menu>
 
-	<vscode-button
-		appearance="icon"
-		[matMenuTriggerFor]="exportMenu"
-		[aria-label]="'Export'"
-		[title]="'Export'"
-		(menuOpened)="onExportMenuOpened()"
-		(menuClosed)="onExportMenuClosed()"
-		[ngClass]="{ 'menu-open': isExportMenuOpen }"
-	>
-		<span>
-			<app-icon name="export"></app-icon>
-		</span>
-	</vscode-button>
-	<!-- Export menu -->
-	<mat-menu #exportMenu="matMenu" yPosition="below" xPosition="before">
-		<fieldset>
-			<legend>Export To</legend>
-			<button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON">
-				Json
-			</button>
-			<button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown">
-				Markdown
-			</button>
-		</fieldset>
+	<!-- Export submenu -->
+	<mat-menu #exportMenu="matMenu">
+		<button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON">
+			JSON
+		</button>
+		<button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown">
+			Markdown
+		</button>
+	</mat-menu>
+
+	<!-- Import submenu -->
+	<mat-menu #importMenu="matMenu">
+		<button mat-menu-item (click)="import(ImportFormats.JSON)" aria-label="Import from JSON">
+			JSON
+		</button>
+		<button mat-menu-item (click)="import(ImportFormats.MARKDOWN)" aria-label="Import from Markdown">
+			Markdown
+		</button>
 	</mat-menu>
 
 	<vscode-button

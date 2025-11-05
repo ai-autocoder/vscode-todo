@@ -11,6 +11,30 @@
 	background-color: var(--vscode-menu-background);
 }
 
+/* Hide Material's default submenu arrow icon */
+::ng-deep .mat-mdc-menu-submenu-icon {
+	display: none !important;
+}
+
+/* Style custom submenu items with chevron */
+::ng-deep .submenu-item {
+	display: flex !important;
+	justify-content: space-between !important;
+	align-items: center !important;
+	width: 100% !important;
+}
+
+::ng-deep .submenu-content {
+	display: flex;
+	align-items: center;
+	flex: 1;
+}
+
+::ng-deep .submenu-arrow {
+	margin-left: auto;
+	opacity: 0.6;
+}
+
 @media (max-width: 650px) {
 	.header-container {
 		position: relative;
