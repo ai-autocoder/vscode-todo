@@ -1,4 +1,16 @@
 <div class="header-container">
+	<vscode-button
+		appearance="icon"
+		[aria-label]="allCollapsed ? 'Expand all' : 'Collapse all'"
+		[title]="allCollapsed ? 'Expand all' : 'Collapse all'"
+		(click)="toggleAllCollapsed()"
+		[disabled]="isListEmpty"
+	>
+		<span>
+			<app-icon [name]="allCollapsed ? 'chevron-right' : 'chevron-down'"></app-icon>
+		</span>
+	</vscode-button>
+
 	@if (!(enableWideView | async)) {
 		<vscode-button
 			appearance="icon"
@@ -132,18 +144,6 @@
 			Markdown
 		</button>
 	</mat-menu>
-
-	<vscode-button
-		appearance="icon"
-		[aria-label]="allCollapsed ? 'Expand all' : 'Collapse all'"
-		[title]="allCollapsed ? 'Expand all' : 'Collapse all'"
-		(click)="toggleAllCollapsed()"
-		[disabled]="isListEmpty"
-	>
-		<span>
-			<app-icon [name]="allCollapsed ? 'chevron-right' : 'chevron-down'"></app-icon>
-		</span>
-	</vscode-button>
 
 	<vscode-button
 		appearance="icon"
