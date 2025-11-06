@@ -30,6 +30,7 @@ import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
 import { deleteCompletedTodos } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
+import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -47,12 +48,48 @@ export class HelloWorldPanel {
 	private _disposables: Disposable[] = [];
 	private _store: EnhancedStore;
 	private _context: ExtensionContext;
+	private _visibilityCoordinator: WebviewVisibilityCoordinator | undefined;
+	private _isVisible: boolean = false;
 
-	private constructor(panel: WebviewPanel, context: ExtensionContext, store: EnhancedStore) {
+	private constructor(
+		panel: WebviewPanel,
+		context: ExtensionContext,
+		store: EnhancedStore,
+		visibilityCoordinator?: WebviewVisibilityCoordinator
+	) {
 		this._panel = panel;
 		this._store = store;
 		this._context = context;
+		this._visibilityCoordinator = visibilityCoordinator;
 		const extensionUri = context.extensionUri;
+
+		// Track initial visibility
+		this._isVisible = panel.visible;
+		if (this._isVisible && this._visibilityCoordinator) {
+			this._visibilityCoordinator.incrementVisibility();
+		}
+
+		// Track visibility changes
+		this._panel.onDidChangeViewState(
+			(e) => {
+				const wasVisible = this._isVisible;
+				this._isVisible = e.webviewPanel.visible;
+
+				if (!wasVisible && this._isVisible) {
+					// Became visible
+					if (this._visibilityCoordinator) {
+						this._visibilityCoordinator.incrementVisibility();
+					}
+				} else if (wasVisible && !this._isVisible) {
+					// Became hidden
+					if (this._visibilityCoordinator) {
+						this._visibilityCoordinator.decrementVisibility();
+					}
+				}
+			},
+			null,
+			this._disposables
+		);
 
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
@@ -77,7 +114,11 @@ export class HelloWorldPanel {
 	 * will be created and displayed.
 	 *
 	 */
-	public static render(context: ExtensionContext, store: EnhancedStore) {
+	public static render(
+		context: ExtensionContext,
+		store: EnhancedStore,
+		visibilityCoordinator?: WebviewVisibilityCoordinator
+	) {
 		const extensionUri = context.extensionUri;
 		if (HelloWorldPanel.currentPanel) {
 			// If the webview panel already exists and in focus, dispose it
@@ -112,7 +153,7 @@ export class HelloWorldPanel {
 				}
 			);
 			deleteCompletedTodos(store);
-			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store);
+			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store, visibilityCoordinator);
 		}
 	}
 
@@ -157,6 +198,11 @@ export class HelloWorldPanel {
 	}
 
 	public dispose() {
+		// Decrement visibility if panel was visible
+		if (this._isVisible && this._visibilityCoordinator) {
+			this._visibilityCoordinator.decrementVisibility();
+		}
+
 		HelloWorldPanel.currentPanel = undefined;
 
 		// Dispose of the current webview panel

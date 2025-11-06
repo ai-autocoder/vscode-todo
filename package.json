@@ -147,6 +147,11 @@
 					"maximum": 600,
 					"markdownDescription": "Poll interval in seconds for GitHub sync. Only active when GitHub mode is enabled.\n\nMinimum: 30 seconds | Maximum: 600 seconds (10 minutes)"
 				},
+				"vscodeTodo.sync.pollOnlyWhenVisible": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "Only poll for GitHub sync changes when a Todo view is visible.\n\n**Benefits:**\n- Saves GitHub API rate limits\n- Better battery life on laptops\n- Reduced network usage\n\n**Note:** Disable this if you want 24/7 background sync regardless of view visibility."
+				},
 				"vscodeTodo.taskSortingOptions": {
 					"description": "Controls how completed tasks are reordered in the list.",
 					"type": "string",

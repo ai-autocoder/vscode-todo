@@ -15,6 +15,7 @@ import {
 	SyncConstants,
 	GistCache,
 } from "./syncTypes";
+import { isEqual } from "../todo/todoUtils";
 
 export class SyncManager {
 	private apiClient: GitHubApiClient;
@@ -162,24 +163,98 @@ export class SyncManager {
 				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
 			}
 
-			const localLastSynced = new Date(cache.lastSynced);
+			// Download and parse remote content for comparison
+			const fileResult = await this.apiClient.readFile(gistId, fileName);
+			if (!fileResult.success || !fileResult.data) {
+				// File not found - treat as empty
+				if (fileResult.error?.type === SyncErrorType.FileNotFoundError) {
+					if (cache.isDirty) {
+						// Local has changes, upload to create file
+						return await this.uploadUser(gistId, fileName, cache);
+					}
+					// Both empty, in sync
+					this.updateStatus("user", SyncStatus.Synced);
+					return { success: true };
+				}
+				this.updateStatus("user", SyncStatus.Error);
+				return { success: false, error: fileResult.error };
+			}
 
-			// Conflict detection: Both remote and local have changes
-			if (remoteUpdatedAt > localLastSynced && cache.isDirty) {
-				// MVP: Last-writer-wins (remote wins)
-				vscode.window.showWarningMessage(
-					"Remote changes detected. Local unsaved changes will be overwritten."
+			let remoteData: GlobalGistData;
+			try {
+				remoteData = JSON.parse(fileResult.data);
+			} catch (error) {
+				this.updateStatus("user", SyncStatus.Error);
+				return {
+					success: false,
+					error: {
+						type: SyncErrorType.UnknownError,
+						message: "Failed to parse remote gist data",
+						error: error instanceof Error ? error : undefined,
+						timestamp: new Date().toISOString(),
+						retryable: false,
+					},
+				};
+			}
+
+			// Content-based comparison - compare with last known clean remote state
+			let hasRemoteChanges: boolean;
+			if (cache.lastCleanRemoteData) {
+				// Compare remote with last known clean remote (not current cache which includes local changes)
+				hasRemoteChanges = !isEqual(remoteData.userTodos, cache.lastCleanRemoteData.userTodos);
+			} else {
+				// Backwards compatibility: first time with new code, don't know last clean state
+				// Treat as potentially changed and update lastCleanRemoteData on download/upload
+				hasRemoteChanges = !isEqual(remoteData.userTodos, cache.data.userTodos);
+			}
+
+			// TRUE CONFLICT: Both remote and local have different content
+			if (hasRemoteChanges && cache.isDirty) {
+				console.log(`[SyncManager] Conflict detected - both remote and local have changes`);
+				const choice = await vscode.window.showWarningMessage(
+					"Sync Conflict: Both local and remote todos have changes.",
+					{ modal: true },
+					"Keep Remote",
+					"Keep Local",
+					"View Gist"
 				);
-				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
+
+				if (choice === "Keep Local") {
+					// Upload local changes, overwrite remote
+					console.log(`[SyncManager] User chose to keep local changes`);
+					return await this.uploadUser(gistId, fileName, cache);
+				} else if (choice === "View Gist") {
+					// Open gist in browser for manual resolution
+					console.log(`[SyncManager] User chose to view gist`);
+					await vscode.env.openExternal(
+						vscode.Uri.parse(`https://gist.github.com/${gistId}`)
+					);
+					this.updateStatus("user", SyncStatus.Error);
+					return {
+						success: false,
+						error: {
+							type: SyncErrorType.UnknownError,
+							message: "User chose to manually resolve conflict",
+							timestamp: new Date().toISOString(),
+							retryable: true,
+						},
+					};
+				} else {
+					// Keep Remote (or user closed dialog)
+					console.log(`[SyncManager] User chose to keep remote changes`);
+					return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
+				}
 			}
 
 			// Remote has changes, local is clean
-			if (remoteUpdatedAt > localLastSynced) {
+			if (hasRemoteChanges) {
+				console.log(`[SyncManager] Remote changes detected, downloading`);
 				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
 			}
 
 			// Local has changes, upload to remote
 			if (cache.isDirty) {
+				console.log(`[SyncManager] Local changes detected, uploading`);
 				return await this.uploadUser(gistId, fileName, cache);
 			}
 
@@ -215,6 +290,7 @@ export class SyncManager {
 				};
 				const cache: GistCache<GlobalGistData> = {
 					data: emptyData,
+					lastCleanRemoteData: emptyData,
 					lastSynced: new Date().toISOString(),
 					isDirty: true,
 					remoteUpdatedAt,
@@ -234,6 +310,7 @@ export class SyncManager {
 			const data: GlobalGistData = JSON.parse(fileResult.data);
 			const cache: GistCache<GlobalGistData> = {
 				data,
+				lastCleanRemoteData: data,
 				lastSynced: new Date().toISOString(),
 				isDirty: false,
 				remoteUpdatedAt,
@@ -311,6 +388,8 @@ export class SyncManager {
 		cache.lastSynced = new Date().toISOString();
 		cache.isDirty = false;
 		cache.remoteUpdatedAt = new Date(writeResult.data.updated_at).toISOString();
+		// After successful upload, current data becomes the new clean remote state
+		cache.lastCleanRemoteData = JSON.parse(JSON.stringify(cache.data));
 		await this.storageManager.setGlobalGistCache(fileName, cache);
 
 		this.updateStatus("user", SyncStatus.Synced);
@@ -345,24 +424,102 @@ export class SyncManager {
 				return await this.downloadWorkspace(gistId, fileName, remoteUpdatedAt.toISOString());
 			}
 
-			const localLastSynced = new Date(cache.lastSynced);
+			// Download and parse remote content for comparison
+			const fileResult = await this.apiClient.readFile(gistId, fileName);
+			if (!fileResult.success || !fileResult.data) {
+				// File not found - treat as empty
+				if (fileResult.error?.type === SyncErrorType.FileNotFoundError) {
+					if (cache.isDirty) {
+						// Local has changes, upload to create file
+						return await this.uploadWorkspace(gistId, fileName, cache);
+					}
+					// Both empty, in sync
+					this.updateStatus("workspace", SyncStatus.Synced);
+					return { success: true };
+				}
+				this.updateStatus("workspace", SyncStatus.Error);
+				return { success: false, error: fileResult.error };
+			}
 
-			// Conflict detection: Both remote and local have changes
-			if (remoteUpdatedAt > localLastSynced && cache.isDirty) {
-				// MVP: Last-writer-wins (remote wins)
-				vscode.window.showWarningMessage(
-					"Remote changes detected. Local unsaved changes will be overwritten."
+			let remoteData: WorkspaceGistData;
+			try {
+				remoteData = JSON.parse(fileResult.data);
+			} catch (error) {
+				this.updateStatus("workspace", SyncStatus.Error);
+				return {
+					success: false,
+					error: {
+						type: SyncErrorType.UnknownError,
+						message: "Failed to parse remote gist data",
+						error: error instanceof Error ? error : undefined,
+						timestamp: new Date().toISOString(),
+						retryable: false,
+					},
+				};
+			}
+
+			// Content-based comparison - compare with last known clean remote state
+			let hasRemoteChanges: boolean;
+			if (cache.lastCleanRemoteData) {
+				// Compare remote with last known clean remote (not current cache which includes local changes)
+				const workspaceTodosChanged = !isEqual(remoteData.workspaceTodos, cache.lastCleanRemoteData.workspaceTodos);
+				const filesDataChanged = !isEqual(remoteData.filesData, cache.lastCleanRemoteData.filesData);
+				hasRemoteChanges = workspaceTodosChanged || filesDataChanged;
+			} else {
+				// Backwards compatibility: first time with new code, don't know last clean state
+				// Treat as potentially changed and update lastCleanRemoteData on download/upload
+				const workspaceTodosChanged = !isEqual(remoteData.workspaceTodos, cache.data.workspaceTodos);
+				const filesDataChanged = !isEqual(remoteData.filesData, cache.data.filesData);
+				hasRemoteChanges = workspaceTodosChanged || filesDataChanged;
+			}
+
+			// TRUE CONFLICT: Both remote and local have different content
+			if (hasRemoteChanges && cache.isDirty) {
+				console.log(`[SyncManager] Workspace conflict detected - both remote and local have changes`);
+				const choice = await vscode.window.showWarningMessage(
+					"Workspace Sync Conflict: Both local and remote data have changes.",
+					{ modal: true },
+					"Keep Remote",
+					"Keep Local",
+					"View Gist"
 				);
-				return await this.downloadWorkspace(gistId, fileName, remoteUpdatedAt.toISOString());
+
+				if (choice === "Keep Local") {
+					// Upload local changes, overwrite remote
+					console.log(`[SyncManager] User chose to keep local workspace changes`);
+					return await this.uploadWorkspace(gistId, fileName, cache);
+				} else if (choice === "View Gist") {
+					// Open gist in browser for manual resolution
+					console.log(`[SyncManager] User chose to view gist`);
+					await vscode.env.openExternal(
+						vscode.Uri.parse(`https://gist.github.com/${gistId}`)
+					);
+					this.updateStatus("workspace", SyncStatus.Error);
+					return {
+						success: false,
+						error: {
+							type: SyncErrorType.UnknownError,
+							message: "User chose to manually resolve conflict",
+							timestamp: new Date().toISOString(),
+							retryable: true,
+						},
+					};
+				} else {
+					// Keep Remote (or user closed dialog)
+					console.log(`[SyncManager] User chose to keep remote workspace changes`);
+					return await this.downloadWorkspace(gistId, fileName, remoteUpdatedAt.toISOString());
+				}
 			}
 
 			// Remote has changes, local is clean
-			if (remoteUpdatedAt > localLastSynced) {
+			if (hasRemoteChanges) {
+				console.log(`[SyncManager] Workspace remote changes detected, downloading`);
 				return await this.downloadWorkspace(gistId, fileName, remoteUpdatedAt.toISOString());
 			}
 
 			// Local has changes, upload to remote
 			if (cache.isDirty) {
+				console.log(`[SyncManager] Workspace local changes detected, uploading`);
 				return await this.uploadWorkspace(gistId, fileName, cache);
 			}
 
@@ -399,6 +556,7 @@ export class SyncManager {
 				};
 				const cache: GistCache<WorkspaceGistData> = {
 					data: emptyData,
+					lastCleanRemoteData: emptyData,
 					lastSynced: new Date().toISOString(),
 					isDirty: true,
 					remoteUpdatedAt,
@@ -418,6 +576,7 @@ export class SyncManager {
 			const data: WorkspaceGistData = JSON.parse(fileResult.data);
 			const cache: GistCache<WorkspaceGistData> = {
 				data,
+				lastCleanRemoteData: data,
 				lastSynced: new Date().toISOString(),
 				isDirty: false,
 				remoteUpdatedAt,
@@ -485,6 +644,8 @@ export class SyncManager {
 		cache.lastSynced = new Date().toISOString();
 		cache.isDirty = false;
 		cache.remoteUpdatedAt = new Date(writeResult.data.updated_at).toISOString();
+		// After successful upload, current data becomes the new clean remote state
+		cache.lastCleanRemoteData = JSON.parse(JSON.stringify(cache.data));
 		await this.storageManager.setWorkspaceGistCache(fileName, cache);
 
 		this.updateStatus("workspace", SyncStatus.Synced);

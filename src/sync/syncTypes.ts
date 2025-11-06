@@ -106,8 +106,10 @@ export interface WorkspaceGistData {
  * Local cache structure for gist data
  */
 export interface GistCache<T> {
-	/** Cached data */
+	/** Cached data (may include local modifications if isDirty=true) */
 	data: T;
+	/** Last known clean remote state (used to detect actual remote changes) */
+	lastCleanRemoteData?: T;
 	/** ISO timestamp of last successful sync */
 	lastSynced: string;
 	/** Whether there are unsaved local changes */

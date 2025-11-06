@@ -9,18 +9,22 @@ import { messagesToWebview } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
 import { deleteCompletedTodos } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
+import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
 	private _view?: vscode.WebviewView;
 	public static currentProvider: TodoViewProvider | undefined;
+	private _visibilityCoordinator: WebviewVisibilityCoordinator | undefined;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
 		private readonly _store: EnhancedStore,
-		private readonly _context: vscode.ExtensionContext
+		private readonly _context: vscode.ExtensionContext,
+		visibilityCoordinator?: WebviewVisibilityCoordinator
 	) {
 		TodoViewProvider.currentProvider = this;
+		this._visibilityCoordinator = visibilityCoordinator;
 	}
 
 	public resolveWebviewView(
@@ -38,10 +42,22 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 			],
 		};
 
+		// Track initial visibility
+		if (webviewView.visible && this._visibilityCoordinator) {
+			this._visibilityCoordinator.incrementVisibility();
+		}
+
 		webviewView.onDidChangeVisibility(() => {
 			if (webviewView.visible) {
+				if (this._visibilityCoordinator) {
+					this._visibilityCoordinator.incrementVisibility();
+				}
 				deleteCompletedTodos(this._store);
 				this.reloadWebview();
+			} else {
+				if (this._visibilityCoordinator) {
+					this._visibilityCoordinator.decrementVisibility();
+				}
 			}
 		});
 

@@ -14,6 +14,7 @@ import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFil
 import StorageSyncManager from "../storage/StorageSyncManager";
 import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
 import { reloadScopeData, clearWorkspaceOverride, notifyGitHubStatusChange } from "../utilities/syncUtils";
+import { WebviewVisibilityCoordinator } from "./WebviewVisibilityCoordinator";
 
 export class SyncCommands {
 	private authManager: GitHubAuthManager;
@@ -22,6 +23,7 @@ export class SyncCommands {
 	private context: vscode.ExtensionContext;
 	private store: EnhancedStore<StoreState>;
 	private storageSyncManager: StorageSyncManager;
+	private visibilityCoordinator: WebviewVisibilityCoordinator | undefined;
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -37,6 +39,13 @@ export class SyncCommands {
 		this.syncManager = syncManager;
 		this.store = store;
 		this.storageSyncManager = storageSyncManager;
+	}
+
+	/**
+	 * Set the visibility coordinator (called after coordinator is created in extension.ts)
+	 */
+	public setVisibilityCoordinator(coordinator: WebviewVisibilityCoordinator): void {
+		this.visibilityCoordinator = coordinator;
 	}
 
 	/**
@@ -269,6 +278,9 @@ export class SyncCommands {
 			const pollInterval = config.get<number>("github.pollInterval", 180);
 			this.syncManager.startPolling("user", pollInterval);
 
+			// Notify visibility coordinator
+			this.visibilityCoordinator?.updateSyncModes();
+
 			vscode.window.showInformationMessage("GitHub sync enabled for user lists.");
 		} else {
 			// Switch to local or profile sync
@@ -280,6 +292,9 @@ export class SyncCommands {
 
 			// Stop polling
 			this.syncManager.stopPolling("user");
+
+			// Notify visibility coordinator
+			this.visibilityCoordinator?.updateSyncModes();
 
 			vscode.window.showInformationMessage(`Switched to ${selected.label} mode for user lists.`);
 		}
@@ -346,6 +361,9 @@ export class SyncCommands {
 			const pollInterval = config.get<number>("github.pollInterval", 180);
 			this.syncManager.startPolling("workspace", pollInterval);
 
+			// Notify visibility coordinator
+			this.visibilityCoordinator?.updateSyncModes();
+
 			vscode.window.showInformationMessage("GitHub sync enabled for workspace lists.");
 		} else {
 			// Switch to local
@@ -356,6 +374,9 @@ export class SyncCommands {
 
 			// Stop polling
 			this.syncManager.stopPolling("workspace");
+
+			// Notify visibility coordinator
+			this.visibilityCoordinator?.updateSyncModes();
 
 			vscode.window.showInformationMessage("Switched to Local mode for workspace lists.");
 		}

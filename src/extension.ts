@@ -36,6 +36,7 @@ import {
 } from "./todo/todoUtils";
 import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands, SyncStatus } from "./sync";
 import { messagesToWebview } from "./panels/message";
+import { WebviewVisibilityCoordinator } from "./sync/WebviewVisibilityCoordinator";
 
 const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
 
@@ -55,8 +56,17 @@ export async function activate(context: ExtensionContext) {
 	const workspaceSyncMode = context.workspaceState.get<string>("syncMode", "local");
 	const syncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
 
-	if (userSyncMode === "github" || workspaceSyncMode === "github") {
-		const pollInterval = syncConfig.get<number>("github.pollInterval", 180);
+	// Create webview visibility coordinator
+	const pollInterval = syncConfig.get<number>("github.pollInterval", 180);
+	const visibilityCoordinator = new WebviewVisibilityCoordinator(syncManager, context, pollInterval);
+	context.subscriptions.push(visibilityCoordinator);
+
+	// Set coordinator in sync commands so it can be notified of mode changes
+	syncCommands.setVisibilityCoordinator(visibilityCoordinator);
+
+	// Start polling immediately if pollOnlyWhenVisible is disabled
+	const pollOnlyWhenVisible = syncConfig.get<boolean>("pollOnlyWhenVisible", true);
+	if (!pollOnlyWhenVisible && (userSyncMode === "github" || workspaceSyncMode === "github")) {
 		if (userSyncMode === "github") {
 			syncManager.startPolling("user", pollInterval);
 		}
@@ -96,14 +106,21 @@ export async function activate(context: ExtensionContext) {
 				const updatedSyncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
 				const updatedPollInterval = updatedSyncConfig.get<number>("github.pollInterval", 180);
 
-				const currentUserMode = context.globalState.get<string>("syncMode", "profile-local");
-				const currentWorkspaceMode = context.workspaceState.get<string>("syncMode", "local");
+				// Update coordinator
+				visibilityCoordinator.updatePollInterval(updatedPollInterval);
 
-				if (currentUserMode === "github") {
-					syncManager.startPolling("user", updatedPollInterval);
-				}
-				if (currentWorkspaceMode === "github") {
-					syncManager.startPolling("workspace", updatedPollInterval);
+				// If pollOnlyWhenVisible is disabled, restart polling immediately
+				const updatedPollOnlyWhenVisible = updatedSyncConfig.get<boolean>("pollOnlyWhenVisible", true);
+				if (!updatedPollOnlyWhenVisible) {
+					const currentUserMode = context.globalState.get<string>("syncMode", "profile-local");
+					const currentWorkspaceMode = context.workspaceState.get<string>("syncMode", "local");
+
+					if (currentUserMode === "github") {
+						syncManager.startPolling("user", updatedPollInterval);
+					}
+					if (currentWorkspaceMode === "github") {
+						syncManager.startPolling("workspace", updatedPollInterval);
+					}
 				}
 			}
 		});
@@ -112,7 +129,7 @@ export async function activate(context: ExtensionContext) {
 
 	const commands = [
 		vscode.commands.registerCommand("vsc-todo.openTodo", () =>
-			HelloWorldPanel.render(context, store)
+			HelloWorldPanel.render(context, store, visibilityCoordinator)
 		),
 		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () =>
 			exportCommand(context, ExportFormats.JSON, store)
@@ -198,7 +215,7 @@ export async function activate(context: ExtensionContext) {
 		}
 	});
 
-	const provider = new TodoViewProvider(context.extensionUri, store, context);
+	const provider = new TodoViewProvider(context.extensionUri, store, context, visibilityCoordinator);
 
 	context.subscriptions.push(
 		...commands,
