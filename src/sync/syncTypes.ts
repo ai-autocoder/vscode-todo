@@ -84,8 +84,6 @@ export interface GistFileInfo {
  * Global scope data structure stored in gist
  */
 export interface GlobalGistData {
-	/** ISO timestamp of last sync */
-	_lastSynced: string;
 	/** Global todo items */
 	userTodos: Todo[];
 }
@@ -94,8 +92,6 @@ export interface GlobalGistData {
  * Workspace scope data structure stored in gist
  */
 export interface WorkspaceGistData {
-	/** ISO timestamp of last sync */
-	_lastSynced: string;
 	/** Workspace todo items */
 	workspaceTodos: Todo[];
 	/** File-specific todos (relative paths as keys) */
@@ -114,8 +110,6 @@ export interface GistCache<T> {
 	lastSynced: string;
 	/** Whether there are unsaved local changes */
 	isDirty: boolean;
-	/** GitHub's gist updated_at timestamp from last fetch */
-	remoteUpdatedAt?: string;
 }
 
 /**

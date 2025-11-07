@@ -212,8 +212,7 @@ export class SyncStorageManager {
 	private createEmptyGlobalCache(): GistCache<GlobalGistData> {
 		return {
 			data: {
-				_lastSynced: new Date().toISOString(),
-				userTodos: [],
+					userTodos: [],
 			},
 			lastSynced: new Date().toISOString(),
 			isDirty: false,
@@ -226,8 +225,7 @@ export class SyncStorageManager {
 	private createEmptyWorkspaceCache(): GistCache<WorkspaceGistData> {
 		return {
 			data: {
-				_lastSynced: new Date().toISOString(),
-				workspaceTodos: [],
+					workspaceTodos: [],
 				filesData: {},
 			},
 			lastSynced: new Date().toISOString(),

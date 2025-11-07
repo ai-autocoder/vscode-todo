@@ -156,11 +156,10 @@ export class SyncManager {
 				return { success: false, error: gistResult.error };
 			}
 
-			const remoteUpdatedAt = new Date(gistResult.data.updated_at);
-
+	
 			// If no cache, download from remote
 			if (!cache) {
-				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
+				return await this.downloadUser(gistId, fileName);
 			}
 
 			// Download and parse remote content for comparison
@@ -242,14 +241,14 @@ export class SyncManager {
 				} else {
 					// Keep Remote (or user closed dialog)
 					console.log(`[SyncManager] User chose to keep remote changes`);
-					return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
+					return await this.downloadUser(gistId, fileName);
 				}
 			}
 
 			// Remote has changes, local is clean
 			if (hasRemoteChanges) {
 				console.log(`[SyncManager] Remote changes detected, downloading`);
-				return await this.downloadUser(gistId, fileName, remoteUpdatedAt.toISOString());
+				return await this.downloadUser(gistId, fileName);
 			}
 
 			// Local has changes, upload to remote
@@ -279,22 +278,20 @@ export class SyncManager {
 	/**
 	 * Download global data from gist
 	 */
-	private async downloadUser(gistId: string, fileName: string, remoteUpdatedAt: string): Promise<SyncResult<void>> {
+	private async downloadUser(gistId: string, fileName: string): Promise<SyncResult<void>> {
 		const fileResult = await this.apiClient.readFile(gistId, fileName);
 		if (!fileResult.success || !fileResult.data) {
 			// File not found - create empty file
 			if (fileResult.error?.type === SyncErrorType.FileNotFoundError) {
 				const emptyData: GlobalGistData = {
-					_lastSynced: new Date().toISOString(),
-					userTodos: [],
+						userTodos: [],
 				};
 				const cache: GistCache<GlobalGistData> = {
 					data: emptyData,
 					lastCleanRemoteData: emptyData,
 					lastSynced: new Date().toISOString(),
 					isDirty: true,
-					remoteUpdatedAt,
-				};
+					};
 				await this.storageManager.setGlobalGistCache(fileName, cache);
 				this.updateStatus("user", SyncStatus.Dirty);
 				// Emit data downloaded event for new empty file
@@ -313,7 +310,6 @@ export class SyncManager {
 				lastCleanRemoteData: data,
 				lastSynced: new Date().toISOString(),
 				isDirty: false,
-				remoteUpdatedAt,
 			};
 			await this.storageManager.setGlobalGistCache(fileName, cache);
 			this.updateStatus("user", SyncStatus.Synced);
@@ -353,8 +349,6 @@ export class SyncManager {
 			};
 		}
 
-		// Update _lastSynced timestamp
-		cache.data._lastSynced = new Date().toISOString();
 
 		// Ensure userTodos is initialized
 		if (!cache.data.userTodos) {
@@ -387,7 +381,6 @@ export class SyncManager {
 		// Update cache
 		cache.lastSynced = new Date().toISOString();
 		cache.isDirty = false;
-		cache.remoteUpdatedAt = new Date(writeResult.data.updated_at).toISOString();
 		// After successful upload, current data becomes the new clean remote state
 		cache.lastCleanRemoteData = JSON.parse(JSON.stringify(cache.data));
 		await this.storageManager.setGlobalGistCache(fileName, cache);
@@ -417,11 +410,10 @@ export class SyncManager {
 				return { success: false, error: gistResult.error };
 			}
 
-			const remoteUpdatedAt = new Date(gistResult.data.updated_at);
-
+	
 			// If no cache, download from remote
 			if (!cache) {
-				return await this.downloadWorkspace(gistId, fileName, remoteUpdatedAt.toISOString());
+				return await this.downloadWorkspace(gistId, fileName);
 			}
 
 			// Download and parse remote content for comparison
@@ -507,14 +499,14 @@ export class SyncManager {
 				} else {
 					// Keep Remote (or user closed dialog)
 					console.log(`[SyncManager] User chose to keep remote workspace changes`);
-					return await this.downloadWorkspace(gistId, fileName, remoteUpdatedAt.toISOString());
+					return await this.downloadWorkspace(gistId, fileName);
 				}
 			}
 
 			// Remote has changes, local is clean
 			if (hasRemoteChanges) {
 				console.log(`[SyncManager] Workspace remote changes detected, downloading`);
-				return await this.downloadWorkspace(gistId, fileName, remoteUpdatedAt.toISOString());
+				return await this.downloadWorkspace(gistId, fileName);
 			}
 
 			// Local has changes, upload to remote
@@ -544,14 +536,13 @@ export class SyncManager {
 	/**
 	 * Download workspace data from gist
 	 */
-	private async downloadWorkspace(gistId: string, fileName: string, remoteUpdatedAt: string): Promise<SyncResult<void>> {
+	private async downloadWorkspace(gistId: string, fileName: string): Promise<SyncResult<void>> {
 		const fileResult = await this.apiClient.readFile(gistId, fileName);
 		if (!fileResult.success || !fileResult.data) {
 			// File not found - create empty file
 			if (fileResult.error?.type === SyncErrorType.FileNotFoundError) {
 				const emptyData: WorkspaceGistData = {
-					_lastSynced: new Date().toISOString(),
-					workspaceTodos: [],
+						workspaceTodos: [],
 					filesData: {},
 				};
 				const cache: GistCache<WorkspaceGistData> = {
@@ -559,8 +550,7 @@ export class SyncManager {
 					lastCleanRemoteData: emptyData,
 					lastSynced: new Date().toISOString(),
 					isDirty: true,
-					remoteUpdatedAt,
-				};
+					};
 				await this.storageManager.setWorkspaceGistCache(fileName, cache);
 				this.updateStatus("workspace", SyncStatus.Dirty);
 				// Emit data downloaded event for new empty file
@@ -579,7 +569,6 @@ export class SyncManager {
 				lastCleanRemoteData: data,
 				lastSynced: new Date().toISOString(),
 				isDirty: false,
-				remoteUpdatedAt,
 			};
 			await this.storageManager.setWorkspaceGistCache(fileName, cache);
 			this.updateStatus("workspace", SyncStatus.Synced);
@@ -605,9 +594,6 @@ export class SyncManager {
 	 * Upload workspace data to gist
 	 */
 	private async uploadWorkspace(gistId: string, fileName: string, cache: GistCache<WorkspaceGistData>): Promise<SyncResult<void>> {
-		// Update _lastSynced timestamp
-		cache.data._lastSynced = new Date().toISOString();
-
 		// Sort filesData keys lexicographically for stable serialization
 		const sortedFilesData: typeof cache.data.filesData = {};
 		Object.keys(cache.data.filesData)
@@ -643,7 +629,6 @@ export class SyncManager {
 		// Update cache
 		cache.lastSynced = new Date().toISOString();
 		cache.isDirty = false;
-		cache.remoteUpdatedAt = new Date(writeResult.data.updated_at).toISOString();
 		// After successful upload, current data becomes the new clean remote state
 		cache.lastCleanRemoteData = JSON.parse(JSON.stringify(cache.data));
 		await this.storageManager.setWorkspaceGistCache(fileName, cache);
