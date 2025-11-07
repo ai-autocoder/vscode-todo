@@ -244,10 +244,10 @@ The status bar displays your sync status and todo counts:
 
 **Sync Status Icons** (shown when GitHub sync is enabled):
 
-- *No icon* - Synced and up-to-date
-- `$(warning)` - Unsaved local changes pending sync
-- `$(sync~spin)` - Sync in progress
-- `$(error)` - Sync error occurred
+- No icon - Synced and up-to-date
+- ⚠️ Warning icon - Unsaved local changes pending sync
+- ⟳ Spinning icon - Sync in progress
+- ❌ Error icon - Sync error occurred
 
 **Format**: `[icon] ☑️ user/workspace/file | 📒 user/workspace/file`
 
