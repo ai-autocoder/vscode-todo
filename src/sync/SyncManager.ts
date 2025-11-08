@@ -16,7 +16,7 @@ import {
 	GistCache,
 } from "./syncTypes";
 import { isEqual } from "../todo/todoUtils";
-import { threeWayMerge, formatMergeSummary, ConflictSet } from "./ThreeWayMerge";
+import { threeWayMerge, formatMergeSummary, ConflictSet, threeWayMergeWorkspace, formatWorkspaceMergeSummary, mergeWithPreservedPositions } from "./ThreeWayMerge";
 import { Todo } from "../todo/todoTypes";
 import { ConflictResolutionUI } from "./ConflictResolutionUI";
 
@@ -36,6 +36,10 @@ export class SyncManager {
 	// Status tracking
 	private globalStatus: SyncStatus = SyncStatus.Offline;
 	private workspaceStatus: SyncStatus = SyncStatus.Offline;
+
+	// Sync operation guards to prevent concurrent sync operations
+	private userSyncInProgress: boolean = false;
+	private workspaceSyncInProgress: boolean = false;
 
 	// Event emitters for status changes
 	private onStatusChangeEmitter = new vscode.EventEmitter<{
@@ -143,6 +147,13 @@ export class SyncManager {
 	 * Sync global scope
 	 */
 	private async syncUser(gistId: string): Promise<SyncResult<void>> {
+		// Guard: prevent concurrent sync operations
+		if (this.userSyncInProgress) {
+			console.log(`[SyncManager] User sync already in progress, skipping`);
+			return { success: true };
+		}
+
+		this.userSyncInProgress = true;
 		this.updateStatus("user", SyncStatus.Syncing);
 
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
@@ -240,8 +251,8 @@ export class SyncManager {
 						};
 					}
 
-					// Apply user's conflict resolutions
-					const finalMerged = [...mergeResult.autoMerged, ...resolution];
+					// Apply user's conflict resolutions while preserving positions
+					const finalMerged = mergeWithPreservedPositions(mergeResult.autoMerged, resolution, base);
 
 					// Upload merged result
 					console.log(`[SyncManager] Uploading merged result (${finalMerged.length} todos)`);
@@ -311,6 +322,8 @@ export class SyncManager {
 					retryable: true,
 				},
 			};
+		} finally {
+			this.userSyncInProgress = false;
 		}
 	}
 
@@ -432,6 +445,13 @@ export class SyncManager {
 	 * Sync workspace scope
 	 */
 	private async syncWorkspace(gistId: string): Promise<SyncResult<void>> {
+		// Guard: prevent concurrent sync operations
+		if (this.workspaceSyncInProgress) {
+			console.log(`[SyncManager] Workspace sync already in progress, skipping`);
+			return { success: true };
+		}
+
+		this.workspaceSyncInProgress = true;
 		this.updateStatus("workspace", SyncStatus.Syncing);
 
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
@@ -504,42 +524,164 @@ export class SyncManager {
 				hasRemoteChanges = workspaceTodosChanged || filesDataChanged;
 			}
 
-			// TRUE CONFLICT: Both remote and local have different content
+			// TRUE CONFLICT: Both remote and local have different content - perform three-way merge
 			if (hasRemoteChanges && cache.isDirty) {
-				console.log(`[SyncManager] Workspace conflict detected - both remote and local have changes`);
-				const choice = await vscode.window.showWarningMessage(
-					"Workspace Sync Conflict: Both local and remote data have changes.",
-					{ modal: true },
-					"Keep Remote",
-					"Keep Local",
-					"View Gist"
+				console.log(`[SyncManager] Workspace: Both remote and local have changes - performing three-way merge`);
+
+				// Use last clean remote as base for three-way merge
+				const baseWorkspaceTodos = cache.lastCleanRemoteData?.workspaceTodos || [];
+				const baseFilesData = cache.lastCleanRemoteData?.filesData || {};
+				const localWorkspaceTodos = cache.data.workspaceTodos;
+				const localFilesData = cache.data.filesData;
+				const remoteWorkspaceTodos = remoteData.workspaceTodos;
+				const remoteFilesData = remoteData.filesData;
+
+				const mergeResult = threeWayMergeWorkspace(
+					baseWorkspaceTodos,
+					localWorkspaceTodos,
+					remoteWorkspaceTodos,
+					baseFilesData,
+					localFilesData,
+					remoteFilesData
 				);
 
-				if (choice === "Keep Local") {
-					// Upload local changes, overwrite remote
-					console.log(`[SyncManager] User chose to keep local workspace changes`);
-					return await this.uploadWorkspace(gistId, fileName, cache);
-				} else if (choice === "View Gist") {
-					// Open gist in browser for manual resolution
-					console.log(`[SyncManager] User chose to view gist`);
-					await vscode.env.openExternal(
-						vscode.Uri.parse(`https://gist.github.com/${gistId}`)
+				// Check if there are any conflicts (workspace or file-level)
+				const hasConflicts = mergeResult.workspaceConflicts.length > 0 || mergeResult.fileConflicts.length > 0;
+
+				if (hasConflicts) {
+					console.log(
+						`[SyncManager] Workspace: ${mergeResult.workspaceConflicts.length} todo conflicts, ${mergeResult.fileConflicts.length} file conflicts detected`
 					);
-					this.updateStatus("workspace", SyncStatus.Error);
-					return {
-						success: false,
-						error: {
-							type: SyncErrorType.UnknownError,
-							message: "User chose to manually resolve conflict",
-							timestamp: new Date().toISOString(),
-							retryable: true,
-						},
+
+					// For now, handle workspace todo conflicts using existing UI
+					// File conflicts require new UI - for Phase 1, show simplified dialog
+					if (mergeResult.fileConflicts.length > 0) {
+						// Show file conflict dialog
+						const fileChoice = await vscode.window.showWarningMessage(
+							`Workspace Sync: ${mergeResult.fileConflicts.length} file path conflict(s) detected.`,
+							{ modal: true },
+							"Keep Local Files",
+							"Keep Remote Files",
+							"View Gist"
+						);
+
+						if (fileChoice === "View Gist") {
+							const gistIdValue = vscode.workspace
+								.getConfiguration("vscodeTodo.sync")
+								.get<string>("github.gistId");
+							if (gistIdValue) {
+								await vscode.env.openExternal(
+									vscode.Uri.parse(`https://gist.github.com/${gistIdValue}`)
+								);
+							}
+							this.updateStatus("workspace", SyncStatus.Error);
+							return {
+								success: false,
+								error: {
+									type: SyncErrorType.ConflictError,
+									message: "User chose to manually resolve file conflicts",
+									timestamp: new Date().toISOString(),
+									retryable: true,
+								},
+							};
+						}
+
+						// Apply file conflict resolution
+						if (fileChoice === "Keep Local Files") {
+							for (const conflict of mergeResult.fileConflicts) {
+								if (conflict.local) {
+									mergeResult.autoMergedFilesData[conflict.filePath] = conflict.local;
+								}
+							}
+						} else {
+							// Keep Remote Files (or user closed dialog)
+							for (const conflict of mergeResult.fileConflicts) {
+								if (conflict.remote) {
+									mergeResult.autoMergedFilesData[conflict.filePath] = conflict.remote;
+								}
+							}
+						}
+					}
+
+					// Handle workspace todo conflicts
+					if (mergeResult.workspaceConflicts.length > 0) {
+						const resolution = await this.showConflictDialog(
+							mergeResult.workspaceConflicts,
+							mergeResult.autoMergedWorkspaceTodos,
+							baseWorkspaceTodos
+						);
+
+						if (!resolution) {
+							// User cancelled conflict resolution
+							this.updateStatus("workspace", SyncStatus.Error);
+							return {
+								success: false,
+								error: {
+									type: SyncErrorType.ConflictError,
+									message: "User cancelled workspace conflict resolution",
+									timestamp: new Date().toISOString(),
+									retryable: true,
+								},
+							};
+						}
+
+						// Apply user's conflict resolutions while preserving positions
+						mergeResult.autoMergedWorkspaceTodos = mergeWithPreservedPositions(
+							mergeResult.autoMergedWorkspaceTodos,
+							resolution,
+							baseWorkspaceTodos
+						);
+					}
+
+					// Upload merged result
+					console.log(
+						`[SyncManager] Workspace: Uploading merged result (${mergeResult.autoMergedWorkspaceTodos.length} todos, ${Object.keys(mergeResult.autoMergedFilesData).length} files)`
+					);
+					const finalMerged: WorkspaceGistData = {
+						workspaceTodos: mergeResult.autoMergedWorkspaceTodos,
+						filesData: mergeResult.autoMergedFilesData,
 					};
-				} else {
-					// Keep Remote (or user closed dialog)
-					console.log(`[SyncManager] User chose to keep remote workspace changes`);
-					return await this.downloadWorkspace(gistId, fileName);
+					const updatedCache: GistCache<WorkspaceGistData> = {
+						data: finalMerged,
+						lastCleanRemoteData: finalMerged,
+						lastSynced: new Date().toISOString(),
+						isDirty: false,
+					};
+					const conflictUploadResult = await this.uploadWorkspace(gistId, fileName, updatedCache);
+
+					// Fire data downloaded event to trigger UI update
+					if (conflictUploadResult.success) {
+						this.onDataDownloadedEmitter.fire({ scope: "workspace" });
+					}
+
+					return conflictUploadResult;
 				}
+
+				// No conflicts - auto-merge successful!
+				const summary = formatWorkspaceMergeSummary(mergeResult, baseWorkspaceTodos, baseFilesData);
+				console.log(`[SyncManager] Workspace: Auto-merge successful: ${summary}`);
+
+				// Upload merged result
+				const finalMerged: WorkspaceGistData = {
+					workspaceTodos: mergeResult.autoMergedWorkspaceTodos,
+					filesData: mergeResult.autoMergedFilesData,
+				};
+				const updatedCache: GistCache<WorkspaceGistData> = {
+					data: finalMerged,
+					lastCleanRemoteData: finalMerged,
+					lastSynced: new Date().toISOString(),
+					isDirty: false,
+				};
+
+				const uploadResult = await this.uploadWorkspace(gistId, fileName, updatedCache);
+
+				// Show success notification and fire event to update UI
+				if (uploadResult.success) {
+					vscode.window.showInformationMessage(`Workspace sync successful: ${summary}`);
+					this.onDataDownloadedEmitter.fire({ scope: "workspace" });
+				}
+
+				return uploadResult;
 			}
 
 			// Remote has changes, local is clean
@@ -569,6 +711,8 @@ export class SyncManager {
 					retryable: true,
 				},
 			};
+		} finally {
+			this.workspaceSyncInProgress = false;
 		}
 	}
 

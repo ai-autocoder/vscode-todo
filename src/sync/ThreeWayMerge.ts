@@ -1,5 +1,6 @@
-import { Todo } from "../todo/todoTypes";
+import { Todo, TodoFilesData } from "../todo/todoTypes";
 import { isEqual } from "../todo/todoUtils";
+import { WorkspaceMergeResult, FileConflictSet } from "./syncTypes";
 
 /**
  * Result of a three-way merge operation
@@ -286,6 +287,264 @@ export function formatMergeSummary(result: MergeResult, base: Todo[]): string {
 	}
 	if (deleted.length > 0) {
 		parts.push(`${deleted.length} deleted`);
+	}
+
+	return parts.length > 0 ? parts.join(", ") : "No changes";
+}
+
+/**
+ * Merges auto-merged todos with user-resolved conflict todos while preserving their original positions.
+ *
+ * The function reconstructs the final array based on the original order from the base array:
+ * - Todos that existed in base maintain their relative positions
+ * - Newly added todos (not in base) are appended at the end
+ *
+ * @param autoMerged - Todos that were successfully auto-merged (may include modified, added, or kept todos)
+ * @param resolved - Todos from conflicts that user resolved
+ * @param base - The original base array used as reference for ordering
+ * @returns Final merged array with preserved positions
+ */
+export function mergeWithPreservedPositions(autoMerged: Todo[], resolved: Todo[], base: Todo[]): Todo[] {
+	// Create maps for quick lookup
+	const autoMergedMap = new Map(autoMerged.map((t) => [t.id, t]));
+	const resolvedMap = new Map(resolved.map((t) => [t.id, t]));
+
+	// Combine into single map (resolved takes precedence over autoMerged)
+	const combinedMap = new Map([...autoMergedMap, ...resolvedMap]);
+
+	// Build result array preserving base order
+	const result: Todo[] = [];
+
+	// First, add todos that existed in base, maintaining their order
+	for (const baseTodo of base) {
+		const merged = combinedMap.get(baseTodo.id);
+		if (merged) {
+			result.push(merged);
+			combinedMap.delete(baseTodo.id); // Mark as processed
+		}
+		// If not in combined map, it was deleted - skip it
+	}
+
+	// Then, append any newly added todos (not in base)
+	for (const todo of combinedMap.values()) {
+		result.push(todo);
+	}
+
+	return result;
+}
+
+/**
+ * Performs a three-way merge of workspace data including both workspaceTodos and filesData.
+ *
+ * Algorithm:
+ * - Merges workspaceTodos array using standard threeWayMerge
+ * - Merges filesData dictionary by:
+ *   1. Finding all file paths across base, local, and remote
+ *   2. For each file path, performing three-way merge on its todo array
+ *   3. Detecting file-level conflicts (file added/deleted/modified in conflicting ways)
+ *
+ * @param baseWorkspaceTodos - The last known clean remote workspace todos (baseline)
+ * @param localWorkspaceTodos - Current local workspace todos
+ * @param remoteWorkspaceTodos - Current remote workspace todos
+ * @param baseFilesData - The last known clean remote files data (baseline)
+ * @param localFilesData - Current local files data
+ * @param remoteFilesData - Current remote files data
+ * @returns WorkspaceMergeResult with auto-merged data and any conflicts
+ */
+export function threeWayMergeWorkspace(
+	baseWorkspaceTodos: Todo[],
+	localWorkspaceTodos: Todo[],
+	remoteWorkspaceTodos: Todo[],
+	baseFilesData: TodoFilesData,
+	localFilesData: TodoFilesData,
+	remoteFilesData: TodoFilesData
+): WorkspaceMergeResult {
+	// Merge workspace todos using standard three-way merge
+	const workspaceMergeResult = threeWayMerge(baseWorkspaceTodos, localWorkspaceTodos, remoteWorkspaceTodos);
+
+	// Merge filesData dictionary
+	const filesDataMergeResult = mergeFilesData(baseFilesData, localFilesData, remoteFilesData);
+
+	return {
+		autoMergedWorkspaceTodos: workspaceMergeResult.autoMerged,
+		autoMergedFilesData: filesDataMergeResult.autoMerged,
+		workspaceConflicts: workspaceMergeResult.conflicts,
+		fileConflicts: filesDataMergeResult.conflicts,
+	};
+}
+
+/**
+ * Merges the filesData dictionary (file paths -> todo arrays).
+ *
+ * Algorithm:
+ * - Finds all file paths across base, local, and remote
+ * - For each file path:
+ *   1. If file exists in all three, perform three-way merge on todos
+ *   2. If file added in both local and remote, check if contents are identical
+ *   3. If file deleted on one side and modified on other, create conflict
+ *   4. If file only exists on one side, include it (added or kept)
+ *
+ * @param base - Base files data (last known clean remote state)
+ * @param local - Local files data (current local state)
+ * @param remote - Remote files data (current remote state)
+ * @returns Merged files data and file-level conflicts
+ */
+export function mergeFilesData(
+	base: TodoFilesData,
+	local: TodoFilesData,
+	remote: TodoFilesData
+): { autoMerged: TodoFilesData; conflicts: FileConflictSet[] } {
+	const allFilePaths = new Set([
+		...Object.keys(base),
+		...Object.keys(local),
+		...Object.keys(remote),
+	]);
+
+	const autoMerged: TodoFilesData = {};
+	const conflicts: FileConflictSet[] = [];
+
+	for (const filePath of allFilePaths) {
+		const baseTodos = base[filePath] || null;
+		const localTodos = local[filePath] || null;
+		const remoteTodos = remote[filePath] || null;
+
+		const inBase = baseTodos !== null;
+		const inLocal = localTodos !== null;
+		const inRemote = remoteTodos !== null;
+
+		// CASE 1: File exists in all three - perform three-way merge on todos
+		if (inBase && inLocal && inRemote) {
+			const localModified = !isEqual(baseTodos, localTodos);
+			const remoteModified = !isEqual(baseTodos, remoteTodos);
+
+			if (localModified && remoteModified && !isEqual(localTodos, remoteTodos)) {
+				// FILE CONFLICT: Both sides modified file differently
+				conflicts.push({
+					filePath,
+					base: baseTodos,
+					local: localTodos,
+					remote: remoteTodos,
+					conflictType: "file-edit-edit",
+				});
+			} else if (remoteModified) {
+				// Remote changed, local unchanged - use remote
+				autoMerged[filePath] = remoteTodos;
+			} else {
+				// Local changed or both unchanged - use local
+				autoMerged[filePath] = localTodos;
+			}
+			continue;
+		}
+
+		// CASE 2: File in base and local, not remote (deleted remotely)
+		if (inBase && inLocal && !inRemote) {
+			const localModified = !isEqual(baseTodos, localTodos);
+			if (localModified) {
+				// FILE CONFLICT: Local modified, remote deleted
+				conflicts.push({
+					filePath,
+					base: baseTodos,
+					local: localTodos,
+					remote: null,
+					conflictType: "file-edit-delete",
+				});
+			}
+			// else: accept deletion (don't add to autoMerged)
+			continue;
+		}
+
+		// CASE 3: File in base and remote, not local (deleted locally)
+		if (inBase && !inLocal && inRemote) {
+			const remoteModified = !isEqual(baseTodos, remoteTodos);
+			if (remoteModified) {
+				// FILE CONFLICT: Remote modified, local deleted
+				conflicts.push({
+					filePath,
+					base: baseTodos,
+					local: null,
+					remote: remoteTodos,
+					conflictType: "file-delete-edit",
+				});
+			}
+			// else: accept deletion (don't add to autoMerged)
+			continue;
+		}
+
+		// CASE 4: File in local and remote, not base (added on both sides)
+		if (!inBase && inLocal && inRemote) {
+			if (!isEqual(localTodos, remoteTodos)) {
+				// FILE CONFLICT: File added on both sides with different content
+				conflicts.push({
+					filePath,
+					base: null,
+					local: localTodos,
+					remote: remoteTodos,
+					conflictType: "file-added-both",
+				});
+			} else {
+				// Same content, add once
+				autoMerged[filePath] = localTodos;
+			}
+			continue;
+		}
+
+		// CASE 5: File only in local (added locally)
+		if (!inBase && inLocal && !inRemote) {
+			autoMerged[filePath] = localTodos;
+			continue;
+		}
+
+		// CASE 6: File only in remote (added remotely)
+		if (!inBase && !inLocal && inRemote) {
+			autoMerged[filePath] = remoteTodos;
+			continue;
+		}
+	}
+
+	return { autoMerged, conflicts };
+}
+
+/**
+ * Formats a summary of the workspace merge result for display to the user
+ */
+export function formatWorkspaceMergeSummary(
+	result: WorkspaceMergeResult,
+	baseWorkspaceTodos: Todo[],
+	baseFilesData: TodoFilesData
+): string {
+	const parts: string[] = [];
+
+	// Workspace todos summary
+	const workspaceSummary = formatMergeSummary(
+		{ autoMerged: result.autoMergedWorkspaceTodos, conflicts: result.workspaceConflicts },
+		baseWorkspaceTodos
+	);
+	if (workspaceSummary !== "No changes") {
+		parts.push(`Workspace: ${workspaceSummary}`);
+	}
+
+	// Files data summary
+	const baseFileCount = Object.keys(baseFilesData).length;
+	const mergedFileCount = Object.keys(result.autoMergedFilesData).length;
+	const filesAdded = mergedFileCount - baseFileCount;
+	const filesDeleted = baseFileCount - mergedFileCount;
+
+	if (filesAdded > 0) {
+		parts.push(`${filesAdded} file(s) added`);
+	}
+	if (filesDeleted > 0) {
+		parts.push(`${filesDeleted} file(s) deleted`);
+	}
+
+	// Count modified files (files that exist in both but have different todos)
+	let filesModified = 0;
+	for (const filePath of Object.keys(result.autoMergedFilesData)) {
+		if (baseFilesData[filePath] && !isEqual(baseFilesData[filePath], result.autoMergedFilesData[filePath])) {
+			filesModified++;
+		}
+	}
+	if (filesModified > 0) {
+		parts.push(`${filesModified} file(s) modified`);
 	}
 
 	return parts.length > 0 ? parts.join(", ") : "No changes";

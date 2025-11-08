@@ -227,6 +227,62 @@ export const GitHubAPI = {
 } as const;
 
 /**
+ * Workspace-specific merge result for three-way merge
+ */
+export interface WorkspaceMergeResult {
+	/** Workspace todos that were successfully auto-merged */
+	autoMergedWorkspaceTodos: Todo[];
+	/** Files data that was successfully auto-merged */
+	autoMergedFilesData: TodoFilesData;
+	/** Workspace todo conflicts that require user resolution */
+	workspaceConflicts: ConflictSet[];
+	/** File path conflicts (file added/removed/modified in conflicting ways) */
+	fileConflicts: FileConflictSet[];
+}
+
+/**
+ * Represents a conflict in the filesData dictionary
+ */
+export interface FileConflictSet {
+	/** The file path that has a conflict */
+	filePath: string;
+	/** The base version (from lastCleanRemoteData), null if didn't exist in base */
+	base: Todo[] | null;
+	/** The local version, null if deleted locally */
+	local: Todo[] | null;
+	/** The remote version, null if deleted remotely */
+	remote: Todo[] | null;
+	/** Type of conflict detected */
+	conflictType: "file-added-both" | "file-edit-edit" | "file-edit-delete" | "file-delete-edit";
+}
+
+/**
+ * Extended conflict set that includes file path context for workspace conflicts
+ */
+export interface WorkspaceConflictSet {
+	/** The file path this conflict belongs to (null for workspace todos) */
+	filePath: string | null;
+	/** The underlying todo conflict */
+	conflict: ConflictSet;
+}
+
+/**
+ * Conflict set interface (re-exported from ThreeWayMerge for convenience)
+ */
+export interface ConflictSet {
+	/** The ID of the conflicting todo */
+	todoId: number;
+	/** The base version (from lastCleanRemoteData), null if didn't exist in base */
+	base: Todo | null;
+	/** The local version, null if deleted locally */
+	local: Todo | null;
+	/** The remote version, null if deleted remotely */
+	remote: Todo | null;
+	/** Type of conflict detected */
+	conflictType: "edit-edit" | "edit-delete" | "delete-edit" | "id-collision";
+}
+
+/**
  * Sync configuration constants
  */
 export const SyncConstants = {

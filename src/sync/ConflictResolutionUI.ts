@@ -161,6 +161,12 @@ export class ConflictResolutionUI {
 				continue;
 			}
 
+			// Handle view-diff: show diff and re-prompt
+			if (resolution === "view-diff") {
+				await this.showDiffInEditor(conflict);
+				continue; // Show same conflict again
+			}
+
 			// Record resolution
 			resolutions.push({
 				conflictId: conflict.todoId,
@@ -186,26 +192,32 @@ export class ConflictResolutionUI {
 		conflict: ConflictSet,
 		index: number,
 		total: number
-	): Promise<"local" | "remote" | "skip" | "back" | "cancel"> {
+	): Promise<"local" | "remote" | "skip" | "back" | "cancel" | "view-diff"> {
 		const conflictDetail = this.formatConflictDetail(conflict);
 
 		const items: Array<{
 			label: string;
 			description: string;
 			detail: string;
-			value: "local" | "remote" | "skip" | "back";
+			value: "local" | "remote" | "skip" | "back" | "view-diff";
 		}> = [
 			{
 				label: "$(check) Keep Local",
 				description: conflict.local ? this.truncate(conflict.local.text, 60) : "[DELETED]",
-				detail: this.formatTodoDetails(conflict.local),
+				detail: conflict.local ? this.formatFullTodoText(conflict.local) : "[This todo was deleted]",
 				value: "local",
 			},
 			{
 				label: "$(cloud) Keep Remote",
 				description: conflict.remote ? this.truncate(conflict.remote.text, 60) : "[DELETED]",
-				detail: this.formatTodoDetails(conflict.remote),
+				detail: conflict.remote ? this.formatFullTodoText(conflict.remote) : "[This todo was deleted]",
 				value: "remote",
+			},
+			{
+				label: "$(diff) View Full Diff",
+				description: "Open side-by-side comparison",
+				detail: "Compare local and remote versions in editor",
+				value: "view-diff",
 			},
 			{
 				label: "$(debug-step-over) Skip This Conflict",
@@ -228,7 +240,7 @@ export class ConflictResolutionUI {
 		const selected = await vscode.window.showQuickPick(items, {
 			title: `Conflict ${index + 1} of ${total}: ${conflict.conflictType}`,
 			placeHolder: conflictDetail,
-			ignoreFocusOut: true,
+			ignoreFocusOut: false,
 			matchOnDescription: true,
 			matchOnDetail: true,
 		});
@@ -356,57 +368,27 @@ export class ConflictResolutionUI {
 	}
 
 	/**
-	 * Format conflict details for display
+	 * Format conflict details for display (increased truncation limits for better context)
 	 */
 	private static formatConflictDetail(conflict: ConflictSet): string {
 		const parts: string[] = [];
 
 		if (conflict.base) {
-			parts.push(`BASE: "${this.truncate(conflict.base.text, 40)}"`);
+			parts.push(`BASE: "${this.truncate(conflict.base.text, 80)}"`);
 		}
 
 		if (conflict.local) {
 			const status = conflict.local.completed ? "✓" : "○";
-			parts.push(`LOCAL: "${this.truncate(conflict.local.text, 40)}" ${status}`);
+			parts.push(`LOCAL: "${this.truncate(conflict.local.text, 80)}" ${status}`);
 		} else {
 			parts.push("LOCAL: [DELETED]");
 		}
 
 		if (conflict.remote) {
 			const status = conflict.remote.completed ? "✓" : "○";
-			parts.push(`REMOTE: "${this.truncate(conflict.remote.text, 40)}" ${status}`);
+			parts.push(`REMOTE: "${this.truncate(conflict.remote.text, 80)}" ${status}`);
 		} else {
 			parts.push("REMOTE: [DELETED]");
-		}
-
-		return parts.join(" | ");
-	}
-
-	/**
-	 * Format todo details for display
-	 */
-	private static formatTodoDetails(todo: Todo | null): string {
-		if (!todo) {
-			return "[This todo was deleted]";
-		}
-
-		const parts: string[] = [];
-
-		if (todo.completed) {
-			parts.push("✓ Completed");
-			if (todo.completionDate) {
-				parts.push(`on ${new Date(todo.completionDate).toLocaleDateString()}`);
-			}
-		} else {
-			parts.push("○ Incomplete");
-		}
-
-		if (todo.isNote) {
-			parts.push("📝 Note");
-		}
-
-		if (todo.isMarkdown) {
-			parts.push("Markdown");
 		}
 
 		return parts.join(" | ");
@@ -420,5 +402,94 @@ export class ConflictResolutionUI {
 			return text;
 		}
 		return text.substring(0, maxLength - 3) + "...";
+	}
+
+	/**
+	 * Format full todo text for detail field (no truncation)
+	 * Shows the complete text with metadata
+	 */
+	private static formatFullTodoText(todo: Todo): string {
+		const parts: string[] = [];
+
+		// Status and metadata
+		if (todo.completed) {
+			parts.push("✓ Completed");
+			if (todo.completionDate) {
+				parts.push(`on ${new Date(todo.completionDate).toLocaleDateString()}`);
+			}
+		} else {
+			parts.push("○ Incomplete");
+		}
+
+		if (todo.isNote) {
+			parts.push("| 📝 Note");
+		}
+
+		if (todo.isMarkdown) {
+			parts.push("| Markdown");
+		}
+
+		const metadata = parts.join(" ");
+		const charCount = `(${todo.text.length} chars)`;
+
+		// Return full text with metadata
+		return `${metadata} ${charCount}\n\n${todo.text}`;
+	}
+
+	/**
+	 * Show a diff comparison in the editor for a conflict
+	 * Creates temporary virtual documents and uses VS Code's diff view
+	 */
+	private static async showDiffInEditor(conflict: ConflictSet): Promise<void> {
+		const localContent = conflict.local?.text || "[DELETED]";
+		const remoteContent = conflict.remote?.text || "[DELETED]";
+
+		try {
+			// Determine language based on whether it's markdown
+			const isMarkdown = conflict.local?.isMarkdown || conflict.remote?.isMarkdown || false;
+			const language = isMarkdown ? "markdown" : "plaintext";
+
+			// Create temporary documents with full content
+			const localDoc = await vscode.workspace.openTextDocument({
+				content: `${this.formatConflictHeader("LOCAL", conflict.local)}\n\n${localContent}`,
+				language: language,
+			});
+
+			const remoteDoc = await vscode.workspace.openTextDocument({
+				content: `${this.formatConflictHeader("REMOTE", conflict.remote)}\n\n${remoteContent}`,
+				language: language,
+			});
+
+			// Show the diff (this opens a single diff editor tab)
+			await vscode.commands.executeCommand(
+				"vscode.diff",
+				localDoc.uri,
+				remoteDoc.uri,
+				`Local ↔ Remote`,
+				{
+					preview: true,
+					preserveFocus: false,
+				}
+			);
+		} catch (error) {
+			vscode.window.showErrorMessage(
+				`Failed to open diff view: ${error instanceof Error ? error.message : "Unknown error"}`
+			);
+		}
+	}
+
+	/**
+	 * Format a header for diff view documents
+	 */
+	private static formatConflictHeader(label: string, todo: Todo | null): string {
+		if (!todo) {
+			return `=== ${label}: [DELETED] ===`;
+		}
+
+		const status = todo.completed ? "✓ Completed" : "○ Incomplete";
+		const type = todo.isNote ? "📝 Note" : "Task";
+		const format = todo.isMarkdown ? "Markdown" : "Plain Text";
+
+		return `=== ${label}: ${status} | ${type} | ${format} ===`;
 	}
 }
