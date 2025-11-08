@@ -16,6 +16,9 @@ import {
 	GistCache,
 } from "./syncTypes";
 import { isEqual } from "../todo/todoUtils";
+import { threeWayMerge, formatMergeSummary, ConflictSet } from "./ThreeWayMerge";
+import { Todo } from "../todo/todoTypes";
+import { ConflictResolutionUI } from "./ConflictResolutionUI";
 
 export class SyncManager {
 	private apiClient: GitHubApiClient;
@@ -207,42 +210,78 @@ export class SyncManager {
 				hasRemoteChanges = !isEqual(remoteData.userTodos, cache.data.userTodos);
 			}
 
-			// TRUE CONFLICT: Both remote and local have different content
+			// Check if both have changes - if so, perform three-way merge
 			if (hasRemoteChanges && cache.isDirty) {
-				console.log(`[SyncManager] Conflict detected - both remote and local have changes`);
-				const choice = await vscode.window.showWarningMessage(
-					"Sync Conflict: Both local and remote todos have changes.",
-					{ modal: true },
-					"Keep Remote",
-					"Keep Local",
-					"View Gist"
-				);
+				console.log(`[SyncManager] Both remote and local have changes - performing three-way merge`);
 
-				if (choice === "Keep Local") {
-					// Upload local changes, overwrite remote
-					console.log(`[SyncManager] User chose to keep local changes`);
-					return await this.uploadUser(gistId, fileName, cache);
-				} else if (choice === "View Gist") {
-					// Open gist in browser for manual resolution
-					console.log(`[SyncManager] User chose to view gist`);
-					await vscode.env.openExternal(
-						vscode.Uri.parse(`https://gist.github.com/${gistId}`)
-					);
-					this.updateStatus("user", SyncStatus.Error);
-					return {
-						success: false,
-						error: {
-							type: SyncErrorType.UnknownError,
-							message: "User chose to manually resolve conflict",
-							timestamp: new Date().toISOString(),
-							retryable: true,
-						},
+				// Use last clean remote as base for three-way merge
+				const base = cache.lastCleanRemoteData?.userTodos || [];
+				const local = cache.data.userTodos;
+				const remote = remoteData.userTodos;
+
+				const mergeResult = threeWayMerge(base, local, remote);
+
+				// If there are conflicts, show conflict resolution dialog
+				if (mergeResult.conflicts.length > 0) {
+					console.log(`[SyncManager] ${mergeResult.conflicts.length} conflicts detected`);
+					const resolution = await this.showConflictDialog(mergeResult.conflicts, mergeResult.autoMerged, base);
+
+					if (!resolution) {
+						// User cancelled or closed dialog
+						this.updateStatus("user", SyncStatus.Error);
+						return {
+							success: false,
+							error: {
+								type: SyncErrorType.UnknownError,
+								message: "User cancelled conflict resolution",
+								timestamp: new Date().toISOString(),
+								retryable: true,
+							},
+						};
+					}
+
+					// Apply user's conflict resolutions
+					const finalMerged = [...mergeResult.autoMerged, ...resolution];
+
+					// Upload merged result
+					console.log(`[SyncManager] Uploading merged result (${finalMerged.length} todos)`);
+					const updatedCache: GistCache<GlobalGistData> = {
+						data: { userTodos: finalMerged },
+						lastCleanRemoteData: { userTodos: finalMerged },
+						lastSynced: new Date().toISOString(),
+						isDirty: false,
 					};
-				} else {
-					// Keep Remote (or user closed dialog)
-					console.log(`[SyncManager] User chose to keep remote changes`);
-					return await this.downloadUser(gistId, fileName);
+					const conflictUploadResult = await this.uploadUser(gistId, fileName, updatedCache);
+
+					// Fire data downloaded event to trigger UI update
+					if (conflictUploadResult.success) {
+						this.onDataDownloadedEmitter.fire({ scope: "user" });
+					}
+
+					return conflictUploadResult;
 				}
+
+				// No conflicts - auto-merge successful!
+				const summary = formatMergeSummary(mergeResult, base);
+				console.log(`[SyncManager] Auto-merge successful: ${summary}`);
+
+				// Upload merged result
+				const updatedCache: GistCache<GlobalGistData> = {
+					data: { userTodos: mergeResult.autoMerged },
+					lastCleanRemoteData: { userTodos: mergeResult.autoMerged },
+					lastSynced: new Date().toISOString(),
+					isDirty: false,
+				};
+
+				const uploadResult = await this.uploadUser(gistId, fileName, updatedCache);
+
+				// Show success notification and fire event to update UI
+				if (uploadResult.success) {
+					vscode.window.showInformationMessage(`Sync successful: ${summary}`);
+					this.onDataDownloadedEmitter.fire({ scope: "user" });
+				}
+
+				return uploadResult;
 			}
 
 			// Remote has changes, local is clean
@@ -654,6 +693,19 @@ export class SyncManager {
 			this.workspaceStatus = status;
 		}
 		this.onStatusChangeEmitter.fire({ scope, status });
+	}
+
+	/**
+	 * Show conflict resolution dialog to the user
+	 * Returns array of resolved todos, or null if user cancelled
+	 */
+	private async showConflictDialog(
+		conflicts: ConflictSet[],
+		autoMerged: Todo[],
+		base: Todo[]
+	): Promise<Todo[] | null> {
+		// Use enhanced conflict resolution UI
+		return await ConflictResolutionUI.resolveConflicts(conflicts, autoMerged, base);
 	}
 
 	/**
