@@ -20,6 +20,10 @@ import { threeWayMerge, formatMergeSummary, ConflictSet, threeWayMergeWorkspace,
 import { Todo } from "../todo/todoTypes";
 import { ConflictResolutionUI } from "./ConflictResolutionUI";
 
+function cloneData<T>(data: T): T {
+	return JSON.parse(JSON.stringify(data)) as T;
+}
+
 export class SyncManager {
 	private apiClient: GitHubApiClient;
 	private storageManager: SyncStorageManager;
@@ -176,12 +180,23 @@ export class SyncManager {
 				return await this.downloadUser(gistId, fileName);
 			}
 
+			const cachedTodos = Array.isArray(cache.data.userTodos) ? cache.data.userTodos : [];
+			const cachedCleanTodos = Array.isArray(cache.lastCleanRemoteData?.userTodos)
+				? cache.lastCleanRemoteData?.userTodos
+				: undefined;
+			const localHasChanges = cache.isDirty && (!cachedCleanTodos || !isEqual(cachedTodos, cachedCleanTodos));
+
+			if (cache.isDirty && !localHasChanges) {
+				cache.isDirty = false;
+				await this.storageManager.setGlobalGistCache(fileName, cache);
+			}
+
 			// Download and parse remote content for comparison
 			const fileResult = await this.apiClient.readFile(gistId, fileName);
 			if (!fileResult.success || !fileResult.data) {
 				// File not found - treat as empty
 				if (fileResult.error?.type === SyncErrorType.FileNotFoundError) {
-					if (cache.isDirty) {
+					if (localHasChanges) {
 						// Local has changes, upload to create file
 						return await this.uploadUser(gistId, fileName, cache);
 					}
@@ -210,25 +225,27 @@ export class SyncManager {
 				};
 			}
 
+			const remoteTodos = Array.isArray(remoteData.userTodos) ? remoteData.userTodos : [];
+
 			// Content-based comparison - compare with last known clean remote state
 			let hasRemoteChanges: boolean;
-			if (cache.lastCleanRemoteData) {
+			if (cachedCleanTodos) {
 				// Compare remote with last known clean remote (not current cache which includes local changes)
-				hasRemoteChanges = !isEqual(remoteData.userTodos, cache.lastCleanRemoteData.userTodos);
+				hasRemoteChanges = !isEqual(remoteTodos, cachedCleanTodos);
 			} else {
 				// Backwards compatibility: first time with new code, don't know last clean state
 				// Treat as potentially changed and update lastCleanRemoteData on download/upload
-				hasRemoteChanges = !isEqual(remoteData.userTodos, cache.data.userTodos);
+				hasRemoteChanges = !isEqual(remoteTodos, cachedTodos);
 			}
 
 			// Check if both have changes - if so, perform three-way merge
-			if (hasRemoteChanges && cache.isDirty) {
+			if (hasRemoteChanges && localHasChanges) {
 				console.log(`[SyncManager] Both remote and local have changes - performing three-way merge`);
 
 				// Use last clean remote as base for three-way merge
-				const base = cache.lastCleanRemoteData?.userTodos || [];
-				const local = cache.data.userTodos;
-				const remote = remoteData.userTodos;
+				const base = cachedCleanTodos || [];
+				const local = cachedTodos;
+				const remote = remoteTodos;
 
 				const mergeResult = threeWayMerge(base, local, remote);
 
@@ -256,9 +273,10 @@ export class SyncManager {
 
 					// Upload merged result
 					console.log(`[SyncManager] Uploading merged result (${finalMerged.length} todos)`);
+					const updatedCleanData = cloneData({ userTodos: finalMerged });
 					const updatedCache: GistCache<GlobalGistData> = {
 						data: { userTodos: finalMerged },
-						lastCleanRemoteData: { userTodos: finalMerged },
+						lastCleanRemoteData: updatedCleanData,
 						lastSynced: new Date().toISOString(),
 						isDirty: false,
 					};
@@ -277,9 +295,10 @@ export class SyncManager {
 				console.log(`[SyncManager] Auto-merge successful: ${summary}`);
 
 				// Upload merged result
+				const updatedCleanData = cloneData({ userTodos: mergeResult.autoMerged });
 				const updatedCache: GistCache<GlobalGistData> = {
 					data: { userTodos: mergeResult.autoMerged },
-					lastCleanRemoteData: { userTodos: mergeResult.autoMerged },
+					lastCleanRemoteData: updatedCleanData,
 					lastSynced: new Date().toISOString(),
 					isDirty: false,
 				};
@@ -302,7 +321,7 @@ export class SyncManager {
 			}
 
 			// Local has changes, upload to remote
-			if (cache.isDirty) {
+			if (localHasChanges) {
 				console.log(`[SyncManager] Local changes detected, uploading`);
 				return await this.uploadUser(gistId, fileName, cache);
 			}
@@ -338,9 +357,10 @@ export class SyncManager {
 				const emptyData: GlobalGistData = {
 						userTodos: [],
 				};
+				const cleanData = cloneData(emptyData);
 				const cache: GistCache<GlobalGistData> = {
 					data: emptyData,
-					lastCleanRemoteData: emptyData,
+					lastCleanRemoteData: cleanData,
 					lastSynced: new Date().toISOString(),
 					isDirty: true,
 					};
@@ -357,9 +377,10 @@ export class SyncManager {
 
 		try {
 			const data: GlobalGistData = JSON.parse(fileResult.data);
+			const cleanData = cloneData(data);
 			const cache: GistCache<GlobalGistData> = {
 				data,
-				lastCleanRemoteData: data,
+				lastCleanRemoteData: cleanData,
 				lastSynced: new Date().toISOString(),
 				isDirty: false,
 			};
@@ -475,12 +496,39 @@ export class SyncManager {
 				return await this.downloadWorkspace(gistId, fileName);
 			}
 
+			const cachedWorkspaceTodos = Array.isArray(cache.data.workspaceTodos)
+				? cache.data.workspaceTodos
+				: [];
+			const cachedFilesData =
+				typeof cache.data.filesData === "object" && cache.data.filesData !== null
+					? cache.data.filesData
+					: {};
+			const cachedCleanWorkspaceTodos = Array.isArray(cache.lastCleanRemoteData?.workspaceTodos)
+				? cache.lastCleanRemoteData?.workspaceTodos
+				: undefined;
+			const cachedCleanFilesData =
+				typeof cache.lastCleanRemoteData?.filesData === "object" &&
+				cache.lastCleanRemoteData?.filesData !== null
+					? cache.lastCleanRemoteData?.filesData
+					: undefined;
+			const localHasChanges =
+				cache.isDirty &&
+				(!cachedCleanWorkspaceTodos ||
+					!cachedCleanFilesData ||
+					!isEqual(cachedWorkspaceTodos, cachedCleanWorkspaceTodos) ||
+					!isEqual(cachedFilesData, cachedCleanFilesData));
+
+			if (cache.isDirty && !localHasChanges) {
+				cache.isDirty = false;
+				await this.storageManager.setWorkspaceGistCache(fileName, cache);
+			}
+
 			// Download and parse remote content for comparison
 			const fileResult = await this.apiClient.readFile(gistId, fileName);
 			if (!fileResult.success || !fileResult.data) {
 				// File not found - treat as empty
 				if (fileResult.error?.type === SyncErrorType.FileNotFoundError) {
-					if (cache.isDirty) {
+					if (localHasChanges) {
 						// Local has changes, upload to create file
 						return await this.uploadWorkspace(gistId, fileName, cache);
 					}
@@ -509,32 +557,38 @@ export class SyncManager {
 				};
 			}
 
+			const remoteWorkspaceTodos = Array.isArray(remoteData.workspaceTodos)
+				? remoteData.workspaceTodos
+				: [];
+			const remoteFilesData =
+				typeof remoteData.filesData === "object" && remoteData.filesData !== null
+					? remoteData.filesData
+					: {};
+
 			// Content-based comparison - compare with last known clean remote state
 			let hasRemoteChanges: boolean;
-			if (cache.lastCleanRemoteData) {
+			if (cachedCleanWorkspaceTodos && cachedCleanFilesData) {
 				// Compare remote with last known clean remote (not current cache which includes local changes)
-				const workspaceTodosChanged = !isEqual(remoteData.workspaceTodos, cache.lastCleanRemoteData.workspaceTodos);
-				const filesDataChanged = !isEqual(remoteData.filesData, cache.lastCleanRemoteData.filesData);
+				const workspaceTodosChanged = !isEqual(remoteWorkspaceTodos, cachedCleanWorkspaceTodos);
+				const filesDataChanged = !isEqual(remoteFilesData, cachedCleanFilesData);
 				hasRemoteChanges = workspaceTodosChanged || filesDataChanged;
 			} else {
 				// Backwards compatibility: first time with new code, don't know last clean state
 				// Treat as potentially changed and update lastCleanRemoteData on download/upload
-				const workspaceTodosChanged = !isEqual(remoteData.workspaceTodos, cache.data.workspaceTodos);
-				const filesDataChanged = !isEqual(remoteData.filesData, cache.data.filesData);
+				const workspaceTodosChanged = !isEqual(remoteWorkspaceTodos, cachedWorkspaceTodos);
+				const filesDataChanged = !isEqual(remoteFilesData, cachedFilesData);
 				hasRemoteChanges = workspaceTodosChanged || filesDataChanged;
 			}
 
 			// TRUE CONFLICT: Both remote and local have different content - perform three-way merge
-			if (hasRemoteChanges && cache.isDirty) {
+			if (hasRemoteChanges && localHasChanges) {
 				console.log(`[SyncManager] Workspace: Both remote and local have changes - performing three-way merge`);
 
 				// Use last clean remote as base for three-way merge
-				const baseWorkspaceTodos = cache.lastCleanRemoteData?.workspaceTodos || [];
-				const baseFilesData = cache.lastCleanRemoteData?.filesData || {};
-				const localWorkspaceTodos = cache.data.workspaceTodos;
-				const localFilesData = cache.data.filesData;
-				const remoteWorkspaceTodos = remoteData.workspaceTodos;
-				const remoteFilesData = remoteData.filesData;
+				const baseWorkspaceTodos = cachedCleanWorkspaceTodos || [];
+				const baseFilesData = cachedCleanFilesData || {};
+				const localWorkspaceTodos = cachedWorkspaceTodos;
+				const localFilesData = cachedFilesData;
 
 				const mergeResult = threeWayMergeWorkspace(
 					baseWorkspaceTodos,
@@ -641,9 +695,10 @@ export class SyncManager {
 						workspaceTodos: mergeResult.autoMergedWorkspaceTodos,
 						filesData: mergeResult.autoMergedFilesData,
 					};
+					const updatedCleanData = cloneData(finalMerged);
 					const updatedCache: GistCache<WorkspaceGistData> = {
 						data: finalMerged,
-						lastCleanRemoteData: finalMerged,
+						lastCleanRemoteData: updatedCleanData,
 						lastSynced: new Date().toISOString(),
 						isDirty: false,
 					};
@@ -666,9 +721,10 @@ export class SyncManager {
 					workspaceTodos: mergeResult.autoMergedWorkspaceTodos,
 					filesData: mergeResult.autoMergedFilesData,
 				};
+				const updatedCleanData = cloneData(finalMerged);
 				const updatedCache: GistCache<WorkspaceGistData> = {
 					data: finalMerged,
-					lastCleanRemoteData: finalMerged,
+					lastCleanRemoteData: updatedCleanData,
 					lastSynced: new Date().toISOString(),
 					isDirty: false,
 				};
@@ -691,7 +747,7 @@ export class SyncManager {
 			}
 
 			// Local has changes, upload to remote
-			if (cache.isDirty) {
+			if (localHasChanges) {
 				console.log(`[SyncManager] Workspace local changes detected, uploading`);
 				return await this.uploadWorkspace(gistId, fileName, cache);
 			}
@@ -728,9 +784,10 @@ export class SyncManager {
 						workspaceTodos: [],
 					filesData: {},
 				};
+				const cleanData = cloneData(emptyData);
 				const cache: GistCache<WorkspaceGistData> = {
 					data: emptyData,
-					lastCleanRemoteData: emptyData,
+					lastCleanRemoteData: cleanData,
 					lastSynced: new Date().toISOString(),
 					isDirty: true,
 					};
@@ -747,9 +804,10 @@ export class SyncManager {
 
 		try {
 			const data: WorkspaceGistData = JSON.parse(fileResult.data);
+			const cleanData = cloneData(data);
 			const cache: GistCache<WorkspaceGistData> = {
 				data,
-				lastCleanRemoteData: data,
+				lastCleanRemoteData: cleanData,
 				lastSynced: new Date().toISOString(),
 				isDirty: false,
 			};

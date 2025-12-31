@@ -64,17 +64,6 @@ export async function activate(context: ExtensionContext) {
 	// Set coordinator in sync commands so it can be notified of mode changes
 	syncCommands.setVisibilityCoordinator(visibilityCoordinator);
 
-	// Start polling immediately if pollOnlyWhenVisible is disabled
-	const pollOnlyWhenVisible = syncConfig.get<boolean>("pollOnlyWhenVisible", true);
-	if (!pollOnlyWhenVisible && (userSyncMode === "github" || workspaceSyncMode === "github")) {
-		if (userSyncMode === "github") {
-			syncManager.startPolling("user", pollInterval);
-		}
-		if (workspaceSyncMode === "github") {
-			syncManager.startPolling("workspace", pollInterval);
-		}
-	}
-
 	// Listen for sync status changes and update status bar
 	const syncStatusListener = syncManager.onStatusChange((event) => {
 		updateSyncStatus(event.scope, event.status);
@@ -100,31 +89,62 @@ export async function activate(context: ExtensionContext) {
 		context.globalState.setKeysForSync(
 			currentSyncMode === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
 		);
-		const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
-			// Handle GitHub sync poll interval changes
-			if (e.affectsConfiguration("vscodeTodo.sync.github.pollInterval")) {
-				const updatedSyncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
-				const updatedPollInterval = updatedSyncConfig.get<number>("github.pollInterval", 180);
+	}
 
-				// Update coordinator
-				visibilityCoordinator.updatePollInterval(updatedPollInterval);
+	const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
+		let reloadUser = false;
+		let reloadWorkspace = false;
 
-				// If pollOnlyWhenVisible is disabled, restart polling immediately
-				const updatedPollOnlyWhenVisible = updatedSyncConfig.get<boolean>("pollOnlyWhenVisible", true);
-				if (!updatedPollOnlyWhenVisible) {
-					const currentUserMode = context.globalState.get<string>("syncMode", "profile-local");
-					const currentWorkspaceMode = context.workspaceState.get<string>("syncMode", "local");
+		// Handle GitHub sync poll interval changes
+		if (e.affectsConfiguration("vscodeTodo.sync.github.pollInterval")) {
+			const updatedSyncConfig = vscode.workspace.getConfiguration("vscodeTodo.sync");
+			const updatedPollInterval = updatedSyncConfig.get<number>("github.pollInterval", 180);
 
-					if (currentUserMode === "github") {
-						syncManager.startPolling("user", updatedPollInterval);
-					}
-					if (currentWorkspaceMode === "github") {
-						syncManager.startPolling("workspace", updatedPollInterval);
-					}
+			// Update coordinator
+			visibilityCoordinator.updatePollInterval(updatedPollInterval);
+
+			// If pollOnlyWhenVisible is disabled, restart polling immediately
+			const updatedPollOnlyWhenVisible = updatedSyncConfig.get<boolean>("pollOnlyWhenVisible", true);
+			if (!updatedPollOnlyWhenVisible) {
+				const currentUserMode = context.globalState.get<string>("syncMode", "profile-local");
+				const currentWorkspaceMode = context.workspaceState.get<string>("syncMode", "local");
+
+				if (currentUserMode === "github") {
+					syncManager.startPolling("user", updatedPollInterval);
+				}
+				if (currentWorkspaceMode === "github") {
+					syncManager.startPolling("workspace", updatedPollInterval);
 				}
 			}
-		});
-		context.subscriptions.push(configListener);
+		}
+
+		if (e.affectsConfiguration("vscodeTodo.sync.github.userFile")) {
+			reloadUser = true;
+		}
+
+		if (e.affectsConfiguration("vscodeTodo.sync.github.workspaceFile")) {
+			reloadWorkspace = true;
+		}
+
+		if (reloadUser) {
+			void reloadScopeData("user", store, storageSyncManager);
+		}
+
+		if (reloadWorkspace) {
+			void reloadScopeData("workspace", store, storageSyncManager);
+		}
+	});
+	context.subscriptions.push(configListener);
+
+	// Start polling immediately if pollOnlyWhenVisible is disabled
+	const pollOnlyWhenVisible = syncConfig.get<boolean>("pollOnlyWhenVisible", true);
+	if (!pollOnlyWhenVisible && (userSyncMode === "github" || workspaceSyncMode === "github")) {
+		if (userSyncMode === "github") {
+			syncManager.startPolling("user", pollInterval);
+		}
+		if (workspaceSyncMode === "github") {
+			syncManager.startPolling("workspace", pollInterval);
+		}
 	}
 
 	const commands = [
@@ -146,31 +166,6 @@ export async function activate(context: ExtensionContext) {
 	];
 
 	const statusBarItem = initStatusBarItem(context);
-
-	store.subscribe(() => {
-		const state = store.getState();
-
-		switch (state.actionTracker.lastSliceName) {
-			case Slices.unset:
-			case Slices.actionTracker:
-				return;
-			case Slices.user:
-			case Slices.workspace:
-			case Slices.currentFile:
-				handleTodoChange(
-					state,
-					state[state.actionTracker.lastSliceName],
-					store,
-					context,
-					storageSyncManager,
-					syncManager
-				);
-				break;
-			case Slices.editorFocusAndRecords:
-				handleEditorFocusAndRecordsChange(state, store, context);
-				break;
-		}
-	});
 
 	const initialWorkspaceTodos = await storageSyncManager.getWorkspaceTodos();
 	const initialUserTodos = await storageSyncManager.getUserTodos();
@@ -196,6 +191,34 @@ export async function activate(context: ExtensionContext) {
 			getWorkspaceFilesWithRecords(initialWorkspaceFilesData ?? {})
 		)
 	);
+
+	store.dispatch(actionTrackerActions.resetLastSliceName());
+	updateStatusBarItem(store.getState());
+
+	store.subscribe(() => {
+		const state = store.getState();
+
+		switch (state.actionTracker.lastSliceName) {
+			case Slices.unset:
+			case Slices.actionTracker:
+				return;
+			case Slices.user:
+			case Slices.workspace:
+			case Slices.currentFile:
+				handleTodoChange(
+					state,
+					state[state.actionTracker.lastSliceName],
+					store,
+					context,
+					storageSyncManager,
+					syncManager
+				);
+				break;
+			case Slices.editorFocusAndRecords:
+				handleEditorFocusAndRecordsChange(state, store, context);
+				break;
+		}
+	});
 
 	// Load current active editor tab and listen for changes
 	tabChangeHandler(store, context);

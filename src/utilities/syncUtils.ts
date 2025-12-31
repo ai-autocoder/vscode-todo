@@ -73,6 +73,16 @@ export async function clearWorkspaceOverride(setting: string): Promise<void> {
 		await config.update(setting, undefined, vscode.ConfigurationTarget.Workspace);
 		LogChannel.log(`[SyncUtils] Cleared workspace override for ${setting}`);
 	}
+
+	const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+	for (const folder of workspaceFolders) {
+		const folderConfig = vscode.workspace.getConfiguration("vscodeTodo.sync", folder.uri);
+		const folderOverride = folderConfig.inspect<string>(setting)?.workspaceFolderValue;
+		if (folderOverride !== undefined) {
+			await folderConfig.update(setting, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+			LogChannel.log(`[SyncUtils] Cleared workspace folder override for ${setting} (${folder.name})`);
+		}
+	}
 }
 
 /**
