@@ -367,10 +367,6 @@ export class TodoService {
 		vscode.postMessage(messagesFromWebview.disconnectGitHub());
 	}
 
-	setGistId() {
-		vscode.postMessage(messagesFromWebview.setGistId());
-	}
-
 	setUserFile() {
 		vscode.postMessage(messagesFromWebview.setUserFile());
 	}

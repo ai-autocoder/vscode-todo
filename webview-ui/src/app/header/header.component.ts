@@ -142,10 +142,6 @@ export class HeaderComponent implements OnInit {
 		this.todoService.disconnectGitHub();
 	}
 
-	setGistId() {
-		this.todoService.setGistId();
-	}
-
 	setUserFile() {
 		this.todoService.setUserFile();
 	}

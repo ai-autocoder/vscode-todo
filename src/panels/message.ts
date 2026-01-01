@@ -125,7 +125,6 @@ export const enum MessageActionsFromWebview {
 	selectWorkspaceSyncMode = "selectWorkspaceSyncMode",
 	connectGitHub = "connectGitHub",
 	disconnectGitHub = "disconnectGitHub",
-	setGistId = "setGistId",
 	setUserFile = "setUserFile",
 	setWorkspaceFile = "setWorkspaceFile",
 	syncNow = "syncNow",
@@ -287,9 +286,6 @@ export const messagesFromWebview = {
 	}),
 	disconnectGitHub: (): { type: MessageActionsFromWebview.disconnectGitHub } => ({
 		type: MessageActionsFromWebview.disconnectGitHub,
-	}),
-	setGistId: (): { type: MessageActionsFromWebview.setGistId } => ({
-		type: MessageActionsFromWebview.setGistId,
 	}),
 	setUserFile: (): { type: MessageActionsFromWebview.setUserFile } => ({
 		type: MessageActionsFromWebview.setUserFile,

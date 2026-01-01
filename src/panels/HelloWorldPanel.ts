@@ -429,10 +429,6 @@ export class HelloWorldPanel {
 						commands.executeCommand("vsc-todo.disconnectGitHub");
 						break;
 					}
-					case MessageActionsFromWebview.setGistId: {
-						commands.executeCommand("vsc-todo.setGistId");
-						break;
-					}
 					case MessageActionsFromWebview.setUserFile: {
 						commands.executeCommand("vsc-todo.setUserFile");
 						break;

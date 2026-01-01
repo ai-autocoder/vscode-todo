@@ -8,7 +8,7 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import { GitHubAuthManager } from "./GitHubAuthManager";
 import { GitHubApiClient } from "./GitHubApiClient";
 import { SyncManager } from "./SyncManager";
-import { GlobalSyncMode, WorkspaceSyncMode, GIST_ID_REGEX, SyncErrorType } from "./syncTypes";
+import { GlobalSyncMode, WorkspaceSyncMode, SyncErrorType } from "./syncTypes";
 import { StoreState, TodoScope } from "../todo/todoTypes";
 import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFileActions } from "../todo/store";
 import StorageSyncManager from "../storage/StorageSyncManager";
@@ -62,7 +62,6 @@ export class SyncCommands {
 		return [
 			vscode.commands.registerCommand("vsc-todo.connectGitHub", () => this.connectGitHub()),
 			vscode.commands.registerCommand("vsc-todo.disconnectGitHub", () => this.disconnectGitHub()),
-			vscode.commands.registerCommand("vsc-todo.setGistId", () => this.setGistId()),
 			vscode.commands.registerCommand("vsc-todo.viewGistOnGitHub", () => this.viewGistOnGitHub()),
 			vscode.commands.registerCommand("vsc-todo.selectUserSyncMode", () => this.selectUserSyncMode()),
 			vscode.commands.registerCommand("vsc-todo.selectWorkspaceSyncMode", () => this.selectWorkspaceSyncMode()),
@@ -119,74 +118,10 @@ export class SyncCommands {
 	}
 
 	/**
-	 * Command: Set Gist ID
+	 * Open settings for gist ID configuration
 	 */
-	private async setGistId(): Promise<void> {
-		const gistId = await vscode.window.showInputBox({
-			prompt: "Enter your GitHub Gist ID (32-character hex string)",
-			placeHolder: "abc123def456...",
-			validateInput: (value) => {
-				if (!value) {
-					return "Gist ID is required";
-				}
-				if (!GIST_ID_REGEX.test(value)) {
-					return "Invalid gist ID format. Must be 32-character hex string.";
-				}
-				return null;
-			},
-		});
-
-		if (!gistId) {
-			return;
-		}
-
-		// Verify gist exists and is accessible
-		await vscode.window.withProgress(
-			{
-				location: vscode.ProgressLocation.Notification,
-				title: "Verifying gist...",
-				cancellable: false,
-			},
-			async () => {
-				const result = await this.apiClient.verifyGist(gistId);
-				if (!result.success) {
-					vscode.window.showErrorMessage(
-						`Failed to verify gist: ${result.error?.message || "Unknown error"}`
-					);
-					return;
-				}
-
-				// Ask where to save
-				const scope = await vscode.window.showQuickPick(
-					[
-						{
-							label: "User Settings",
-							description: "All workspaces will use this gist ID by default",
-							target: vscode.ConfigurationTarget.Global,
-						},
-						{
-							label: "Workspace Settings",
-							description: "Only this workspace will use this gist ID",
-							target: vscode.ConfigurationTarget.Workspace,
-						},
-					],
-					{
-						placeHolder: "Where do you want to save the gist ID?",
-					}
-				);
-
-				if (!scope) {
-					return;
-				}
-
-				const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-				await config.update("github.gistId", gistId, scope.target);
-
-				vscode.window.showInformationMessage(
-					"Gist ID saved. Use sync mode commands to enable GitHub sync."
-				);
-			}
-		);
+	private async openGistIdSettings(): Promise<void> {
+		await vscode.commands.executeCommand("workbench.action.openSettings", "vscodeTodo.sync.github.gistId");
 	}
 
 	/**
@@ -197,7 +132,13 @@ export class SyncCommands {
 		const gistId = config.get<string>("github.gistId");
 
 		if (!gistId) {
-			vscode.window.showErrorMessage("Gist ID not configured. Use 'Set Gist ID' command first.");
+			const action = await vscode.window.showErrorMessage(
+				"Gist ID not configured. Set 'vscodeTodo.sync.github.gistId' in Settings.",
+				"Open Settings"
+			);
+			if (action === "Open Settings") {
+				await this.openGistIdSettings();
+			}
 			return;
 		}
 
@@ -252,12 +193,12 @@ export class SyncCommands {
 			const gistId = config.get<string>("github.gistId");
 			if (!gistId) {
 				const setup = await vscode.window.showInformationMessage(
-					"Gist ID not configured. Would you like to set it now?",
-					"Set Gist ID",
+					"Gist ID not configured. Set 'vscodeTodo.sync.github.gistId' in Settings to enable GitHub sync.",
+					"Open Settings",
 					"Cancel"
 				);
-				if (setup === "Set Gist ID") {
-					await this.setGistId();
+				if (setup === "Open Settings") {
+					await this.openGistIdSettings();
 				}
 				return;
 			}
@@ -341,12 +282,12 @@ export class SyncCommands {
 			const gistId = config.get<string>("github.gistId");
 			if (!gistId) {
 				const setup = await vscode.window.showInformationMessage(
-					"Gist ID not configured. Would you like to set it now?",
-					"Set Gist ID",
+					"Gist ID not configured. Set 'vscodeTodo.sync.github.gistId' in Settings to enable GitHub sync.",
+					"Open Settings",
 					"Cancel"
 				);
-				if (setup === "Set Gist ID") {
-					await this.setGistId();
+				if (setup === "Open Settings") {
+					await this.openGistIdSettings();
 				}
 				return;
 			}
@@ -744,7 +685,7 @@ export class SyncCommands {
 				break;
 			case SyncErrorType.NotFoundError:
 				message = `${scope} sync failed: Gist not found. Please check your gist ID.`;
-				actions = ["Set Gist ID"];
+				actions = ["Open Settings"];
 				break;
 			case SyncErrorType.RateLimitError:
 				message = `${scope} sync failed: GitHub rate limit exceeded. Please try again later.`;
@@ -763,8 +704,8 @@ export class SyncCommands {
 					case "Connect GitHub":
 						await this.connectGitHub();
 						break;
-					case "Set Gist ID":
-						await this.setGistId();
+					case "Open Settings":
+						await this.openGistIdSettings();
 						break;
 					case "View Gist":
 						await this.viewGistOnGitHub();

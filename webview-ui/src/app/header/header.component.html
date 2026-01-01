@@ -108,15 +108,6 @@
 				</button>
 			}
 
-			<!-- GitHub configuration options (disabled when not connected) -->
-			<button
-				mat-menu-item
-				(click)="setGistId()"
-				[disabled]="!(isGitHubConnected | async)"
-				aria-label="Set Gist ID"
-			>
-				Set Gist ID
-			</button>
 			<button
 				mat-menu-item
 				(click)="setUserFile()"

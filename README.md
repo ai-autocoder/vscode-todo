@@ -207,19 +207,19 @@ Sync your todos via a **manually-created GitHub Gist**. This mode provides:
    - Copy the gist ID from the URL (e.g., `https://gist.github.com/username/abc123def456` → ID is `abc123def456`)
 
 2. **Configure in VS Code Todo**
-   - Open the VS Code Todo panel and click the **settings menu (gear icon)**
-   - Select **"GitHub Sync Settings"**
-   - Click **"Connect GitHub"** and authenticate (requires `gist` scope)
-   - Paste your gist ID and configure:
-     - **User Sync Mode**: Choose "GitHub Gist"
-     - **Workspace Sync Mode**: Choose "GitHub Gist"
-     - **User File**: Select or create a file (e.g., `user-todos.json`)
-     - **Workspace File**: Auto-filled with workspace name or customize/pick an existing file
+    - Open the VS Code Todo panel and click the **settings menu (gear icon)**
+    - Select **"GitHub Sync Settings"**
+    - Click **"Connect GitHub"** and authenticate (requires `gist` scope)
+    - Set your gist ID in VS Code Settings: `vscodeTodo.sync.github.gistId` (User or Workspace)
+    - Configure:
+      - **User Sync Mode**: Choose "GitHub Gist"
+      - **Workspace Sync Mode**: Choose "GitHub Gist"
+      - **User File**: Select or create a file (e.g., `user-todos.json`)
+      - **Workspace File**: Auto-filled with workspace name or customize/pick an existing file
 
 **Alternative:** Use Command Palette commands (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
 - **VS Code Todo: Connect GitHub**
-- **VS Code Todo: Set Gist ID**
 - **VS Code Todo: Select User Sync Mode** / **Select Workspace Sync Mode**
 - **VS Code Todo: Set User File** / **Set Workspace File**
 
@@ -315,7 +315,7 @@ The extension uses **content-based conflict detection** to protect your data:
 - Run **VS Code Todo: Connect GitHub** and sign in
 
 **"Gist ID not configured"**
-- Run **VS Code Todo: Set Gist ID** and paste your gist ID
+- Set `vscodeTodo.sync.github.gistId` in Settings (User or Workspace)
 
 **"File not found in gist"**
 - The file will be auto-created on first sync, or create it manually on GitHub
