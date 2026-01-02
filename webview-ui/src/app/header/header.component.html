@@ -82,19 +82,39 @@
 
 		<mat-divider></mat-divider>
 
-		<!-- Sync mode options -->
-		<button mat-menu-item (click)="selectUserSyncMode()" aria-label="Select User Sync Mode">
-			Select User Sync Mode
-		</button>
-		<button mat-menu-item (click)="selectWorkspaceSyncMode()" aria-label="Select Workspace Sync Mode">
-			Select Workspace Sync Mode
-		</button>
+		<!-- Sync settings -->
+		<fieldset>
+			<legend>Sync Settings</legend>
+
+			<button mat-menu-item (click)="selectUserSyncMode()" aria-label="Select User Sync Mode">
+				Select User Sync Mode
+			</button>
+			<button mat-menu-item (click)="selectWorkspaceSyncMode()" aria-label="Select Workspace Sync Mode">
+				Select Workspace Sync Mode
+			</button>
+			<button
+				mat-menu-item
+				(click)="setUserFile()"
+				[disabled]="!(isGitHubConnected | async)"
+				aria-label="Select User Gist File"
+			>
+				Select User Gist File
+			</button>
+			<button
+				mat-menu-item
+				(click)="setWorkspaceFile()"
+				[disabled]="!(isGitHubConnected | async)"
+				aria-label="Select Workspace Gist File"
+			>
+				Select Workspace Gist File
+			</button>
+		</fieldset>
 
 		<mat-divider></mat-divider>
 
 		<!-- GitHub section -->
 		<fieldset>
-			<legend>GitHub</legend>
+			<legend>GitHub Settings</legend>
 
 			<!-- GitHub connect/disconnect -->
 			@if (!(isGitHubConnected | async)) {
@@ -108,22 +128,6 @@
 				</button>
 			}
 
-			<button
-				mat-menu-item
-				(click)="setUserFile()"
-				[disabled]="!(isGitHubConnected | async)"
-				aria-label="Set User File"
-			>
-				Set User File
-			</button>
-			<button
-				mat-menu-item
-				(click)="setWorkspaceFile()"
-				[disabled]="!(isGitHubConnected | async)"
-				aria-label="Set Workspace File"
-			>
-				Set Workspace File
-			</button>
 			<button
 				mat-menu-item
 				(click)="openGistIdSettings()"
