@@ -331,7 +331,7 @@ export class SyncCommands {
 		const syncMode = this.context.globalState.get<string>("syncMode", "profile-local");
 
 		if (syncMode !== "github") {
-			vscode.window.showErrorMessage("GitHub sync is not enabled. Enable it first using 'Select User Sync Mode'.");
+			vscode.window.showErrorMessage("GitHub sync is not enabled. Enable it first using 'User: Sync Mode...'.");
 			return;
 		}
 
@@ -486,7 +486,7 @@ export class SyncCommands {
 
 		if (syncMode !== "github") {
 			vscode.window.showErrorMessage(
-				"GitHub sync is not enabled. Enable it first using 'Select Workspace Sync Mode'."
+				"GitHub sync is not enabled. Enable it first using 'Workspace: Sync Mode...'."
 			);
 			return;
 		}
