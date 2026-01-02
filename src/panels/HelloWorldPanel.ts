@@ -105,6 +105,9 @@ export class HelloWorldPanel {
 				) {
 					this.reloadWebview();
 				}
+				if (e.affectsConfiguration("vscodeTodo.sync.github.gistId")) {
+					void this.postGitHubStatus();
+				}
 			})
 		);
 	}
@@ -164,11 +167,7 @@ export class HelloWorldPanel {
 		const currentState = this._store.getState();
 		const config = getConfig();
 		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
-
-		// Send GitHub connection status
-		const authManager = GitHubAuthManager.getInstance(this._context);
-		const isConnected = await authManager.isAuthenticated();
-		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
+		await this.postGitHubStatus();
 	}
 
 	/**
@@ -189,8 +188,8 @@ export class HelloWorldPanel {
 		this._panel.webview.postMessage(message);
 	}
 
-	public updateGitHubStatus(isConnected: boolean) {
-		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
+	public updateGitHubStatus(isConnected: boolean, hasGistId: boolean) {
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
 	}
 
 	public updateSyncStatus(isSyncing: boolean) {
@@ -272,6 +271,19 @@ export class HelloWorldPanel {
                 </body>
             </html>
         `;
+	}
+
+	private getHasGistId(): boolean {
+		const config = workspace.getConfiguration("vscodeTodo.sync");
+		const gistId = (config.get<string>("github.gistId") || "").trim();
+		return gistId.length > 0;
+	}
+
+	private async postGitHubStatus(): Promise<void> {
+		const authManager = GitHubAuthManager.getInstance(this._context);
+		const isConnected = await authManager.isAuthenticated();
+		const hasGistId = this.getHasGistId();
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
 	}
 
 	public static setupWebviewMessageHandler(
@@ -435,6 +447,14 @@ export class HelloWorldPanel {
 					}
 					case MessageActionsFromWebview.setWorkspaceFile: {
 						commands.executeCommand("vsc-todo.setWorkspaceFile");
+						break;
+					}
+					case MessageActionsFromWebview.openGistIdSettings: {
+						commands.executeCommand("workbench.action.openSettings", "vscodeTodo.sync.github.gistId");
+						break;
+					}
+					case MessageActionsFromWebview.viewGistOnGitHub: {
+						commands.executeCommand("vsc-todo.viewGistOnGitHub");
 						break;
 					}
 					case MessageActionsFromWebview.syncNow: {

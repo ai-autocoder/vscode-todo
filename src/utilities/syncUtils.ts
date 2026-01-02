@@ -90,7 +90,11 @@ export async function clearWorkspaceOverride(setting: string): Promise<void> {
  * @param isConnected - Whether GitHub is connected
  */
 export function notifyGitHubStatusChange(isConnected: boolean): void {
-	HelloWorldPanel.currentPanel?.updateGitHubStatus(isConnected);
-	TodoViewProvider.currentProvider?.updateGitHubStatus(isConnected);
+	const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+	const gistId = (config.get<string>("github.gistId") || "").trim();
+	const hasGistId = gistId.length > 0;
+
+	HelloWorldPanel.currentPanel?.updateGitHubStatus(isConnected, hasGistId);
+	TodoViewProvider.currentProvider?.updateGitHubStatus(isConnected, hasGistId);
 	LogChannel.log(`[SyncUtils] Notified webviews of GitHub status: ${isConnected}`);
 }

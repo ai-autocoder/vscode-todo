@@ -64,6 +64,7 @@ export class TodoService {
 	private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
 
 	private _isGitHubConnectedSource = new BehaviorSubject<boolean>(false);
+	private _hasGistIdSource = new BehaviorSubject<boolean>(false);
 
 	private _isSyncingSource = new BehaviorSubject<boolean>(false);
 
@@ -87,6 +88,7 @@ export class TodoService {
 	enableWideView = this._enableWideViewSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
 	isGitHubConnected = this._isGitHubConnectedSource.asObservable();
+	hasGistId = this._hasGistIdSource.asObservable();
 	isSyncing = this._isSyncingSource.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
@@ -224,8 +226,9 @@ export class TodoService {
 		this._workspaceFilesWithRecordsSource.next(payload.workspaceFilesWithRecords);
 	}
 
-	private handleUpdateGitHubStatus(payload: { isConnected: boolean }) {
+	private handleUpdateGitHubStatus(payload: { isConnected: boolean; hasGistId: boolean }) {
 		this._isGitHubConnectedSource.next(payload.isConnected);
+		this._hasGistIdSource.next(payload.hasGistId);
 	}
 
 	private handleUpdateSyncStatus(payload: { isSyncing: boolean }) {
@@ -373,6 +376,14 @@ export class TodoService {
 
 	setWorkspaceFile() {
 		vscode.postMessage(messagesFromWebview.setWorkspaceFile());
+	}
+
+	openGistIdSettings() {
+		vscode.postMessage(messagesFromWebview.openGistIdSettings());
+	}
+
+	viewGistOnGitHub() {
+		vscode.postMessage(messagesFromWebview.viewGistOnGitHub());
 	}
 
 	syncNow() {

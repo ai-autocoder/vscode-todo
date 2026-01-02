@@ -124,6 +124,27 @@
 			>
 				Set Workspace File
 			</button>
+			<button
+				mat-menu-item
+				(click)="openGistIdSettings()"
+				[disabled]="!(isGitHubConnected | async)"
+				aria-label="Set Gist ID"
+			>
+				Set Gist ID
+			</button>
+			<button
+				mat-menu-item
+				(click)="viewGistOnGitHub()"
+				[disabled]="!(isGitHubConnected | async) || !(isGistIdConfigured | async)"
+				[title]="!(isGitHubConnected | async)
+					? 'GitHub not connected.'
+					: (isGistIdConfigured | async)
+						? 'View Gist on GitHub'
+						: 'Gist ID not set.'"
+				aria-label="View Gist on GitHub"
+			>
+				View Gist on GitHub
+			</button>
 		</fieldset>
 	</mat-menu>
 

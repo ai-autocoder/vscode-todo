@@ -60,7 +60,7 @@ type MessagePayload<T, L> = T extends
 								: T extends MessageActionsToWebview.reloadWebview
 									? StoreState
 									: T extends MessageActionsToWebview.updateGitHubStatus
-										? { isConnected: boolean }
+										? { isConnected: boolean; hasGistId: boolean }
 										: T extends MessageActionsToWebview.updateSyncStatus
 											? { isSyncing: boolean }
 											: never;
@@ -93,16 +93,29 @@ export type Message<
 						type: T;
 						payload: MessagePayload<T, L>;
 					}
-				: T extends MessageActionsFromWebview.deleteCompleted
-					? {
-							type: T;
-							scope: L;
-						}
-					: {
-							type: T;
-							scope: L;
-							payload: MessagePayload<T, L>;
-						};
+	: T extends MessageActionsFromWebview.deleteCompleted
+		? {
+				type: T;
+				scope: L;
+			}
+		: T extends
+					| MessageActionsFromWebview.selectUserSyncMode
+					| MessageActionsFromWebview.selectWorkspaceSyncMode
+					| MessageActionsFromWebview.connectGitHub
+					| MessageActionsFromWebview.disconnectGitHub
+					| MessageActionsFromWebview.setUserFile
+					| MessageActionsFromWebview.setWorkspaceFile
+					| MessageActionsFromWebview.openGistIdSettings
+					| MessageActionsFromWebview.viewGistOnGitHub
+					| MessageActionsFromWebview.syncNow
+			? {
+					type: T;
+				}
+			: {
+					type: T;
+					scope: L;
+					payload: MessagePayload<T, L>;
+				};
 
 export const enum MessageActionsFromWebview {
 	addTodo = "addTodo",
@@ -127,6 +140,8 @@ export const enum MessageActionsFromWebview {
 	disconnectGitHub = "disconnectGitHub",
 	setUserFile = "setUserFile",
 	setWorkspaceFile = "setWorkspaceFile",
+	openGistIdSettings = "openGistIdSettings",
+	viewGistOnGitHub = "viewGistOnGitHub",
 	syncNow = "syncNow",
 }
 export const enum MessageActionsToWebview {
@@ -293,6 +308,12 @@ export const messagesFromWebview = {
 	setWorkspaceFile: (): { type: MessageActionsFromWebview.setWorkspaceFile } => ({
 		type: MessageActionsFromWebview.setWorkspaceFile,
 	}),
+	openGistIdSettings: (): { type: MessageActionsFromWebview.openGistIdSettings } => ({
+		type: MessageActionsFromWebview.openGistIdSettings,
+	}),
+	viewGistOnGitHub: (): { type: MessageActionsFromWebview.viewGistOnGitHub } => ({
+		type: MessageActionsFromWebview.viewGistOnGitHub,
+	}),
 	syncNow: (): { type: MessageActionsFromWebview.syncNow } => ({
 		type: MessageActionsFromWebview.syncNow,
 	}),
@@ -319,9 +340,9 @@ export const messagesToWebview = {
 		type: MessageActionsToWebview.syncEditorFocusAndRecords,
 		payload,
 	}),
-	updateGitHubStatus: (isConnected: boolean): { type: MessageActionsToWebview.updateGitHubStatus; payload: { isConnected: boolean } } => ({
+	updateGitHubStatus: (isConnected: boolean, hasGistId: boolean): { type: MessageActionsToWebview.updateGitHubStatus; payload: { isConnected: boolean; hasGistId: boolean } } => ({
 		type: MessageActionsToWebview.updateGitHubStatus,
-		payload: { isConnected },
+		payload: { isConnected, hasGistId },
 	}),
 	updateSyncStatus: (isSyncing: boolean): { type: MessageActionsToWebview.updateSyncStatus; payload: { isSyncing: boolean } } => ({
 		type: MessageActionsToWebview.updateSyncStatus,

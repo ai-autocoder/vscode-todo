@@ -73,6 +73,9 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 				) {
 					this.reloadWebview();
 				}
+				if (e.affectsConfiguration("vscodeTodo.sync.github.gistId")) {
+					void this.postGitHubStatus();
+				}
 			})
 		);
 	}
@@ -82,11 +85,7 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 			const currentState = this._store.getState();
 			const config = getConfig();
 			this._view.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
-
-			// Send GitHub connection status
-			const authManager = GitHubAuthManager.getInstance(this._context);
-			const isConnected = await authManager.isAuthenticated();
-			this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
+			await this.postGitHubStatus();
 		}
 	}
 
@@ -103,9 +102,9 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	public updateGitHubStatus(isConnected: boolean) {
+	public updateGitHubStatus(isConnected: boolean, hasGistId: boolean) {
 		if (this._view) {
-			this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected));
+			this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
 		}
 	}
 
@@ -161,5 +160,22 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
             </body>
             </html>
         `;
+	}
+
+	private getHasGistId(): boolean {
+		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+		const gistId = (config.get<string>("github.gistId") || "").trim();
+		return gistId.length > 0;
+	}
+
+	private async postGitHubStatus(): Promise<void> {
+		if (!this._view) {
+			return;
+		}
+
+		const authManager = GitHubAuthManager.getInstance(this._context);
+		const isConnected = await authManager.isAuthenticated();
+		const hasGistId = this.getHasGistId();
+		this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
 	}
 }

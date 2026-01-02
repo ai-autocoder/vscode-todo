@@ -17,6 +17,7 @@ export class HeaderComponent implements OnInit {
 	isSettingsMenuOpen = false;
 	enableWideView!: Observable<boolean>;
 	isGitHubConnected!: Observable<boolean>;
+	isGistIdConfigured!: Observable<boolean>;
 	isSyncing!: Observable<boolean>;
 	@Input() currentScope!: TodoScope;
 
@@ -25,6 +26,7 @@ export class HeaderComponent implements OnInit {
 	ngOnInit(): void {
 		this.enableWideView = this.todoService.enableWideView;
 		this.isGitHubConnected = this.todoService.isGitHubConnected;
+		this.isGistIdConfigured = this.todoService.hasGistId;
 		this.isSyncing = this.todoService.isSyncing;
 	}
 
@@ -148,6 +150,14 @@ export class HeaderComponent implements OnInit {
 
 	setWorkspaceFile() {
 		this.todoService.setWorkspaceFile();
+	}
+
+	openGistIdSettings() {
+		this.todoService.openGistIdSettings();
+	}
+
+	viewGistOnGitHub() {
+		this.todoService.viewGistOnGitHub();
 	}
 
 	syncNow() {
