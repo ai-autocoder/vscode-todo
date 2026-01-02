@@ -12,6 +12,7 @@ import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
 import LogChannel from "./LogChannel";
 import { HelloWorldPanel } from "../panels/HelloWorldPanel";
 import { TodoViewProvider } from "../panels/TodoViewProvider";
+import { getGistId } from "./syncConfig";
 
 /**
  * Reload store data from storage for a specific scope
@@ -90,9 +91,7 @@ export async function clearWorkspaceOverride(setting: string): Promise<void> {
  * @param isConnected - Whether GitHub is connected
  */
 export function notifyGitHubStatusChange(isConnected: boolean): void {
-	const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-	const gistId = (config.get<string>("github.gistId") || "").trim();
-	const hasGistId = gistId.length > 0;
+	const hasGistId = getGistId().length > 0;
 
 	HelloWorldPanel.currentPanel?.updateGitHubStatus(isConnected, hasGistId);
 	TodoViewProvider.currentProvider?.updateGitHubStatus(isConnected, hasGistId);

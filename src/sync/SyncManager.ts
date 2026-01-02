@@ -19,6 +19,7 @@ import { isEqual } from "../todo/todoUtils";
 import { threeWayMerge, formatMergeSummary, ConflictSet, threeWayMergeWorkspace, formatWorkspaceMergeSummary, mergeWithPreservedPositions } from "./ThreeWayMerge";
 import { Todo } from "../todo/todoTypes";
 import { ConflictResolutionUI } from "./ConflictResolutionUI";
+import { getGistId } from "../utilities/syncConfig";
 
 function cloneData<T>(data: T): T {
 	return JSON.parse(JSON.stringify(data)) as T;
@@ -125,8 +126,7 @@ export class SyncManager {
 	 * Perform immediate sync for a scope
 	 */
 	public async sync(scope: "user" | "workspace"): Promise<SyncResult<void>> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const gistId = config.get<string>("github.gistId");
+		const gistId = getGistId();
 
 		if (!gistId) {
 			return {
@@ -620,9 +620,7 @@ export class SyncManager {
 						);
 
 						if (fileChoice === "View Gist") {
-							const gistIdValue = vscode.workspace
-								.getConfiguration("vscodeTodo.sync")
-								.get<string>("github.gistId");
+							const gistIdValue = getGistId();
 							if (gistIdValue) {
 								await vscode.env.openExternal(
 									vscode.Uri.parse(`https://gist.github.com/${gistIdValue}`)

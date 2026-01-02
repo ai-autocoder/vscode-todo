@@ -24,6 +24,7 @@ import { getConfig, setConfig } from "../utilities/config";
 import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
+import { getGistId } from "../utilities/syncConfig";
 import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
@@ -274,9 +275,7 @@ export class HelloWorldPanel {
 	}
 
 	private getHasGistId(): boolean {
-		const config = workspace.getConfiguration("vscodeTodo.sync");
-		const gistId = (config.get<string>("github.gistId") || "").trim();
-		return gistId.length > 0;
+		return getGistId().length > 0;
 	}
 
 	private async postGitHubStatus(): Promise<void> {

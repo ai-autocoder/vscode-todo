@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 import { Todo } from "../todo/todoTypes";
 import { ConflictSet } from "./ThreeWayMerge";
 import { formatMergeSummary } from "./ThreeWayMerge";
+import { getGistId } from "../utilities/syncConfig";
 
 /**
  * Result of user's conflict resolution choices
@@ -57,9 +58,7 @@ export class ConflictResolutionUI {
 
 		// View gist in browser
 		if (mode === "view-gist") {
-			const gistId = vscode.workspace
-				.getConfiguration("vscodeTodo.sync")
-				.get<string>("github.gistId");
+			const gistId = getGistId();
 			if (gistId) {
 				await vscode.env.openExternal(vscode.Uri.parse(`https://gist.github.com/${gistId}`));
 			}

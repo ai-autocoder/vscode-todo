@@ -5,6 +5,7 @@ import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { getConfig } from "../utilities/config";
+import { getGistId } from "../utilities/syncConfig";
 import { messagesToWebview } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
 import { deleteCompletedTodos } from "../todo/todoUtils";
@@ -163,9 +164,7 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getHasGistId(): boolean {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const gistId = (config.get<string>("github.gistId") || "").trim();
-		return gistId.length > 0;
+		return getGistId().length > 0;
 	}
 
 	private async postGitHubStatus(): Promise<void> {

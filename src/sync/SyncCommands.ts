@@ -14,6 +14,7 @@ import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFil
 import StorageSyncManager from "../storage/StorageSyncManager";
 import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
 import { reloadScopeData, clearWorkspaceOverride, notifyGitHubStatusChange } from "../utilities/syncUtils";
+import { getGistId } from "../utilities/syncConfig";
 import { WebviewVisibilityCoordinator } from "./WebviewVisibilityCoordinator";
 
 export class SyncCommands {
@@ -128,8 +129,7 @@ export class SyncCommands {
 	 * Command: View Gist on GitHub
 	 */
 	private async viewGistOnGitHub(): Promise<void> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const gistId = config.get<string>("github.gistId");
+		const gistId = getGistId();
 
 		if (!gistId) {
 			const action = await vscode.window.showErrorMessage(
@@ -190,7 +190,7 @@ export class SyncCommands {
 			}
 
 			// Ensure gist ID is configured
-			const gistId = config.get<string>("github.gistId");
+			const gistId = getGistId();
 			if (!gistId) {
 				const setup = await vscode.window.showInformationMessage(
 					"Gist ID not configured. Set 'vscodeTodo.sync.github.gistId' in Settings to enable GitHub sync.",
@@ -279,7 +279,7 @@ export class SyncCommands {
 			}
 
 			// Ensure gist ID is configured
-			const gistId = config.get<string>("github.gistId");
+			const gistId = getGistId();
 			if (!gistId) {
 				const setup = await vscode.window.showInformationMessage(
 					"Gist ID not configured. Set 'vscodeTodo.sync.github.gistId' in Settings to enable GitHub sync.",
@@ -335,7 +335,7 @@ export class SyncCommands {
 			return;
 		}
 
-		const gistId = config.get<string>("github.gistId");
+		const gistId = getGistId();
 		if (!gistId) {
 			vscode.window.showErrorMessage("Gist ID not configured.");
 			return;
@@ -491,7 +491,7 @@ export class SyncCommands {
 			return;
 		}
 
-		const gistId = config.get<string>("github.gistId");
+		const gistId = getGistId();
 		if (!gistId) {
 			vscode.window.showErrorMessage("Gist ID not configured.");
 			return;
