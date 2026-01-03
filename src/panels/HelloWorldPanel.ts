@@ -24,11 +24,14 @@ import { getConfig, setConfig } from "../utilities/config";
 import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
+import { getGistId } from "../utilities/syncConfig";
 import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
 import { deleteCompletedTodos } from "../todo/todoUtils";
+import { GitHubAuthManager } from "../sync/GitHubAuthManager";
+import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -45,11 +48,49 @@ export class HelloWorldPanel {
 	private readonly _panel: WebviewPanel;
 	private _disposables: Disposable[] = [];
 	private _store: EnhancedStore;
+	private _context: ExtensionContext;
+	private _visibilityCoordinator: WebviewVisibilityCoordinator | undefined;
+	private _isVisible: boolean = false;
 
-	private constructor(panel: WebviewPanel, context: ExtensionContext, store: EnhancedStore) {
+	private constructor(
+		panel: WebviewPanel,
+		context: ExtensionContext,
+		store: EnhancedStore,
+		visibilityCoordinator?: WebviewVisibilityCoordinator
+	) {
 		this._panel = panel;
 		this._store = store;
+		this._context = context;
+		this._visibilityCoordinator = visibilityCoordinator;
 		const extensionUri = context.extensionUri;
+
+		// Track initial visibility
+		this._isVisible = panel.visible;
+		if (this._isVisible && this._visibilityCoordinator) {
+			this._visibilityCoordinator.incrementVisibility();
+		}
+
+		// Track visibility changes
+		this._panel.onDidChangeViewState(
+			(e) => {
+				const wasVisible = this._isVisible;
+				this._isVisible = e.webviewPanel.visible;
+
+				if (!wasVisible && this._isVisible) {
+					// Became visible
+					if (this._visibilityCoordinator) {
+						this._visibilityCoordinator.incrementVisibility();
+					}
+				} else if (wasVisible && !this._isVisible) {
+					// Became hidden
+					if (this._visibilityCoordinator) {
+						this._visibilityCoordinator.decrementVisibility();
+					}
+				}
+			},
+			null,
+			this._disposables
+		);
 
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
@@ -65,6 +106,9 @@ export class HelloWorldPanel {
 				) {
 					this.reloadWebview();
 				}
+				if (e.affectsConfiguration("vscodeTodo.sync.github.gistId")) {
+					void this.postGitHubStatus();
+				}
 			})
 		);
 	}
@@ -74,7 +118,11 @@ export class HelloWorldPanel {
 	 * will be created and displayed.
 	 *
 	 */
-	public static render(context: ExtensionContext, store: EnhancedStore) {
+	public static render(
+		context: ExtensionContext,
+		store: EnhancedStore,
+		visibilityCoordinator?: WebviewVisibilityCoordinator
+	) {
 		const extensionUri = context.extensionUri;
 		if (HelloWorldPanel.currentPanel) {
 			// If the webview panel already exists and in focus, dispose it
@@ -109,17 +157,18 @@ export class HelloWorldPanel {
 				}
 			);
 			deleteCompletedTodos(store);
-			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store);
+			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store, visibilityCoordinator);
 		}
 	}
 
 	/**
 	 * Sends the full state of the store and config to the webview.
 	 */
-	private reloadWebview() {
+	private async reloadWebview() {
 		const currentState = this._store.getState();
 		const config = getConfig();
 		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
+		await this.postGitHubStatus();
 	}
 
 	/**
@@ -140,7 +189,20 @@ export class HelloWorldPanel {
 		this._panel.webview.postMessage(message);
 	}
 
+	public updateGitHubStatus(isConnected: boolean, hasGistId: boolean) {
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
+	}
+
+	public updateSyncStatus(isSyncing: boolean) {
+		this._panel.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
+	}
+
 	public dispose() {
+		// Decrement visibility if panel was visible
+		if (this._isVisible && this._visibilityCoordinator) {
+			this._visibilityCoordinator.decrementVisibility();
+		}
+
 		HelloWorldPanel.currentPanel = undefined;
 
 		// Dispose of the current webview panel
@@ -210,6 +272,17 @@ export class HelloWorldPanel {
                 </body>
             </html>
         `;
+	}
+
+	private getHasGistId(): boolean {
+		return getGistId().length > 0;
+	}
+
+	private async postGitHubStatus(): Promise<void> {
+		const authManager = GitHubAuthManager.getInstance(this._context);
+		const isConnected = await authManager.isAuthenticated();
+		const hasGistId = this.getHasGistId();
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
 	}
 
 	public static setupWebviewMessageHandler(
@@ -349,6 +422,42 @@ export class HelloWorldPanel {
 					}
 					case MessageActionsFromWebview.deleteCompleted: {
 						store.dispatch(storeActions!.deleteCompleted());
+						break;
+					}
+					case MessageActionsFromWebview.selectUserSyncMode: {
+						commands.executeCommand("vsc-todo.selectUserSyncMode");
+						break;
+					}
+					case MessageActionsFromWebview.selectWorkspaceSyncMode: {
+						commands.executeCommand("vsc-todo.selectWorkspaceSyncMode");
+						break;
+					}
+					case MessageActionsFromWebview.connectGitHub: {
+						commands.executeCommand("vsc-todo.connectGitHub");
+						break;
+					}
+					case MessageActionsFromWebview.disconnectGitHub: {
+						commands.executeCommand("vsc-todo.disconnectGitHub");
+						break;
+					}
+					case MessageActionsFromWebview.setUserFile: {
+						commands.executeCommand("vsc-todo.setUserFile");
+						break;
+					}
+					case MessageActionsFromWebview.setWorkspaceFile: {
+						commands.executeCommand("vsc-todo.setWorkspaceFile");
+						break;
+					}
+					case MessageActionsFromWebview.openGistIdSettings: {
+						commands.executeCommand("workbench.action.openSettings", "vscodeTodo.sync.github.gistId");
+						break;
+					}
+					case MessageActionsFromWebview.viewGistOnGitHub: {
+						commands.executeCommand("vsc-todo.viewGistOnGitHub");
+						break;
+					}
+					case MessageActionsFromWebview.syncNow: {
+						commands.executeCommand("vsc-todo.syncNow");
 						break;
 					}
 					default:

@@ -82,6 +82,7 @@ markdown pre {
 
 .mat-mdc-menu-content,
 .mat-mdc-menu-content .mat-mdc-menu-item .mat-mdc-menu-item-text {
+	display: flex;
 	--mat-menu-item-label-text-font: var(--vscode-font-family);
 	--mat-menu-item-label-text-size: var(--vscode-font-size);
 	--mat-menu-item-label-text-tracking: "normal";

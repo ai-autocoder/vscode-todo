@@ -75,23 +75,77 @@
 				"command": "vsc-todo.importDataFromMarkdown",
 				"title": "Import from Markdown",
 				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.connectGitHub",
+				"title": "Connect GitHub",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.disconnectGitHub",
+				"title": "Disconnect GitHub",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.viewGistOnGitHub",
+				"title": "View Gist on GitHub",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.selectUserSyncMode",
+				"title": "Select User Sync Mode",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.selectWorkspaceSyncMode",
+				"title": "Select Workspace Sync Mode",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.setUserFile",
+				"title": "Set User File",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.setWorkspaceFile",
+				"title": "Set Workspace File",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.syncNow",
+				"title": "Sync Now",
+				"category": "VS Code Todo"
 			}
 		],
 		"configuration": {
 			"title": "VS Code Todo",
 			"properties": {
-				"vscodeTodo.sync.user": {
+				"vscodeTodo.sync.github.gistId": {
 					"type": "string",
-					"default": "profile-local",
-					"enum": [
-						"profile-local",
-						"profile-sync"
-					],
-					"enumDescriptions": [
-						"Profile (Local): Keep your global lists on this device and profile only.",
-						"Profile (Sync): Sync your global lists with VS Code Settings Sync across devices."
-					],
-					"markdownDescription": "Select how your user lists sync across profiles and machines.\n\n**Profile (Local):** Keeps data only on this VS Code profile and device; use this when you want separate lists per machine.\n**Profile (Sync):** Roams data with VS Code Settings Sync across devices. **Warning:** syncing can overwrite existing todos on other machines that also use Settings Sync. Back up before switching modes."
+					"default": "",
+					"markdownDescription": "GitHub Gist ID for sync (32-character hex string). Can be set in User Settings (global default) or Workspace Settings (override).\n\n**CRITICAL:** Never commit this to source control. Add `.vscode/settings.json` to `.gitignore` if it contains gist ID.\n\nTo get your gist ID:\n1. Create a secret gist at https://gist.github.com\n2. Copy the ID from the URL (e.g., `abc123def456`)\n3. Paste the ID here in Settings"
+				},
+				"vscodeTodo.sync.github.userFile": {
+					"type": "string",
+					"default": "user-todos.json",
+					"markdownDescription": "User file name in gist for syncing global/user-scope todos.\n\nExamples: `user-todos.json`, `user-Work.json`, `user-Personal.json`\n\nUse command `Todo: Set User File` to select from existing files in your gist or create a new one."
+				},
+				"vscodeTodo.sync.github.workspaceFile": {
+					"type": "string",
+					"default": "",
+					"markdownDescription": "Workspace file name in gist for syncing workspace-scope todos. Auto-derived from workspace name if not set.\n\nExamples: `workspace-ProjectAlpha.json`, `workspace-BugTracking.json`\n\nUse command `Todo: Set Workspace File` to select from existing files in your gist or create a new one."
+				},
+				"vscodeTodo.sync.github.pollInterval": {
+					"type": "number",
+					"default": 180,
+					"minimum": 30,
+					"maximum": 600,
+					"markdownDescription": "Poll interval in seconds for GitHub sync. Only active when GitHub mode is enabled.\n\nMinimum: 30 seconds | Maximum: 600 seconds (10 minutes)"
+				},
+				"vscodeTodo.sync.pollOnlyWhenVisible": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "Only poll for GitHub sync changes when a Todo view is visible.\n\n**Benefits:**\n- Saves GitHub API rate limits\n- Better battery life on laptops\n- Reduced network usage\n\n**Note:** Disable this if you want 24/7 background sync regardless of view visibility."
 				},
 				"vscodeTodo.taskSortingOptions": {
 					"description": "Controls how completed tasks are reordered in the list.",

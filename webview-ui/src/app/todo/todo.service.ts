@@ -50,9 +50,6 @@ export class TodoService {
 		enableMarkdownDiagrams: true,
 		enableMarkdownKatex: true,
 		enableWideView: false,
-		sync: {
-			user: "profile-local",
-		},
 		autoDeleteCompletedAfterDays: 0,
 		collapsedPreviewLines: 1,
 		webviewFontFamily: "",
@@ -65,6 +62,11 @@ export class TodoService {
 	private _enableWideViewSource = new BehaviorSubject<boolean>(this._config.enableWideView);
 
 	private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
+
+	private _isGitHubConnectedSource = new BehaviorSubject<boolean>(false);
+	private _hasGistIdSource = new BehaviorSubject<boolean>(false);
+
+	private _isSyncingSource = new BehaviorSubject<boolean>(false);
 
 	private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
 		[TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
@@ -85,6 +87,9 @@ export class TodoService {
 
 	enableWideView = this._enableWideViewSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
+	isGitHubConnected = this._isGitHubConnectedSource.asObservable();
+	hasGistId = this._hasGistIdSource.asObservable();
+	isSyncing = this._isSyncingSource.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
 	currentFileLastAction = new BehaviorSubject<string>("");
@@ -152,6 +157,12 @@ export class TodoService {
 			case MessageActionsToWebview.syncEditorFocusAndRecords:
 				this.handleSyncEditorFocusAndRecords(data.payload);
 				break;
+			case MessageActionsToWebview.updateGitHubStatus:
+				this.handleUpdateGitHubStatus(data.payload);
+				break;
+			case MessageActionsToWebview.updateSyncStatus:
+				this.handleUpdateSyncStatus(data.payload);
+				break;
 			default:
 				console.warn("Unhandled message type:", data.type);
 		}
@@ -213,6 +224,15 @@ export class TodoService {
 
 	private handleSyncEditorFocusAndRecords(payload: EditorFocusAndRecordsSlice) {
 		this._workspaceFilesWithRecordsSource.next(payload.workspaceFilesWithRecords);
+	}
+
+	private handleUpdateGitHubStatus(payload: { isConnected: boolean; hasGistId: boolean }) {
+		this._isGitHubConnectedSource.next(payload.isConnected);
+		this._hasGistIdSource.next(payload.hasGistId);
+	}
+
+	private handleUpdateSyncStatus(payload: { isSyncing: boolean }) {
+		this._isSyncingSource.next(payload.isSyncing);
 	}
 
 	get userTodos(): Todo[] {
@@ -332,5 +352,41 @@ export class TodoService {
 
 	deleteCompleted(scope: TodoScope) {
 		vscode.postMessage(messagesFromWebview.deleteCompleted(scope));
+	}
+
+	selectUserSyncMode() {
+		vscode.postMessage(messagesFromWebview.selectUserSyncMode());
+	}
+
+	selectWorkspaceSyncMode() {
+		vscode.postMessage(messagesFromWebview.selectWorkspaceSyncMode());
+	}
+
+	connectGitHub() {
+		vscode.postMessage(messagesFromWebview.connectGitHub());
+	}
+
+	disconnectGitHub() {
+		vscode.postMessage(messagesFromWebview.disconnectGitHub());
+	}
+
+	setUserFile() {
+		vscode.postMessage(messagesFromWebview.setUserFile());
+	}
+
+	setWorkspaceFile() {
+		vscode.postMessage(messagesFromWebview.setWorkspaceFile());
+	}
+
+	openGistIdSettings() {
+		vscode.postMessage(messagesFromWebview.openGistIdSettings());
+	}
+
+	viewGistOnGitHub() {
+		vscode.postMessage(messagesFromWebview.viewGistOnGitHub());
+	}
+
+	syncNow() {
+		vscode.postMessage(messagesFromWebview.syncNow());
 	}
 }

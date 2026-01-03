@@ -5,21 +5,27 @@ import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { getConfig } from "../utilities/config";
+import { getGistId } from "../utilities/syncConfig";
 import { messagesToWebview } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
 import { deleteCompletedTodos } from "../todo/todoUtils";
+import { GitHubAuthManager } from "../sync/GitHubAuthManager";
+import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
 	private _view?: vscode.WebviewView;
 	public static currentProvider: TodoViewProvider | undefined;
+	private _visibilityCoordinator: WebviewVisibilityCoordinator | undefined;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
 		private readonly _store: EnhancedStore,
-		private readonly _context: vscode.ExtensionContext
+		private readonly _context: vscode.ExtensionContext,
+		visibilityCoordinator?: WebviewVisibilityCoordinator
 	) {
 		TodoViewProvider.currentProvider = this;
+		this._visibilityCoordinator = visibilityCoordinator;
 	}
 
 	public resolveWebviewView(
@@ -37,10 +43,22 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 			],
 		};
 
+		// Track initial visibility
+		if (webviewView.visible && this._visibilityCoordinator) {
+			this._visibilityCoordinator.incrementVisibility();
+		}
+
 		webviewView.onDidChangeVisibility(() => {
 			if (webviewView.visible) {
+				if (this._visibilityCoordinator) {
+					this._visibilityCoordinator.incrementVisibility();
+				}
 				deleteCompletedTodos(this._store);
 				this.reloadWebview();
+			} else {
+				if (this._visibilityCoordinator) {
+					this._visibilityCoordinator.decrementVisibility();
+				}
 			}
 		});
 
@@ -56,15 +74,19 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 				) {
 					this.reloadWebview();
 				}
+				if (e.affectsConfiguration("vscodeTodo.sync.github.gistId")) {
+					void this.postGitHubStatus();
+				}
 			})
 		);
 	}
 
-	public reloadWebview() {
+	public async reloadWebview() {
 		if (this._view) {
 			const currentState = this._store.getState();
 			const config = getConfig();
 			this._view.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
+			await this.postGitHubStatus();
 		}
 	}
 
@@ -78,6 +100,18 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 					? messagesToWebview.syncEditorFocusAndRecords(newSliceState as EditorFocusAndRecordsSlice)
 					: messagesToWebview.syncTodoData(newSliceState as TodoSlice | CurrentFileSlice);
 			this._view.webview.postMessage(message);
+		}
+	}
+
+	public updateGitHubStatus(isConnected: boolean, hasGistId: boolean) {
+		if (this._view) {
+			this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
+		}
+	}
+
+	public updateSyncStatus(isSyncing: boolean) {
+		if (this._view) {
+			this._view.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
 		}
 	}
 
@@ -127,5 +161,20 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
             </body>
             </html>
         `;
+	}
+
+	private getHasGistId(): boolean {
+		return getGistId().length > 0;
+	}
+
+	private async postGitHubStatus(): Promise<void> {
+		if (!this._view) {
+			return;
+		}
+
+		const authManager = GitHubAuthManager.getInstance(this._context);
+		const isConnected = await authManager.isAuthenticated();
+		const hasGistId = this.getHasGistId();
+		this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
 	}
 }

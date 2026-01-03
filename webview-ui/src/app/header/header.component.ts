@@ -14,13 +14,20 @@ export class HeaderComponent implements OnInit {
 	ImportFormats = ImportFormats;
 	isImportMenuOpen = false;
 	isExportMenuOpen = false;
+	isSettingsMenuOpen = false;
 	enableWideView!: Observable<boolean>;
+	isGitHubConnected!: Observable<boolean>;
+	isGistIdConfigured!: Observable<boolean>;
+	isSyncing!: Observable<boolean>;
 	@Input() currentScope!: TodoScope;
 
 	constructor(readonly todoService: TodoService) {}
 
 	ngOnInit(): void {
 		this.enableWideView = this.todoService.enableWideView;
+		this.isGitHubConnected = this.todoService.isGitHubConnected;
+		this.isGistIdConfigured = this.todoService.hasGistId;
+		this.isSyncing = this.todoService.isSyncing;
 	}
 
 	import(format: ImportFormats) {
@@ -111,5 +118,49 @@ export class HeaderComponent implements OnInit {
 	toggleAllCollapsed() {
 		const nextCollapsed = !this.allCollapsed;
 		this.todoService.setAllCollapsed(this.currentScope, { collapsed: nextCollapsed });
+	}
+
+	onSettingsMenuOpened() {
+		this.isSettingsMenuOpen = true;
+	}
+
+	onSettingsMenuClosed() {
+		this.isSettingsMenuOpen = false;
+	}
+
+	selectUserSyncMode() {
+		this.todoService.selectUserSyncMode();
+	}
+
+	selectWorkspaceSyncMode() {
+		this.todoService.selectWorkspaceSyncMode();
+	}
+
+	connectGitHub() {
+		this.todoService.connectGitHub();
+	}
+
+	disconnectGitHub() {
+		this.todoService.disconnectGitHub();
+	}
+
+	setUserFile() {
+		this.todoService.setUserFile();
+	}
+
+	setWorkspaceFile() {
+		this.todoService.setWorkspaceFile();
+	}
+
+	openGistIdSettings() {
+		this.todoService.openGistIdSettings();
+	}
+
+	viewGistOnGitHub() {
+		this.todoService.viewGistOnGitHub();
+	}
+
+	syncNow() {
+		this.todoService.syncNow();
 	}
 }

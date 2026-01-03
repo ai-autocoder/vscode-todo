@@ -87,7 +87,7 @@ VS Code Todo
 - [Getting Started](#getting-started)
 - [Key Features](#key-features)
   - [User, Workspace & File-specific Management](#user-workspace--file-specific-management)
-  - [Sync Modes for User Lists](#sync-modes-for-user-lists)
+  - [Sync Modes (User and Workspace)](#sync-modes-user-and-workspace)
   - [Markdown Support for Todos and Notes](#markdown-support-for-todos-and-notes)
   - [Syntax highlight](#syntax-highlight)
   - [Mermaid Diagram Support](#mermaid-diagram-support)
@@ -124,7 +124,7 @@ After installing **VS Code Todo**, follow these steps to begin using the extensi
 2. **Select a Tab**
 
    - Use the three tabs at the top to choose where to store your items:
-     - **User (per profile)**: tasks available across all workspaces in the current VS Code profile. By default they stay local; see [Sync Modes for User Lists](#sync-modes-for-user-lists) to enable roaming.
+     - **User (per profile)**: tasks available across all workspaces in the current VS Code profile. By default they stay local; see [Sync Modes (User and Workspace)](#sync-modes-user-and-workspace) to enable roaming.
      - **Workspace**: tasks tied to the current project (default)
      - **File**: tasks associated with the active file
 
@@ -170,25 +170,164 @@ This covers the essentials; the sections below explore markdown previews, diagra
 
 Tasks and notes are organized across three different scopes, each with its respective tab:
 
-1. **User Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. By default it stays local; see [Sync Modes for User Lists](#sync-modes-for-user-lists) to make it roam with Settings Sync.
+1. **User Tab**: Data available across all workspaces in the current VS Code profile. This data is isolated per profile. By default it stays local; see [Sync Modes (User and Workspace)](#sync-modes-user-and-workspace) to make it roam with Settings Sync.
 2. **Workspace Tab**: Data tied to the current workspace.
 3. **File-specific Tab**: Data associated with a **specific file** within the current workspace. The file displayed in this tab is **automatically updated** to reflect the **most recently focused file** in the editor. However, you can **pin** the tab to a specific file, preventing it from changing when you switch focus to other files.
 Additionally, you can **manually select** and display data for any file that already has an associated record from the list on the left-hand side.
 
-### Sync Modes for User Lists
+### Sync Modes (User and Workspace)
 
-Control how user-scoped data moves between machines with the `vscodeTodo.sync.user` setting.
+User lists support **Local**, **Profile Sync**, and **GitHub Gist**. Workspace lists support **Local** or **GitHub Gist**; when workspace sync is enabled, file-specific lists are stored in the same workspace gist file. Each mode stores data separately; switching modes does not migrate existing todos.
 
-- `profile-local` (default): keep your user lists on the current VS Code profile and device.
-- `profile-sync`: opt user lists into VS Code Settings Sync so they roam with the rest of your profile data.
+#### User: Local Mode (Default)
 
-Change the mode from **Settings > Extensions > VS Code Todo > User sync mode**, or update your settings JSON:
+Your user todos stay on the current VS Code profile and device only. Best for device-specific lists or when you do not need cross-device sync.
+
+#### User: Profile Sync Mode
+
+Opt user lists into VS Code Settings Sync so they roam with the rest of your profile data. Change the mode via command **VS Code Todo: Select User Sync Mode** and choose "Profile Sync".
+
+**Warning:** switching to Profile Sync syncs immediately with any other machine using the same VS Code profile and Settings Sync. Back up or export your data first if you need to keep separate copies.
+
+#### GitHub Gist Sync Mode (User + Workspace)
+
+Sync your todos via a **manually-created GitHub Gist**. This mode provides:
+
+- **Cross-profile sync**: Use the same gist across multiple VS Code profiles and devices
+- **Multiple lists**: Use different files within the gist (`user-Work.json`, `user-Personal.json`, etc.)
+- **Workspace + file lists**: Workspace files also store file-specific todos for that workspace
+- **Independent sync**: Works independently of VS Code Settings Sync
+- **Manual control**: You create and manage the gist on GitHub
+
+##### Setup Instructions
+
+**Quick Setup via Webview UI:**
+
+1. **Create a Secret Gist**
+   - Go to https://gist.github.com and create a new **secret** gist (recommended for privacy)
+   - Copy the gist ID from the URL (e.g., `https://gist.github.com/username/0123456789abcdef0123456789abcdef` -> ID is `0123456789abcdef0123456789abcdef`)
+
+2. **Configure in VS Code Todo**
+    - Open the VS Code Todo panel and click the **settings menu (gear icon)**
+    - Open **GitHub Sync**
+    - Click **Connect to GitHub** and authenticate (requires `gist` scope)
+    - Choose **Gist: Set ID...** (opens Settings) and set `vscodeTodo.sync.github.gistId`
+    - Enable **User: Sync Mode...** / **Workspace: Sync Mode...** and select "GitHub Gist"
+    - Choose **User: Choose Gist File...** and/or **Workspace: Choose Gist File...**
+    - Click **Sync Now** (toolbar) for an immediate sync if needed
+
+**Alternative:** Use Command Palette commands (`Ctrl+Shift+P` / `Cmd+Shift+P`):
+
+- **VS Code Todo: Connect GitHub**
+- **VS Code Todo: Select User Sync Mode** / **Select Workspace Sync Mode**
+- **VS Code Todo: Set User File** / **Set Workspace File**
+- **VS Code Todo: Sync Now**
+
+The gist will store your todos in JSON files using hyphen prefixes:
+
+- `user-*.json` - for user-scoped todos (e.g., `user-todos.json`, `user-Work.json`)
+- `workspace-*.json` - for workspace and file-scoped todos (e.g., `workspace-ProjectA.json`)
+
+##### Managing Your Gist
+
+- **View on GitHub**: Run command **VS Code Todo: View Gist on GitHub** to open your gist in the browser
+- **Sync Manually**: Run command **VS Code Todo: Sync Now** or click **Sync Now** in the toolbar
+- **Create New Files**:
+  - Use the file selection commands (Set User File / Set Workspace File) and choose "Create New File"
+  - Or create files manually on GitHub using the naming pattern: `user-Name.json` or `workspace-Name.json`
+  - Workspace files are automatically prefilled with your workspace name
+- **Rename Files**: Rename files on GitHub, then update your settings to point to the new file names
+
+##### Status Bar Indicators
+
+The status bar displays your sync status and todo counts:
+
+**Sync Status Icons** (shown when GitHub sync is enabled):
+
+- No icon - Synced and up-to-date
+- ⚠️ Warning icon - Unsaved local changes pending sync
+- ⟳ Spinning icon - Sync in progress
+- ❌ Error icon - Sync error occurred
+
+**Format**: `[icon] ☑️ user/workspace/file | 📒 user/workspace/file`
+
+Hover over the status bar for detailed sync mode and counts breakdown.
+
+##### Settings
+
+Configure GitHub Gist sync with these settings:
 
 ```json
-"vscodeTodo.sync.user": "profile-sync"
+{
+  // Your gist ID (32-character hex string from gist URL)
+  // CRITICAL: Never commit this to source control!
+  "vscodeTodo.sync.github.gistId": "0123456789abcdef0123456789abcdef",
+
+  // User-scope file name in gist (uses hyphen prefix)
+  "vscodeTodo.sync.github.userFile": "user-todos.json",
+
+  // Workspace-scope file name in gist (auto-derived from workspace name if not set)
+  "vscodeTodo.sync.github.workspaceFile": "workspace-ProjectAlpha.json",
+
+  // Poll interval in seconds (min: 30, max: 600, default: 180)
+  "vscodeTodo.sync.github.pollInterval": 180,
+
+  // Only poll when Todo view is visible (saves battery & API rate limits)
+  "vscodeTodo.sync.pollOnlyWhenVisible": true
+}
 ```
 
-**Warning:** switching to `profile-sync` syncs immediately with any other machine using the same VS Code profile and Settings Sync. Back up or export your data first if you need to keep separate copies.
+**Note**: User and workspace sync modes are set via commands (not settings): **Select User Sync Mode** and **Select Workspace Sync Mode**.
+
+##### Security Warnings
+
+- **Plaintext Storage**: Todos synced to GitHub are stored in **plaintext JSON**. Never store passwords, API keys, tokens, or sensitive personal information in synced todos.
+- **Gist ID Sensitivity**: Your gist ID grants access to your todos. **Never commit** `.vscode/settings.json` containing your gist ID to source control. Add it to `.gitignore`.
+- **Secret vs Public Gists**: Use **secret gists** (not public) to prevent your todos from being indexed by search engines. Secret gists are still accessible to anyone with the link.
+- **Team Sharing**: When sharing a gist with teammates, understand that all members with the gist ID can read and write todos. Coordinate to avoid conflicts.
+
+##### Conflict Resolution
+
+The extension uses **three-way, content-based conflict detection** to protect your data:
+
+**Automatic Resolution:**
+
+- Remote changed, local clean -> downloads remote changes
+- Local changed, remote unchanged -> uploads local changes after 3-second debounce
+- Both unchanged -> no sync needed
+
+**True Conflicts** (both local and remote have changes):
+
+- For **user lists**, a conflict wizard lets you resolve each conflict, keep all local, keep all remote, or view the gist on GitHub.
+- For **workspace lists**, file path conflicts show **Keep Local Files** / **Keep Remote Files** / **View Gist**, then todo conflicts use the same wizard.
+
+**Best Practices:**
+
+- The extension syncs automatically when you open the view and polls periodically based on your `pollInterval` setting (default: every 3 minutes)
+- Use **Sync Now** before making major changes if coordinating across multiple devices
+- Export your todos regularly as backups
+
+##### Troubleshooting
+
+**"Not authenticated"**
+- Run **VS Code Todo: Connect GitHub** and sign in
+
+**"Gist ID not configured"**
+- Set `vscodeTodo.sync.github.gistId` in Settings (User or Workspace)
+
+**"File not found in gist"**
+- The file will be auto-created on first sync, or create it manually on GitHub
+
+**Sync not happening**
+- Check status bar for error indicators
+- Run **VS Code Todo: Sync Now** or click **Sync Now** in the toolbar
+- Verify the Todo view is visible (polling only happens when visible by default)
+- Check `vscodeTodo.sync.pollOnlyWhenVisible` setting if you need 24/7 background sync
+
+**Conflicts keep appearing**
+- The extension uses content-based detection to avoid false positives
+- True conflicts only occur when both you and another user (or device) modify the same data
+- Use the conflict wizard to resolve each conflict, or select **Keep All Local** / **Keep All Remote** / **View Gist**
 
 ### Markdown Support for Todos and Notes
 
@@ -439,6 +578,14 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 For support, feature requests, or bug reporting, please visit the [GitHub issues page](https://github.com/ai-autocoder/vscode-todo/issues).
 
+## Important Notice
 
+**Data Safety**: This extension is provided "as-is" under the MIT License. While we strive for reliability, we recommend maintaining regular backups of your todos using the export feature. The GitHub Gist sync feature depends on GitHub's service availability and uses content-based conflict detection with user choice dialogs to protect your data during simultaneous edits across devices.
 
+**Security**: Never store passwords, API keys, tokens, or other sensitive information in your todos. Data synced to GitHub Gists is stored in plaintext JSON format.
 
+**Backups**: Use the "Export to JSON" or "Export to Markdown" commands regularly to maintain local backups of your data. See our [Security Warnings](#security-warnings) section for more details.
+
+---
+
+**Legal**: [DISCLAIMER](DISCLAIMER.md) | [LICENSE](LICENSE)

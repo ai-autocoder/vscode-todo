@@ -1,4 +1,16 @@
 <div class="header-container">
+	<vscode-button
+		appearance="icon"
+		[aria-label]="allCollapsed ? 'Expand all' : 'Collapse all'"
+		[title]="allCollapsed ? 'Expand all' : 'Collapse all'"
+		(click)="toggleAllCollapsed()"
+		[disabled]="isListEmpty"
+	>
+		<span>
+			<app-icon [name]="allCollapsed ? 'chevron-right' : 'chevron-down'"></app-icon>
+		</span>
+	</vscode-button>
+
 	@if (!(enableWideView | async)) {
 		<vscode-button
 			appearance="icon"
@@ -26,67 +38,165 @@
 
 	<vscode-button
 		appearance="icon"
-		[matMenuTriggerFor]="importMenu"
-		[aria-label]="'Import'"
-		[title]="'Import'"
-		(menuOpened)="onImportMenuOpened()"
-		(menuClosed)="onImportMenuClosed()"
-		[ngClass]="{ 'menu-open': isImportMenuOpen }"
+		[aria-label]="'Sync Now'"
+		[title]="'Sync Now'"
+		(click)="syncNow()"
 	>
 		<span>
-			<app-icon name="import"></app-icon>
+			<app-icon name="sync" [class.spinning]="isSyncing | async"></app-icon>
 		</span>
 	</vscode-button>
-	<!-- Export menu -->
-	<mat-menu #importMenu="matMenu" yPosition="below" xPosition="before">
-		<fieldset>
-			<legend>Import From</legend>
-			<button mat-menu-item (click)="import(ImportFormats.JSON)" aria-label="Import to JSON">
-				Json
-			</button>
-			<button mat-menu-item (click)="import(ImportFormats.MARKDOWN)" aria-label="Import to Markdown">
-				Markdown
-			</button>
-		</fieldset>
-	</mat-menu>
 
 	<vscode-button
 		appearance="icon"
-		[matMenuTriggerFor]="exportMenu"
-		[aria-label]="'Export'"
-		[title]="'Export'"
-		(menuOpened)="onExportMenuOpened()"
-		(menuClosed)="onExportMenuClosed()"
-		[ngClass]="{ 'menu-open': isExportMenuOpen }"
+		[matMenuTriggerFor]="settingsMenu"
+		[aria-label]="'Settings'"
+		[title]="'Settings'"
+		(menuOpened)="onSettingsMenuOpened()"
+		(menuClosed)="onSettingsMenuClosed()"
+		[ngClass]="{ 'menu-open': isSettingsMenuOpen }"
 	>
 		<span>
-			<app-icon name="export"></app-icon>
+			<app-icon name="settings"></app-icon>
 		</span>
 	</vscode-button>
-	<!-- Export menu -->
-	<mat-menu #exportMenu="matMenu" yPosition="below" xPosition="before">
-		<fieldset>
-			<legend>Export To</legend>
-			<button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON">
-				Json
-			</button>
-			<button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown">
-				Markdown
-			</button>
-		</fieldset>
+	<!-- Settings menu -->
+	<mat-menu #settingsMenu="matMenu" yPosition="below" xPosition="before">
+		<!-- Export submenu -->
+		<button mat-menu-item [matMenuTriggerFor]="exportMenu" aria-label="Export" class="submenu-item">
+			<span class="submenu-content">
+				<app-icon name="export"></app-icon>
+				<span style="margin-left: 8px;">Export</span>
+			</span>
+			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
+		</button>
+
+		<!-- Import submenu -->
+		<button mat-menu-item [matMenuTriggerFor]="importMenu" aria-label="Import" class="submenu-item">
+			<span class="submenu-content">
+				<app-icon name="import"></app-icon>
+				<span style="margin-left: 8px;">Import</span>
+			</span>
+			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
+		</button>
+
+		<mat-divider></mat-divider>
+
+		<!-- Sync mode submenu -->
+		<button mat-menu-item [matMenuTriggerFor]="syncModeMenu" aria-label="Sync Mode" class="submenu-item">
+			<span class="submenu-content">
+				<app-icon name="sync"></app-icon>
+				<span style="margin-left: 8px;">Sync Mode</span>
+			</span>
+			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
+		</button>
+
+		<!-- GitHub sync submenu -->
+		<button
+			mat-menu-item
+			[matMenuTriggerFor]="gitHubSyncMenu"
+			aria-label="GitHub Sync"
+			class="submenu-item"
+		>
+			<span class="submenu-content">
+				<app-icon name="github"></app-icon>
+				<span style="margin-left: 8px;">GitHub Sync</span>
+			</span>
+			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
+		</button>
 	</mat-menu>
 
-	<vscode-button
-		appearance="icon"
-		[aria-label]="allCollapsed ? 'Expand all' : 'Collapse all'"
-		[title]="allCollapsed ? 'Expand all' : 'Collapse all'"
-		(click)="toggleAllCollapsed()"
-		[disabled]="isListEmpty"
-	>
-		<span>
-			<app-icon [name]="allCollapsed ? 'chevron-right' : 'chevron-down'"></app-icon>
-		</span>
-	</vscode-button>
+	<!-- Export submenu -->
+	<mat-menu #exportMenu="matMenu">
+		<button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON">
+			JSON
+		</button>
+		<button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown">
+			Markdown
+		</button>
+	</mat-menu>
+
+	<!-- Import submenu -->
+	<mat-menu #importMenu="matMenu">
+		<button mat-menu-item (click)="import(ImportFormats.JSON)" aria-label="Import from JSON">
+			JSON
+		</button>
+		<button mat-menu-item (click)="import(ImportFormats.MARKDOWN)" aria-label="Import from Markdown">
+			Markdown
+		</button>
+	</mat-menu>
+
+	<!-- Sync Mode submenu -->
+	<mat-menu #syncModeMenu="matMenu">
+		<button mat-menu-item (click)="selectUserSyncMode()" aria-label="User: Sync Mode">
+			User: Sync Mode...
+		</button>
+		<button mat-menu-item (click)="selectWorkspaceSyncMode()" aria-label="Workspace: Sync Mode">
+			Workspace: Sync Mode...
+		</button>
+	</mat-menu>
+
+	<!-- GitHub Sync submenu -->
+	<mat-menu #gitHubSyncMenu="matMenu">
+		@if (!(isGitHubConnected | async)) {
+			<button mat-menu-item (click)="connectGitHub()" aria-label="Connect to GitHub">
+				Connect to GitHub
+			</button>
+		}
+		@if (isGitHubConnected | async) {
+			<button mat-menu-item (click)="disconnectGitHub()" aria-label="Disconnect from GitHub">
+				Disconnect from GitHub
+			</button>
+		}
+
+		<mat-divider></mat-divider>
+
+		<button mat-menu-item (click)="openGistIdSettings()" aria-label="Gist: Set ID">
+			Gist: Set ID...
+		</button>
+		<button
+			mat-menu-item
+			(click)="viewGistOnGitHub()"
+			[disabled]="!(isGitHubConnected | async) || !(isGistIdConfigured | async)"
+			[title]="!(isGitHubConnected | async)
+				? 'Connect to GitHub to open your Gist.'
+				: (isGistIdConfigured | async)
+					? 'Open Gist on GitHub'
+					: 'Set a Gist ID first.'"
+			aria-label="Gist: Open on GitHub"
+		>
+			Gist: Open on GitHub
+		</button>
+
+		<mat-divider></mat-divider>
+
+		<button
+			mat-menu-item
+			(click)="setUserFile()"
+			[disabled]="!(isGitHubConnected | async) || !(isGistIdConfigured | async)"
+			[title]="!(isGitHubConnected | async)
+				? 'Connect to GitHub to choose a Gist file.'
+				: (isGistIdConfigured | async)
+					? 'Choose a Gist file for user lists.'
+					: 'Set a Gist ID first.'"
+			aria-label="User: Choose Gist File"
+		>
+			User: Choose Gist File...
+		</button>
+		<button
+			mat-menu-item
+			(click)="setWorkspaceFile()"
+			[disabled]="!(isGitHubConnected | async) || !(isGistIdConfigured | async)"
+			[title]="!(isGitHubConnected | async)
+				? 'Connect to GitHub to choose a Gist file.'
+				: (isGistIdConfigured | async)
+					? 'Choose a Gist file for workspace lists.'
+					: 'Set a Gist ID first.'"
+			aria-label="Workspace: Choose Gist File"
+		>
+			Workspace: Choose Gist File...
+		</button>
+	</mat-menu>
 
 	<vscode-button
 		appearance="icon"
