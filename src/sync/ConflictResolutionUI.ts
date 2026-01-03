@@ -239,7 +239,7 @@ export class ConflictResolutionUI {
 		const selected = await vscode.window.showQuickPick(items, {
 			title: `Conflict ${index + 1} of ${total}: ${conflict.conflictType}`,
 			placeHolder: conflictDetail,
-			ignoreFocusOut: false,
+			ignoreFocusOut: true,
 			matchOnDescription: true,
 			matchOnDetail: true,
 		});
@@ -377,15 +377,17 @@ export class ConflictResolutionUI {
 		}
 
 		if (conflict.local) {
-			const status = conflict.local.completed ? "✓" : "○";
-			parts.push(`LOCAL: "${this.truncate(conflict.local.text, 80)}" ${status}`);
+			const status = conflict.local.isNote ? "" : conflict.local.completed ? "✓" : "○";
+			const statusSuffix = status ? ` ${status}` : "";
+			parts.push(`LOCAL: "${this.truncate(conflict.local.text, 80)}"${statusSuffix}`);
 		} else {
 			parts.push("LOCAL: [DELETED]");
 		}
 
 		if (conflict.remote) {
-			const status = conflict.remote.completed ? "✓" : "○";
-			parts.push(`REMOTE: "${this.truncate(conflict.remote.text, 80)}" ${status}`);
+			const status = conflict.remote.isNote ? "" : conflict.remote.completed ? "✓" : "○";
+			const statusSuffix = status ? ` ${status}` : "";
+			parts.push(`REMOTE: "${this.truncate(conflict.remote.text, 80)}"${statusSuffix}`);
 		} else {
 			parts.push("REMOTE: [DELETED]");
 		}
@@ -411,17 +413,19 @@ export class ConflictResolutionUI {
 		const parts: string[] = [];
 
 		// Status and metadata
-		if (todo.completed) {
-			parts.push("✓ Completed");
-			if (todo.completionDate) {
-				parts.push(`on ${new Date(todo.completionDate).toLocaleDateString()}`);
+		if (!todo.isNote) {
+			if (todo.completed) {
+				parts.push("Status: Completed");
+				if (todo.completionDate) {
+					parts.push(`on ${new Date(todo.completionDate).toLocaleDateString()}`);
+				}
+			} else {
+				parts.push("Status: Incomplete");
 			}
-		} else {
-			parts.push("○ Incomplete");
 		}
 
 		if (todo.isNote) {
-			parts.push("| 📝 Note");
+			parts.push("📝 Note");
 		}
 
 		if (todo.isMarkdown) {
@@ -485,7 +489,7 @@ export class ConflictResolutionUI {
 			return `=== ${label}: [DELETED] ===`;
 		}
 
-		const status = todo.completed ? "✓ Completed" : "○ Incomplete";
+		const status = todo.completed ? "Status: Completed" : "Status: Incomplete";
 		const type = todo.isNote ? "📝 Note" : "Task";
 		const format = todo.isMarkdown ? "Markdown" : "Plain Text";
 
