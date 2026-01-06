@@ -10,6 +10,14 @@ import {
 } from "../todo/todoTypes";
 import { Config } from "../utilities/config";
 
+export type GitHubSyncInfo = {
+	isGitHubSyncEnabled: boolean;
+	userSyncEnabled: boolean;
+	workspaceSyncEnabled: boolean;
+	userLastSynced?: string;
+	workspaceLastSynced?: string;
+};
+
 type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.addTodo
 	| MessageActionsFromWebview.editTodo
@@ -61,9 +69,11 @@ type MessagePayload<T, L> = T extends
 									? StoreState
 									: T extends MessageActionsToWebview.updateGitHubStatus
 										? { isConnected: boolean; hasGistId: boolean }
-										: T extends MessageActionsToWebview.updateSyncStatus
-											? { isSyncing: boolean }
-											: never;
+										: T extends MessageActionsToWebview.updateGitHubSyncInfo
+											? GitHubSyncInfo
+											: T extends MessageActionsToWebview.updateSyncStatus
+												? { isSyncing: boolean }
+												: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -78,6 +88,7 @@ export type Message<
 				| MessageActionsToWebview.syncTodoData
 				| MessageActionsToWebview.syncEditorFocusAndRecords
 				| MessageActionsToWebview.updateGitHubStatus
+				| MessageActionsToWebview.updateGitHubSyncInfo
 				| MessageActionsToWebview.updateSyncStatus
 		? {
 				type: T;
@@ -149,6 +160,7 @@ export const enum MessageActionsToWebview {
 	syncTodoData = "syncTodoData",
 	syncEditorFocusAndRecords = "syncEditorFocusAndRecords",
 	updateGitHubStatus = "updateGitHubStatus",
+	updateGitHubSyncInfo = "updateGitHubSyncInfo",
 	updateSyncStatus = "updateSyncStatus",
 }
 
@@ -343,6 +355,10 @@ export const messagesToWebview = {
 	updateGitHubStatus: (isConnected: boolean, hasGistId: boolean): { type: MessageActionsToWebview.updateGitHubStatus; payload: { isConnected: boolean; hasGistId: boolean } } => ({
 		type: MessageActionsToWebview.updateGitHubStatus,
 		payload: { isConnected, hasGistId },
+	}),
+	updateGitHubSyncInfo: (payload: GitHubSyncInfo): { type: MessageActionsToWebview.updateGitHubSyncInfo; payload: GitHubSyncInfo } => ({
+		type: MessageActionsToWebview.updateGitHubSyncInfo,
+		payload,
 	}),
 	updateSyncStatus: (isSyncing: boolean): { type: MessageActionsToWebview.updateSyncStatus; payload: { isSyncing: boolean } } => ({
 		type: MessageActionsToWebview.updateSyncStatus,

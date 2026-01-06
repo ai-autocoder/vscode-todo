@@ -38,9 +38,10 @@
 
 	<vscode-button
 		appearance="icon"
-		[aria-label]="'Sync Now'"
-		[title]="'Sync Now'"
+		[aria-label]="'Sync GitHub Gist now'"
+		[title]="syncTooltip | async"
 		(click)="syncNow()"
+		[disabled]="!(isGitHubSyncEnabled | async)"
 	>
 		<span>
 			<app-icon name="sync" [class.spinning]="isSyncing | async"></app-icon>

@@ -11,7 +11,7 @@ import { importCommand } from "./todo/importer";
 import { ImportFormats } from "./todo/todoTypes";
 import { TodoViewProvider } from "./panels/TodoViewProvider";
 import { getConfig } from "./utilities/config";
-import { reloadScopeData } from "./utilities/syncUtils";
+import { notifyGitHubSyncInfo, reloadScopeData } from "./utilities/syncUtils";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,
@@ -74,6 +74,7 @@ export async function activate(context: ExtensionContext) {
 		const message = messagesToWebview.updateSyncStatus(isSyncing);
 		TodoViewProvider.currentProvider?.updateSyncStatus(isSyncing);
 		HelloWorldPanel.currentPanel?.updateSyncStatus(isSyncing);
+		notifyGitHubSyncInfo(context);
 	});
 	context.subscriptions.push(syncStatusListener);
 

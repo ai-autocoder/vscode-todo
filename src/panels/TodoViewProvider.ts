@@ -6,11 +6,12 @@ import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { getConfig } from "../utilities/config";
 import { getGistId } from "../utilities/syncConfig";
-import { messagesToWebview } from "./message";
+import { messagesToWebview, GitHubSyncInfo } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
 import { deleteCompletedTodos } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
+import { getGitHubSyncInfo } from "../utilities/syncInfo";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
@@ -87,6 +88,7 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 			const config = getConfig();
 			this._view.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
 			await this.postGitHubStatus();
+			this.postGitHubSyncInfo();
 		}
 	}
 
@@ -106,6 +108,12 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public updateGitHubStatus(isConnected: boolean, hasGistId: boolean) {
 		if (this._view) {
 			this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
+		}
+	}
+
+	public updateGitHubSyncInfo(info: GitHubSyncInfo) {
+		if (this._view) {
+			this._view.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
 		}
 	}
 
@@ -176,5 +184,14 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		const isConnected = await authManager.isAuthenticated();
 		const hasGistId = this.getHasGistId();
 		this._view.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
+	}
+
+	private postGitHubSyncInfo(): void {
+		if (!this._view) {
+			return;
+		}
+
+		const info = getGitHubSyncInfo(this._context);
+		this._view.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
 	}
 }

@@ -25,13 +25,14 @@ import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { getGistId } from "../utilities/syncConfig";
-import { Message, MessageActionsFromWebview, messagesToWebview } from "./message";
+import { Message, MessageActionsFromWebview, messagesToWebview, GitHubSyncInfo } from "./message";
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
 import { deleteCompletedTodos } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
+import { getGitHubSyncInfo } from "../utilities/syncInfo";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -169,6 +170,7 @@ export class HelloWorldPanel {
 		const config = getConfig();
 		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
 		await this.postGitHubStatus();
+		this.postGitHubSyncInfo();
 	}
 
 	/**
@@ -191,6 +193,10 @@ export class HelloWorldPanel {
 
 	public updateGitHubStatus(isConnected: boolean, hasGistId: boolean) {
 		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
+	}
+
+	public updateGitHubSyncInfo(info: GitHubSyncInfo) {
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
 	}
 
 	public updateSyncStatus(isSyncing: boolean) {
@@ -283,6 +289,11 @@ export class HelloWorldPanel {
 		const isConnected = await authManager.isAuthenticated();
 		const hasGistId = this.getHasGistId();
 		this._panel.webview.postMessage(messagesToWebview.updateGitHubStatus(isConnected, hasGistId));
+	}
+
+	private postGitHubSyncInfo(): void {
+		const info = getGitHubSyncInfo(this._context);
+		this._panel.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
 	}
 
 	public static setupWebviewMessageHandler(

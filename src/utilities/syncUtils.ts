@@ -13,6 +13,7 @@ import LogChannel from "./LogChannel";
 import { HelloWorldPanel } from "../panels/HelloWorldPanel";
 import { TodoViewProvider } from "../panels/TodoViewProvider";
 import { getGistId } from "./syncConfig";
+import { getGitHubSyncInfo } from "./syncInfo";
 
 /**
  * Reload store data from storage for a specific scope
@@ -96,4 +97,12 @@ export function notifyGitHubStatusChange(isConnected: boolean): void {
 	HelloWorldPanel.currentPanel?.updateGitHubStatus(isConnected, hasGistId);
 	TodoViewProvider.currentProvider?.updateGitHubStatus(isConnected, hasGistId);
 	LogChannel.log(`[SyncUtils] Notified webviews of GitHub status: ${isConnected}`);
+}
+
+export function notifyGitHubSyncInfo(context: vscode.ExtensionContext): void {
+	const info = getGitHubSyncInfo(context);
+
+	HelloWorldPanel.currentPanel?.updateGitHubSyncInfo(info);
+	TodoViewProvider.currentProvider?.updateGitHubSyncInfo(info);
+	LogChannel.log("[SyncUtils] Notified webviews of GitHub sync info");
 }

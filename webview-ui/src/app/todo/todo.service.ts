@@ -3,6 +3,7 @@ import { BehaviorSubject, Subject } from "rxjs";
 import {
 	Message,
 	MessageActionsToWebview,
+	GitHubSyncInfo,
 	messagesFromWebview,
 } from "../../../../src/panels/message";
 import {
@@ -65,8 +66,14 @@ export class TodoService {
 
 	private _isGitHubConnectedSource = new BehaviorSubject<boolean>(false);
 	private _hasGistIdSource = new BehaviorSubject<boolean>(false);
+	private _gitHubSyncInfoSource = new BehaviorSubject<GitHubSyncInfo>({
+		isGitHubSyncEnabled: false,
+		userSyncEnabled: false,
+		workspaceSyncEnabled: false,
+	});
 
 	private _isSyncingSource = new BehaviorSubject<boolean>(false);
+	private _nowSource = new BehaviorSubject<number>(Date.now());
 
 	private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
 		[TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
@@ -89,7 +96,9 @@ export class TodoService {
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
 	isGitHubConnected = this._isGitHubConnectedSource.asObservable();
 	hasGistId = this._hasGistIdSource.asObservable();
+	gitHubSyncInfo = this._gitHubSyncInfoSource.asObservable();
 	isSyncing = this._isSyncingSource.asObservable();
+	now = this._nowSource.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
 	currentFileLastAction = new BehaviorSubject<string>("");
@@ -140,6 +149,10 @@ export class TodoService {
 	constructor() {
 		window.addEventListener("message", this.handleMessage.bind(this));
 
+		setInterval(() => {
+			this._nowSource.next(Date.now());
+		}, 60000);
+
 		setTimeout(() => {
 			vscode.postMessage({ type: "webview-ready" });
 		}, 0);
@@ -159,6 +172,9 @@ export class TodoService {
 				break;
 			case MessageActionsToWebview.updateGitHubStatus:
 				this.handleUpdateGitHubStatus(data.payload);
+				break;
+			case MessageActionsToWebview.updateGitHubSyncInfo:
+				this.handleUpdateGitHubSyncInfo(data.payload);
 				break;
 			case MessageActionsToWebview.updateSyncStatus:
 				this.handleUpdateSyncStatus(data.payload);
@@ -229,6 +245,10 @@ export class TodoService {
 	private handleUpdateGitHubStatus(payload: { isConnected: boolean; hasGistId: boolean }) {
 		this._isGitHubConnectedSource.next(payload.isConnected);
 		this._hasGistIdSource.next(payload.hasGistId);
+	}
+
+	private handleUpdateGitHubSyncInfo(payload: GitHubSyncInfo) {
+		this._gitHubSyncInfoSource.next(payload);
 	}
 
 	private handleUpdateSyncStatus(payload: { isSyncing: boolean }) {

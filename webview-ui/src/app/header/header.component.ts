@@ -1,7 +1,8 @@
 import { Component, Input, OnInit } from "@angular/core";
 import { TodoService } from "../todo/todo.service";
 import { ExportFormats, ImportFormats, TodoScope } from "../../../../src/todo/todoTypes";
-import { Observable } from "rxjs";
+import { combineLatest, map, Observable } from "rxjs";
+import { GitHubSyncInfo } from "../../../../src/panels/message";
 
 @Component({
     selector: "app-header",
@@ -18,7 +19,9 @@ export class HeaderComponent implements OnInit {
 	enableWideView!: Observable<boolean>;
 	isGitHubConnected!: Observable<boolean>;
 	isGistIdConfigured!: Observable<boolean>;
+	isGitHubSyncEnabled!: Observable<boolean>;
 	isSyncing!: Observable<boolean>;
+	syncTooltip!: Observable<string>;
 	@Input() currentScope!: TodoScope;
 
 	constructor(readonly todoService: TodoService) {}
@@ -27,7 +30,15 @@ export class HeaderComponent implements OnInit {
 		this.enableWideView = this.todoService.enableWideView;
 		this.isGitHubConnected = this.todoService.isGitHubConnected;
 		this.isGistIdConfigured = this.todoService.hasGistId;
+		this.isGitHubSyncEnabled = this.todoService.gitHubSyncInfo.pipe(
+			map((info) => info.isGitHubSyncEnabled)
+		);
 		this.isSyncing = this.todoService.isSyncing;
+		this.syncTooltip = combineLatest([
+			this.todoService.gitHubSyncInfo,
+			this.todoService.isSyncing,
+			this.todoService.now,
+		]).pipe(map(([info, isSyncing, nowMs]) => this.buildSyncTooltip(info, isSyncing, nowMs)));
 	}
 
 	import(format: ImportFormats) {
@@ -162,5 +173,54 @@ export class HeaderComponent implements OnInit {
 
 	syncNow() {
 		this.todoService.syncNow();
+	}
+
+	private buildSyncTooltip(info: GitHubSyncInfo, isSyncing: boolean, nowMs: number): string {
+		if (!info.isGitHubSyncEnabled) {
+			return (
+				"GitHub Gist sync is off for all scopes. " +
+				"Enable it via Settings menu > Sync Mode > User/Workspace."
+			);
+		}
+
+		const summary = isSyncing ? "Syncing with GitHub Gist..." : "Sync GitHub Gist now.";
+		const userDetail = info.userSyncEnabled
+			? `User: last synced ${this.formatElapsed(info.userLastSynced, nowMs)}`
+			: "User: GitHub sync off";
+		const workspaceDetail = info.workspaceSyncEnabled
+			? `Workspace: last synced ${this.formatElapsed(info.workspaceLastSynced, nowMs)}`
+			: "Workspace: GitHub sync off";
+
+		return `${summary}\nScopes:\n${userDetail}\n${workspaceDetail}`;
+	}
+
+	private formatElapsed(lastSynced: string | undefined, nowMs: number): string {
+		if (!lastSynced) {
+			return "never";
+		}
+
+		const lastMs = Date.parse(lastSynced);
+		if (Number.isNaN(lastMs)) {
+			return "unknown";
+		}
+
+		const deltaSeconds = Math.max(0, Math.floor((nowMs - lastMs) / 1000));
+
+		if (deltaSeconds < 60) {
+			return "just now";
+		}
+
+		const minutes = Math.floor(deltaSeconds / 60);
+		if (minutes < 60) {
+			return `${minutes}m ago`;
+		}
+
+		const hours = Math.floor(minutes / 60);
+		if (hours < 24) {
+			return `${hours}h ago`;
+		}
+
+		const days = Math.floor(hours / 24);
+		return `${days}d ago`;
 	}
 }

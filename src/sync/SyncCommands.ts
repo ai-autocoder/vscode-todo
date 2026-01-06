@@ -13,7 +13,7 @@ import { StoreState, TodoScope } from "../todo/todoTypes";
 import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFileActions } from "../todo/store";
 import StorageSyncManager from "../storage/StorageSyncManager";
 import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
-import { reloadScopeData, clearWorkspaceOverride, notifyGitHubStatusChange } from "../utilities/syncUtils";
+import { reloadScopeData, clearWorkspaceOverride, notifyGitHubStatusChange, notifyGitHubSyncInfo } from "../utilities/syncUtils";
 import { getGistId } from "../utilities/syncConfig";
 import { WebviewVisibilityCoordinator } from "./WebviewVisibilityCoordinator";
 
@@ -115,6 +115,7 @@ export class SyncCommands {
 
 			// Notify webviews
 			notifyGitHubStatusChange(false);
+			notifyGitHubSyncInfo(this.context);
 		}
 	}
 
@@ -221,6 +222,7 @@ export class SyncCommands {
 
 			// Notify visibility coordinator
 			this.visibilityCoordinator?.updateSyncModes();
+			notifyGitHubSyncInfo(this.context);
 
 			vscode.window.showInformationMessage("GitHub sync enabled for user lists.");
 		} else {
@@ -236,6 +238,7 @@ export class SyncCommands {
 
 			// Notify visibility coordinator
 			this.visibilityCoordinator?.updateSyncModes();
+			notifyGitHubSyncInfo(this.context);
 
 			vscode.window.showInformationMessage(`Switched to ${selected.label} mode for user lists.`);
 		}
@@ -304,6 +307,7 @@ export class SyncCommands {
 
 			// Notify visibility coordinator
 			this.visibilityCoordinator?.updateSyncModes();
+			notifyGitHubSyncInfo(this.context);
 
 			vscode.window.showInformationMessage("GitHub sync enabled for workspace lists.");
 		} else {
@@ -318,6 +322,7 @@ export class SyncCommands {
 
 			// Notify visibility coordinator
 			this.visibilityCoordinator?.updateSyncModes();
+			notifyGitHubSyncInfo(this.context);
 
 			vscode.window.showInformationMessage("Switched to Local mode for workspace lists.");
 		}
@@ -631,7 +636,16 @@ export class SyncCommands {
 		const workspaceMode = this.context.workspaceState.get<string>("syncMode", "local");
 
 		if (userMode !== "github" && workspaceMode !== "github") {
-			vscode.window.showInformationMessage("GitHub sync is not enabled for any scope.");
+			const action = await vscode.window.showInformationMessage(
+				"GitHub Gist sync is not enabled for any scope. Enable it via 'User: Sync Mode...' or 'Workspace: Sync Mode...'.",
+				"User: Sync Mode...",
+				"Workspace: Sync Mode..."
+			);
+			if (action === "User: Sync Mode...") {
+				await this.selectUserSyncMode();
+			} else if (action === "Workspace: Sync Mode...") {
+				await this.selectWorkspaceSyncMode();
+			}
 			return;
 		}
 

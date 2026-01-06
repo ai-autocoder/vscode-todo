@@ -201,6 +201,9 @@ export class SyncManager {
 						return await this.uploadUser(gistId, fileName, cache);
 					}
 					// Both empty, in sync
+					cache.lastSynced = new Date().toISOString();
+					cache.isDirty = false;
+					await this.storageManager.setGlobalGistCache(fileName, cache);
 					this.updateStatus("user", SyncStatus.Synced);
 					return { success: true };
 				}
@@ -327,6 +330,9 @@ export class SyncManager {
 			}
 
 			// Both in sync
+			cache.lastSynced = new Date().toISOString();
+			cache.isDirty = false;
+			await this.storageManager.setGlobalGistCache(fileName, cache);
 			this.updateStatus("user", SyncStatus.Synced);
 			return { success: true };
 		} catch (error) {
@@ -533,6 +539,9 @@ export class SyncManager {
 						return await this.uploadWorkspace(gistId, fileName, cache);
 					}
 					// Both empty, in sync
+					cache.lastSynced = new Date().toISOString();
+					cache.isDirty = false;
+					await this.storageManager.setWorkspaceGistCache(fileName, cache);
 					this.updateStatus("workspace", SyncStatus.Synced);
 					return { success: true };
 				}
@@ -751,6 +760,9 @@ export class SyncManager {
 			}
 
 			// Both in sync
+			cache.lastSynced = new Date().toISOString();
+			cache.isDirty = false;
+			await this.storageManager.setWorkspaceGistCache(fileName, cache);
 			this.updateStatus("workspace", SyncStatus.Synced);
 			return { success: true };
 		} catch (error) {
