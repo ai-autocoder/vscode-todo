@@ -22,6 +22,7 @@ export class HeaderComponent implements OnInit {
 	isGitHubSyncEnabled!: Observable<boolean>;
 	isSyncing!: Observable<boolean>;
 	syncTooltip!: Observable<string>;
+	private wideViewDelayHandle: number | null = null;
 	@Input() currentScope!: TodoScope;
 
 	constructor(readonly todoService: TodoService) {}
@@ -66,7 +67,14 @@ export class HeaderComponent implements OnInit {
 	}
 
 	setWideViewEnabled(isEnabled: boolean) {
-		this.todoService.setWideViewEnabled(isEnabled);
+		if (this.wideViewDelayHandle !== null) {
+			clearTimeout(this.wideViewDelayHandle);
+		}
+
+		this.wideViewDelayHandle = window.setTimeout(() => {
+			this.todoService.setWideViewEnabled(isEnabled);
+			this.wideViewDelayHandle = null;
+		}, 150);
 	}
 
 	deleteAll() {
@@ -223,4 +231,5 @@ export class HeaderComponent implements OnInit {
 		const days = Math.floor(hours / 24);
 		return `${days}d ago`;
 	}
+
 }

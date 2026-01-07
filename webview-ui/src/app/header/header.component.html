@@ -11,31 +11,6 @@
 		</span>
 	</vscode-button>
 
-	@if (!(enableWideView | async)) {
-		<vscode-button
-			appearance="icon"
-			[aria-label]="'Wide View'"
-			[title]="'Wide View'"
-			(click)="setWideViewEnabled(true)"
-		>
-			<span>
-				<app-icon name="wide-view"></app-icon>
-			</span>
-		</vscode-button>
-	}
-	@if (enableWideView | async) {
-		<vscode-button
-			appearance="icon"
-			[aria-label]="'Normal View'"
-			[title]="'Normal View'"
-			(click)="setWideViewEnabled(false)"
-		>
-			<span>
-				<app-icon name="normal-view"></app-icon>
-			</span>
-		</vscode-button>
-	}
-
 	<vscode-button
 		appearance="icon"
 		[aria-label]="'Sync GitHub Gist now'"
@@ -80,6 +55,23 @@
 			</span>
 			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
 		</button>
+
+		@if (!(enableWideView | async)) {
+			<button mat-menu-item (click)="setWideViewEnabled(true)" aria-label="Wide View">
+				<span class="submenu-content">
+					<app-icon name="wide-view"></app-icon>
+					<span style="margin-left: 8px;">Wide View</span>
+				</span>
+			</button>
+		}
+		@if (enableWideView | async) {
+			<button mat-menu-item (click)="setWideViewEnabled(false)" aria-label="Normal View">
+				<span class="submenu-content">
+					<app-icon name="normal-view"></app-icon>
+					<span style="margin-left: 8px;">Normal View</span>
+				</span>
+			</button>
+		}
 
 		<mat-divider></mat-divider>
 
