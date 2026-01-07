@@ -8,7 +8,15 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import { GitHubAuthManager } from "./GitHubAuthManager";
 import { GitHubApiClient } from "./GitHubApiClient";
 import { SyncManager } from "./SyncManager";
-import { GlobalSyncMode, WorkspaceSyncMode, SyncErrorType } from "./syncTypes";
+import {
+	DefaultFileNames,
+	GlobalGistData,
+	GlobalSyncMode,
+	GistSummary,
+	WorkspaceGistData,
+	WorkspaceSyncMode,
+	SyncErrorType,
+} from "./syncTypes";
 import { StoreState, TodoScope } from "../todo/todoTypes";
 import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFileActions } from "../todo/store";
 import StorageSyncManager from "../storage/StorageSyncManager";
@@ -66,6 +74,7 @@ export class SyncCommands {
 			vscode.commands.registerCommand("vsc-todo.viewGistOnGitHub", () => this.viewGistOnGitHub()),
 			vscode.commands.registerCommand("vsc-todo.selectUserSyncMode", () => this.selectUserSyncMode()),
 			vscode.commands.registerCommand("vsc-todo.selectWorkspaceSyncMode", () => this.selectWorkspaceSyncMode()),
+			vscode.commands.registerCommand("vsc-todo.setupGistId", () => this.setupGistId()),
 			vscode.commands.registerCommand("vsc-todo.setUserFile", () => this.setUserFile()),
 			vscode.commands.registerCommand("vsc-todo.setWorkspaceFile", () => this.setWorkspaceFile()),
 			vscode.commands.registerCommand("vsc-todo.syncNow", () => this.syncNow()),
@@ -127,6 +136,231 @@ export class SyncCommands {
 	}
 
 	/**
+	 * Command: Set Gist ID (guided setup)
+	 */
+	private async setupGistId(): Promise<void> {
+		const isAuth = await this.authManager.ensureAuthenticated();
+		if (!isAuth) {
+			return;
+		}
+		await this.ensureGistIdConfigured("any", { forcePrompt: true });
+	}
+
+	/**
+	 * Ensure gist ID is configured, with guided setup if needed
+	 */
+	private async ensureGistIdConfigured(
+		scope: "user" | "workspace" | "any",
+		options?: { forcePrompt?: boolean }
+	): Promise<string | undefined> {
+		const existing = getGistId();
+		if (existing && !options?.forcePrompt) {
+			return existing;
+		}
+
+		type SetupChoice = {
+			label: string;
+			description: string;
+			value: "create" | "existing" | "settings";
+		};
+
+		const items: SetupChoice[] = [
+			{
+				label: "$(add) Create new secret gist (recommended)",
+				description: "Creates a private gist with empty Todo files",
+				value: "create",
+			},
+		];
+
+		items.push(
+			{
+				label: "$(list-selection) Use existing gist...",
+				description: "Pick from your GitHub account",
+				value: "existing",
+			},
+			{
+				label: "$(settings) Open Settings...",
+				description: "Paste or edit a gist ID manually",
+				value: "settings",
+			}
+		);
+
+		const choice = await vscode.window.showQuickPick<SetupChoice>(items, {
+			placeHolder: "Set up GitHub Gist sync",
+		});
+
+		if (!choice) {
+			return;
+		}
+
+		if (choice.value === "settings") {
+			await this.openGistIdSettings();
+			return;
+		}
+
+		const isAuthenticated = await this.authManager.isAuthenticated();
+		const isAuth = isAuthenticated || (await this.authManager.ensureAuthenticated());
+		if (!isAuth) {
+			return;
+		}
+
+		if (choice.value === "existing") {
+			const selectedGist = await this.pickExistingGist();
+			if (!selectedGist) {
+				return;
+			}
+			await this.updateGistId(selectedGist.id);
+			await this.showGistSelectedMessage(selectedGist);
+			return selectedGist.id;
+		}
+
+		const createdGistId = await this.createGistForSync();
+		if (!createdGistId) {
+			return;
+		}
+		await this.updateGistId(createdGistId);
+		await this.showGistCreatedMessage(createdGistId);
+		return createdGistId;
+	}
+
+	private async updateGistId(gistId: string): Promise<void> {
+		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+		await config.update("github.gistId", gistId.trim(), vscode.ConfigurationTarget.Global);
+		notifyGitHubStatusChange(true);
+	}
+
+	private async createGistForSync(): Promise<string | undefined> {
+		return await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: "Creating GitHub gist...",
+				cancellable: false,
+			},
+			async () => {
+				const files = this.buildSeedFiles();
+				const result = await this.apiClient.createGist("VS Code Todo Sync", files, false);
+
+				if (!result.success || !result.data) {
+					vscode.window.showErrorMessage(
+						`Failed to create gist: ${result.error?.message ?? "Unknown error"}`
+					);
+					return;
+				}
+
+				return result.data.id;
+			}
+		);
+	}
+
+	private buildSeedFiles(): Record<string, string> {
+		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+		const userFileName = config.get<string>("github.userFile", DefaultFileNames.user);
+		const workspaceName = vscode.workspace.name || "default";
+		const workspaceFileName =
+			config.get<string>("github.workspaceFile") || DefaultFileNames.workspace(workspaceName);
+		const userData: GlobalGistData = {
+			userTodos: [],
+		};
+		const workspaceData: WorkspaceGistData = {
+			workspaceTodos: [],
+			filesData: {},
+		};
+
+		return {
+			[userFileName]: JSON.stringify(userData, null, 2),
+			[workspaceFileName]: JSON.stringify(workspaceData, null, 2),
+		};
+	}
+
+	private async pickExistingGist(): Promise<GistSummary | undefined> {
+		return await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: "Loading GitHub gists...",
+				cancellable: false,
+			},
+			async () => {
+				const listResult = await this.apiClient.listGists();
+				if (!listResult.success || !listResult.data) {
+					vscode.window.showErrorMessage(
+						`Failed to load gists: ${listResult.error?.message ?? "Unknown error"}`
+					);
+					return;
+				}
+
+				if (listResult.data.length === 0) {
+					vscode.window.showInformationMessage("No gists found in your GitHub account.");
+					return;
+				}
+
+				const sorted = [...listResult.data].sort((a, b) => {
+					return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+				});
+
+				const items = sorted.map((gist) => {
+					const description = gist.description?.trim()
+						? gist.description.trim()
+						: `Gist ${gist.id}`;
+					const visibility = gist.isPublic ? "Public" : "Secret";
+					const filesLabel = gist.filesCount === 1 ? "1 file" : `${gist.filesCount} files`;
+					const updatedAt = this.formatGistDate(gist.updatedAt);
+					return {
+						label: description,
+						description: `${visibility} | ${filesLabel}`,
+						detail: `ID: ${gist.id} | Updated ${updatedAt}`,
+						gist,
+					};
+				});
+
+				const selected = await vscode.window.showQuickPick(items, {
+					placeHolder: "Select a gist to use for VS Code Todo",
+				});
+
+				return selected?.gist;
+			}
+		);
+	}
+
+	private formatGistDate(timestamp: string): string {
+		const parsed = Date.parse(timestamp);
+		if (Number.isNaN(parsed)) {
+			return "unknown";
+		}
+		return new Date(parsed).toISOString().slice(0, 10);
+	}
+
+	private async showGistCreatedMessage(gistId: string): Promise<void> {
+		const action = await vscode.window.showInformationMessage(
+			"Created a new secret gist for VS Code Todo. You can change it in Settings.",
+			"View Gist",
+			"Open Settings"
+		);
+
+		if (action === "View Gist") {
+			const url = this.apiClient.getGistUrl(gistId);
+			await vscode.env.openExternal(vscode.Uri.parse(url));
+		} else if (action === "Open Settings") {
+			await this.openGistIdSettings();
+		}
+	}
+
+	private async showGistSelectedMessage(gist: GistSummary): Promise<void> {
+		const label = gist.description?.trim() ? gist.description.trim() : gist.id;
+		const action = await vscode.window.showInformationMessage(
+			`Using gist "${label}" for VS Code Todo. You can change it in Settings.`,
+			"View Gist",
+			"Open Settings"
+		);
+
+		if (action === "View Gist") {
+			const url = this.apiClient.getGistUrl(gist.id);
+			await vscode.env.openExternal(vscode.Uri.parse(url));
+		} else if (action === "Open Settings") {
+			await this.openGistIdSettings();
+		}
+	}
+
+	/**
 	 * Command: View Gist on GitHub
 	 */
 	private async viewGistOnGitHub(): Promise<void> {
@@ -169,7 +403,7 @@ export class SyncCommands {
 			},
 			{
 				label: "$(github) GitHub Gist",
-				description: "Syncs via manually-created gist",
+				description: "Syncs via GitHub Gist",
 				detail: currentMode === "github" ? "✓ Currently selected" : "[Requires gist ID configuration]",
 				mode: GlobalSyncMode.GitHub,
 			},
@@ -191,16 +425,8 @@ export class SyncCommands {
 			}
 
 			// Ensure gist ID is configured
-			const gistId = getGistId();
+			const gistId = await this.ensureGistIdConfigured("user");
 			if (!gistId) {
-				const setup = await vscode.window.showInformationMessage(
-					"Gist ID not configured. Set 'vscodeTodo.sync.github.gistId' in Settings to enable GitHub sync.",
-					"Open Settings",
-					"Cancel"
-				);
-				if (setup === "Open Settings") {
-					await this.openGistIdSettings();
-				}
 				return;
 			}
 
@@ -260,7 +486,7 @@ export class SyncCommands {
 			},
 			{
 				label: "$(github) GitHub Gist",
-				description: "Syncs via manually-created gist",
+				description: "Syncs via GitHub Gist",
 				detail: currentMode === "github" ? "✓ Currently selected" : "[Requires gist ID configuration]",
 				mode: WorkspaceSyncMode.GitHub,
 			},
@@ -282,16 +508,8 @@ export class SyncCommands {
 			}
 
 			// Ensure gist ID is configured
-			const gistId = getGistId();
+			const gistId = await this.ensureGistIdConfigured("workspace");
 			if (!gistId) {
-				const setup = await vscode.window.showInformationMessage(
-					"Gist ID not configured. Set 'vscodeTodo.sync.github.gistId' in Settings to enable GitHub sync.",
-					"Open Settings",
-					"Cancel"
-				);
-				if (setup === "Open Settings") {
-					await this.openGistIdSettings();
-				}
 				return;
 			}
 

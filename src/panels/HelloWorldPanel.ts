@@ -460,7 +460,7 @@ export class HelloWorldPanel {
 						break;
 					}
 					case MessageActionsFromWebview.openGistIdSettings: {
-						commands.executeCommand("workbench.action.openSettings", "vscodeTodo.sync.github.gistId");
+						commands.executeCommand("vsc-todo.setupGistId");
 						break;
 					}
 					case MessageActionsFromWebview.viewGistOnGitHub: {

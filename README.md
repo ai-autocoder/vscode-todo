@@ -191,34 +191,39 @@ Opt user lists into VS Code Settings Sync so they roam with the rest of your pro
 
 #### GitHub Gist Sync Mode (User + Workspace)
 
-Sync your todos via a **manually-created GitHub Gist**. This mode provides:
+Sync your todos via a **GitHub Gist**. This mode provides:
 
 - **Cross-profile sync**: Use the same gist across multiple VS Code profiles and devices
 - **Multiple lists**: Use different files within the gist (`user-Work.json`, `user-Personal.json`, etc.)
 - **Workspace + file lists**: Workspace files also store file-specific todos for that workspace
 - **Independent sync**: Works independently of VS Code Settings Sync
-- **Manual control**: You create and manage the gist on GitHub
+- **Guided setup**: Create a secret gist or pick an existing one from VS Code Todo
+- **Manual control**: You can still manage the gist on GitHub or switch gists in Settings
 
 ##### Setup Instructions
 
 **Quick Setup via Webview UI:**
 
-1. **Create a Secret Gist**
-   - Go to https://gist.github.com and create a new **secret** gist (recommended for privacy)
-   - Copy the gist ID from the URL (e.g., `https://gist.github.com/username/0123456789abcdef0123456789abcdef` -> ID is `0123456789abcdef0123456789abcdef`)
+1. **Connect GitHub**
+   - Open the VS Code Todo panel and click the **settings menu (gear icon)**
+   - Open **GitHub Sync**
+   - Click **Connect to GitHub** and authenticate (requires `gist` scope)
 
-2. **Configure in VS Code Todo**
-    - Open the VS Code Todo panel and click the **settings menu (gear icon)**
-    - Open **GitHub Sync**
-    - Click **Connect to GitHub** and authenticate (requires `gist` scope)
-    - Choose **Gist: Set ID...** (opens Settings) and set `vscodeTodo.sync.github.gistId`
-    - Enable **User: Sync Mode...** / **Workspace: Sync Mode...** and select "GitHub Gist"
-    - Choose **User: Choose Gist File...** and/or **Workspace: Choose Gist File...**
-    - Click **Sync Now** (toolbar) for an immediate sync if needed
+2. **Choose your gist**
+   - Select **Gist: Set ID...** to open the setup picker
+   - Pick **Create new secret gist** (creates empty user/workspace files), **Use existing gist...**, or **Open Settings...** to paste an ID manually
+
+3. **Enable GitHub sync**
+   - Enable **User: Sync Mode...** / **Workspace: Sync Mode...** and select "GitHub Gist"
+   - Choose **User: Choose Gist File...** and/or **Workspace: Choose Gist File...**
+   - Click **Sync Now** (toolbar) for an immediate sync if needed
+
+Note: GitHub sync uses separate storage from Local/Profile modes. New gists start empty and do not copy your local lists. Use Export/Import if you want to migrate data.
 
 **Alternative:** Use Command Palette commands (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
 - **VS Code Todo: Connect GitHub**
+- **VS Code Todo: Set Gist ID**
 - **VS Code Todo: Select User Sync Mode** / **Select Workspace Sync Mode**
 - **VS Code Todo: Set User File** / **Set Workspace File**
 - **VS Code Todo: Sync Now**
@@ -313,7 +318,7 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 - Run **VS Code Todo: Connect GitHub** and sign in
 
 **"Gist ID not configured"**
-- Set `vscodeTodo.sync.github.gistId` in Settings (User or Workspace)
+- Run **VS Code Todo: Set Gist ID** or set `vscodeTodo.sync.github.gistId` in Settings (User or Workspace)
 
 **"File not found in gist"**
 - The file will be auto-created on first sync, or create it manually on GitHub

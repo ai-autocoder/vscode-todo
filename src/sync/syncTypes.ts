@@ -13,7 +13,7 @@ export enum GlobalSyncMode {
 	Local = "local",
 	/** VS Code Settings Sync - syncs via VS Code profile */
 	ProfileSync = "profile-sync",
-	/** GitHub Gist - syncs via manually-created gist */
+	/** GitHub Gist - syncs via GitHub Gist */
 	GitHub = "github",
 }
 
@@ -23,7 +23,7 @@ export enum GlobalSyncMode {
 export enum WorkspaceSyncMode {
 	/** Local storage (workspaceState) - this device only */
 	Local = "local",
-	/** GitHub Gist - syncs via manually-created gist */
+	/** GitHub Gist - syncs via GitHub Gist */
 	GitHub = "github",
 }
 
@@ -66,6 +66,17 @@ export interface GistResponse {
 		login: string;
 		id: number;
 	};
+}
+
+/**
+ * Summary info for gist picker
+ */
+export interface GistSummary {
+	id: string;
+	description: string;
+	isPublic: boolean;
+	filesCount: number;
+	updatedAt: string;
 }
 
 /**

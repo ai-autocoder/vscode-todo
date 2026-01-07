@@ -92,6 +92,11 @@
 				"category": "VS Code Todo"
 			},
 			{
+				"command": "vsc-todo.setupGistId",
+				"title": "Set Gist ID",
+				"category": "VS Code Todo"
+			},
+			{
 				"command": "vsc-todo.selectUserSyncMode",
 				"title": "Select User Sync Mode",
 				"category": "VS Code Todo"
@@ -123,7 +128,7 @@
 				"vscodeTodo.sync.github.gistId": {
 					"type": "string",
 					"default": "",
-					"markdownDescription": "GitHub Gist ID for sync (32-character hex string). Can be set in User Settings (global default) or Workspace Settings (override).\n\n**CRITICAL:** Never commit this to source control. Add `.vscode/settings.json` to `.gitignore` if it contains gist ID.\n\nTo get your gist ID:\n1. Create a secret gist at https://gist.github.com\n2. Copy the ID from the URL (e.g., `abc123def456`)\n3. Paste the ID here in Settings"
+					"markdownDescription": "GitHub Gist ID for sync (32-character hex string).\n\nCRITICAL: Do not commit this to source control unless you intentionally want to share it. If `.vscode/settings.json` contains the gist ID, add it to `.gitignore`.\n\nTip: use VS Code Todo: Set Gist ID command to create a secret gist for you or let you pick an existing one from your GitHub account. You can also paste a gist ID here manually."
 				},
 				"vscodeTodo.sync.github.userFile": {
 					"type": "string",

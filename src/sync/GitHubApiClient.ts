@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 import {
 	GistResponse,
 	GistFileInfo,
+	GistSummary,
 	GitHubAPI,
 	SyncResult,
 	SyncErrorType,
@@ -21,6 +22,156 @@ export class GitHubApiClient {
 
 	constructor(context: vscode.ExtensionContext) {
 		this.authManager = GitHubAuthManager.getInstance(context);
+	}
+
+	/**
+	 * Create a new gist
+	 */
+	public async createGist(
+		description: string,
+		files: Record<string, string>,
+		isPublic: boolean = false
+	): Promise<SyncResult<GistResponse>> {
+		const token = await this.authManager.getToken();
+		if (!token) {
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.AuthError,
+					message: "Not authenticated. Please connect GitHub first.",
+					timestamp: new Date().toISOString(),
+					retryable: true,
+				},
+			};
+		}
+
+		const entries = Object.entries(files);
+		if (entries.length === 0) {
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.ValidationError,
+					message: "At least one file is required to create a gist.",
+					timestamp: new Date().toISOString(),
+					retryable: false,
+				},
+			};
+		}
+
+		const payloadFiles: Record<string, { content: string }> = {};
+		for (const [fileName, content] of entries) {
+			const trimmed = content?.trim() ?? "";
+			if (!trimmed) {
+				return {
+					success: false,
+					error: {
+						type: SyncErrorType.ValidationError,
+						message: `File content cannot be empty for '${fileName}'.`,
+						timestamp: new Date().toISOString(),
+						retryable: false,
+					},
+				};
+			}
+			payloadFiles[fileName] = { content };
+		}
+
+		try {
+			const response = await fetch(GitHubAPI.gists, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: "application/vnd.github.v3+json",
+					"Content-Type": "application/json",
+					"User-Agent": "VSCode-Todo-Extension",
+				},
+				body: JSON.stringify({
+					description,
+					public: isPublic,
+					files: payloadFiles,
+				}),
+			});
+
+			if (!response.ok) {
+				return this.handleErrorResponse(response);
+			}
+
+			const gist: GistResponse = await response.json();
+			return { success: true, data: gist };
+		} catch (error) {
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.NetworkError,
+					message: error instanceof Error ? error.message : "Failed to create gist",
+					error: error instanceof Error ? error : undefined,
+					timestamp: new Date().toISOString(),
+					retryable: true,
+				},
+			};
+		}
+	}
+
+	/**
+	 * List gists for the authenticated user
+	 */
+	public async listGists(): Promise<SyncResult<GistSummary[]>> {
+		const token = await this.authManager.getToken();
+		if (!token) {
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.AuthError,
+					message: "Not authenticated. Please connect GitHub first.",
+					timestamp: new Date().toISOString(),
+					retryable: true,
+				},
+			};
+		}
+
+		type GistListResponseItem = {
+			id: string;
+			description?: string | null;
+			public: boolean;
+			files: Record<string, { filename: string }>;
+			updated_at: string;
+		};
+
+		try {
+			const response = await fetch(`${GitHubAPI.gists}?per_page=100`, {
+				method: "GET",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: "application/vnd.github.v3+json",
+					"User-Agent": "VSCode-Todo-Extension",
+				},
+			});
+
+			if (!response.ok) {
+				return this.handleErrorResponse(response);
+			}
+
+			const gists: GistListResponseItem[] = await response.json();
+			const summaries: GistSummary[] = gists.map((gist) => ({
+				id: gist.id,
+				description: gist.description?.trim() ?? "",
+				isPublic: gist.public,
+				filesCount: Object.keys(gist.files ?? {}).length,
+				updatedAt: gist.updated_at,
+			}));
+
+			return { success: true, data: summaries };
+		} catch (error) {
+			return {
+				success: false,
+				error: {
+					type: SyncErrorType.NetworkError,
+					message: error instanceof Error ? error.message : "Failed to list gists",
+					error: error instanceof Error ? error : undefined,
+					timestamp: new Date().toISOString(),
+					retryable: true,
+				},
+			};
+		}
 	}
 
 	/**
