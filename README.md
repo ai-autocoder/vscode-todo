@@ -185,7 +185,7 @@ Your user todos stay on the current VS Code profile and device only. Best for de
 
 #### User: Profile Sync Mode
 
-Opt user lists into VS Code Settings Sync so they roam with the rest of your profile data. Change the mode via command **VS Code Todo: Select User Sync Mode** and choose "Profile Sync".
+Opt user lists into VS Code Settings Sync so they roam with the rest of your profile data. Change the mode from the header Sync menu (User tab) or via command **VS Code Todo: Select User Sync Mode** and choose "Profile Sync".
 
 **Warning:** switching to Profile Sync syncs immediately with any other machine using the same VS Code profile and Settings Sync. Back up or export your data first if you need to keep separate copies.
 
@@ -205,18 +205,16 @@ Sync your todos via a **GitHub Gist**. This mode provides:
 **Quick Setup via Webview UI:**
 
 1. **Connect GitHub**
-   - Open the VS Code Todo panel and click the **settings menu (gear icon)**
-   - Open **GitHub Sync**
+   - Open the VS Code Todo panel and open the **Sync** menu in the header (sync pill)
    - Click **Connect to GitHub** and authenticate (requires `gist` scope)
 
 2. **Choose your gist**
-   - Select **Gist: Set ID...** to open the setup picker
+   - Select **Gist: Set ID...** in the Sync menu to open the setup picker
    - Pick **Create new secret gist** (creates empty user/workspace files), **Use existing gist...**, or **Open Settings...** to paste an ID manually
 
 3. **Enable GitHub sync**
-   - Enable **User: Sync Mode...** / **Workspace: Sync Mode...** and select "GitHub Gist"
-   - Choose **User: Choose Gist File...** and/or **Workspace: Choose Gist File...**
-   - Click **Sync Now** (toolbar) for an immediate sync if needed
+   - Switch to the **User** or **Workspace** tab, open the Sync menu, and select **GitHub Gist** for that scope
+   - Choose **Change Gist file...** if you want a specific file for the current scope
 
 Note: GitHub sync uses separate storage from Local/Profile modes. New gists start empty and do not copy your local lists. Use Export/Import if you want to migrate data.
 
@@ -236,7 +234,7 @@ The gist will store your todos in JSON files using hyphen prefixes:
 ##### Managing Your Gist
 
 - **View on GitHub**: Run command **VS Code Todo: View Gist on GitHub** to open your gist in the browser
-- **Sync Manually**: Run command **VS Code Todo: Sync Now** or click **Sync Now** in the toolbar
+- **Sync Manually**: Run command **VS Code Todo: Sync Now** or click **Sync all now** in the Sync menu
 - **Create New Files**:
   - Use the file selection commands (Set User File / Set Workspace File) and choose "Create New File"
   - Or create files manually on GitHub using the naming pattern: `user-Name.json` or `workspace-Name.json`
@@ -282,7 +280,7 @@ Configure GitHub Gist sync with these settings:
 }
 ```
 
-**Note**: User and workspace sync modes are set via commands (not settings): **Select User Sync Mode** and **Select Workspace Sync Mode**.
+**Note**: User and workspace sync modes are set via the Sync menu or commands (not settings): **Select User Sync Mode** and **Select Workspace Sync Mode**.
 
 ##### Security Warnings
 
@@ -309,7 +307,7 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 **Best Practices:**
 
 - The extension syncs automatically when you open the view and polls periodically based on your `pollInterval` setting (default: every 3 minutes)
-- Use **Sync Now** before making major changes if coordinating across multiple devices
+- Use **Sync all now** (Sync menu) or **Sync Now** (command) before making major changes if coordinating across multiple devices
 - Export your todos regularly as backups
 
 ##### Troubleshooting
@@ -325,7 +323,7 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 
 **Sync not happening**
 - Check status bar for error indicators
-- Run **VS Code Todo: Sync Now** or click **Sync Now** in the toolbar
+- Run **VS Code Todo: Sync Now** or click **Sync all now** in the Sync menu
 - Verify the Todo view is visible (polling only happens when visible by default)
 - Check `vscodeTodo.sync.pollOnlyWhenVisible` setting if you need 24/7 background sync
 
