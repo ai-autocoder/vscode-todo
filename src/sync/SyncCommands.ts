@@ -11,10 +11,8 @@ import { SyncManager } from "./SyncManager";
 import {
 	DefaultFileNames,
 	GlobalGistData,
-	GlobalSyncMode,
 	GistSummary,
 	WorkspaceGistData,
-	WorkspaceSyncMode,
 	SyncErrorType,
 } from "./syncTypes";
 import { StoreState, TodoScope } from "../todo/todoTypes";
@@ -24,6 +22,9 @@ import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
 import { reloadScopeData, clearWorkspaceOverride, notifyGitHubStatusChange, notifyGitHubSyncInfo } from "../utilities/syncUtils";
 import { getGistId } from "../utilities/syncConfig";
 import { WebviewVisibilityCoordinator } from "./WebviewVisibilityCoordinator";
+
+type UserSyncModeValue = "profile-local" | "profile-sync" | "github";
+type WorkspaceSyncModeValue = "local" | "github";
 
 export class SyncCommands {
 	private authManager: GitHubAuthManager;
@@ -72,8 +73,13 @@ export class SyncCommands {
 			vscode.commands.registerCommand("vsc-todo.connectGitHub", () => this.connectGitHub()),
 			vscode.commands.registerCommand("vsc-todo.disconnectGitHub", () => this.disconnectGitHub()),
 			vscode.commands.registerCommand("vsc-todo.viewGistOnGitHub", () => this.viewGistOnGitHub()),
-			vscode.commands.registerCommand("vsc-todo.selectUserSyncMode", () => this.selectUserSyncMode()),
-			vscode.commands.registerCommand("vsc-todo.selectWorkspaceSyncMode", () => this.selectWorkspaceSyncMode()),
+			vscode.commands.registerCommand("vsc-todo.selectUserSyncMode", (mode?: UserSyncModeValue) =>
+				this.selectUserSyncMode(mode)
+			),
+			vscode.commands.registerCommand(
+				"vsc-todo.selectWorkspaceSyncMode",
+				(mode?: WorkspaceSyncModeValue) => this.selectWorkspaceSyncMode(mode)
+			),
 			vscode.commands.registerCommand("vsc-todo.setupGistId", () => this.setupGistId()),
 			vscode.commands.registerCommand("vsc-todo.setUserFile", () => this.setUserFile()),
 			vscode.commands.registerCommand("vsc-todo.setWorkspaceFile", () => this.setWorkspaceFile()),
@@ -381,43 +387,35 @@ export class SyncCommands {
 		await vscode.env.openExternal(vscode.Uri.parse(url));
 	}
 
-	/**
-	 * Command: Select User Sync Mode
-	 */
-	private async selectUserSyncMode(): Promise<void> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const currentMode = this.context.globalState.get<string>("syncMode", "profile-local");
+	private isUserSyncModeValue(value: unknown): value is UserSyncModeValue {
+		return value === "profile-local" || value === "profile-sync" || value === "github";
+	}
 
-		const items = [
-			{
-				label: "$(archive) Local",
-				description: "This device only",
-				detail: currentMode === "profile-local" ? "✓ Currently selected" : undefined,
-				mode: GlobalSyncMode.Local,
-			},
-			{
-				label: "$(sync) Profile Sync",
-				description: "Syncs via VS Code Settings Sync",
-				detail: currentMode === "profile-sync" ? "✓ Currently selected" : undefined,
-				mode: GlobalSyncMode.ProfileSync,
-			},
-			{
-				label: "$(github) GitHub Gist",
-				description: "Syncs via GitHub Gist",
-				detail: currentMode === "github" ? "✓ Currently selected" : "[Requires gist ID configuration]",
-				mode: GlobalSyncMode.GitHub,
-			},
-		];
+	private isWorkspaceSyncModeValue(value: unknown): value is WorkspaceSyncModeValue {
+		return value === "local" || value === "github";
+	}
 
-		const selected = await vscode.window.showQuickPick(items, {
-			placeHolder: "Select sync mode for user lists",
-		});
-
-		if (!selected) {
-			return;
+	private getUserSyncModeLabel(mode: UserSyncModeValue): string {
+		switch (mode) {
+			case "profile-local":
+				return "Local";
+			case "profile-sync":
+				return "Profile Sync";
+			case "github":
+				return "GitHub Gist";
+			default:
+				return "Local";
 		}
+	}
 
-		if (selected.mode === GlobalSyncMode.GitHub) {
+	private getWorkspaceSyncModeLabel(mode: WorkspaceSyncModeValue): string {
+		return mode === "github" ? "GitHub Gist" : "Local";
+	}
+
+	private async applyUserSyncMode(mode: UserSyncModeValue): Promise<void> {
+		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+
+		if (mode === "github") {
 			// Ensure authenticated
 			const isAuth = await this.authManager.ensureAuthenticated();
 			if (!isAuth) {
@@ -451,56 +449,30 @@ export class SyncCommands {
 			notifyGitHubSyncInfo(this.context);
 
 			vscode.window.showInformationMessage("GitHub sync enabled for user lists.");
-		} else {
-			// Switch to local or profile sync
-			const newMode = selected.mode === GlobalSyncMode.Local ? "profile-local" : "profile-sync";
-			await this.context.globalState.update("syncMode", newMode);
-
-			// Reload store data from local storage
-			await this.reloadStoreData("user");
-
-			// Stop polling
-			this.syncManager.stopPolling("user");
-
-			// Notify visibility coordinator
-			this.visibilityCoordinator?.updateSyncModes();
-			notifyGitHubSyncInfo(this.context);
-
-			vscode.window.showInformationMessage(`Switched to ${selected.label} mode for user lists.`);
-		}
-	}
-
-	/**
-	 * Command: Select Workspace Sync Mode
-	 */
-	private async selectWorkspaceSyncMode(): Promise<void> {
-		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
-		const currentMode = this.context.workspaceState.get<string>("syncMode", "local");
-
-		const items = [
-			{
-				label: "$(archive) Local",
-				description: "This workspace only",
-				detail: currentMode === "local" ? "✓ Currently selected" : undefined,
-				mode: WorkspaceSyncMode.Local,
-			},
-			{
-				label: "$(github) GitHub Gist",
-				description: "Syncs via GitHub Gist",
-				detail: currentMode === "github" ? "✓ Currently selected" : "[Requires gist ID configuration]",
-				mode: WorkspaceSyncMode.GitHub,
-			},
-		];
-
-		const selected = await vscode.window.showQuickPick(items, {
-			placeHolder: "Select sync mode for workspace lists",
-		});
-
-		if (!selected) {
 			return;
 		}
 
-		if (selected.mode === WorkspaceSyncMode.GitHub) {
+		// Switch to local or profile sync
+		await this.context.globalState.update("syncMode", mode);
+
+		// Reload store data from local storage
+		await this.reloadStoreData("user");
+
+		// Stop polling
+		this.syncManager.stopPolling("user");
+
+		// Notify visibility coordinator
+		this.visibilityCoordinator?.updateSyncModes();
+		notifyGitHubSyncInfo(this.context);
+
+		const label = this.getUserSyncModeLabel(mode);
+		vscode.window.showInformationMessage(`Switched to ${label} mode for user lists.`);
+	}
+
+	private async applyWorkspaceSyncMode(mode: WorkspaceSyncModeValue): Promise<void> {
+		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+
+		if (mode === "github") {
 			// Ensure authenticated
 			const isAuth = await this.authManager.ensureAuthenticated();
 			if (!isAuth) {
@@ -528,25 +500,105 @@ export class SyncCommands {
 			notifyGitHubSyncInfo(this.context);
 
 			vscode.window.showInformationMessage("GitHub sync enabled for workspace lists.");
-		} else {
-			// Switch to local
-			await this.context.workspaceState.update("syncMode", "local");
-
-			// Reload store data from local storage
-			await this.reloadStoreData("workspace");
-
-			// Stop polling
-			this.syncManager.stopPolling("workspace");
-
-			// Notify visibility coordinator
-			this.visibilityCoordinator?.updateSyncModes();
-			notifyGitHubSyncInfo(this.context);
-
-			vscode.window.showInformationMessage("Switched to Local mode for workspace lists.");
+			return;
 		}
+
+		// Switch to local
+		await this.context.workspaceState.update("syncMode", "local");
+
+		// Reload store data from local storage
+		await this.reloadStoreData("workspace");
+
+		// Stop polling
+		this.syncManager.stopPolling("workspace");
+
+		// Notify visibility coordinator
+		this.visibilityCoordinator?.updateSyncModes();
+		notifyGitHubSyncInfo(this.context);
+
+		const label = this.getWorkspaceSyncModeLabel(mode);
+		vscode.window.showInformationMessage(`Switched to ${label} mode for workspace lists.`);
 	}
 
 	/**
+	 * Command: Select User Sync Mode
+	 */
+	private async selectUserSyncMode(mode?: UserSyncModeValue): Promise<void> {
+		if (this.isUserSyncModeValue(mode)) {
+			await this.applyUserSyncMode(mode);
+			return;
+		}
+
+		const currentMode = this.context.globalState.get<UserSyncModeValue>("syncMode", "profile-local");
+
+		const items = [
+			{
+				label: "$(archive) Local",
+				description: "This device only",
+				detail: currentMode === "profile-local" ? "Currently selected" : undefined,
+				mode: "profile-local" as UserSyncModeValue,
+			},
+			{
+				label: "$(sync) Profile Sync",
+				description: "Syncs via VS Code Settings Sync",
+				detail: currentMode === "profile-sync" ? "Currently selected" : undefined,
+				mode: "profile-sync" as UserSyncModeValue,
+			},
+			{
+				label: "$(github) GitHub Gist",
+				description: "Syncs via GitHub Gist",
+				detail: currentMode === "github" ? "Currently selected" : "Requires gist ID configuration",
+				mode: "github" as UserSyncModeValue,
+			},
+		];
+
+		const selected = await vscode.window.showQuickPick(items, {
+			placeHolder: "Select sync mode for user lists",
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		await this.applyUserSyncMode(selected.mode);
+	}
+
+	/**
+	 * Command: Select Workspace Sync Mode
+	 */
+	private async selectWorkspaceSyncMode(mode?: WorkspaceSyncModeValue): Promise<void> {
+		if (this.isWorkspaceSyncModeValue(mode)) {
+			await this.applyWorkspaceSyncMode(mode);
+			return;
+		}
+
+		const currentMode = this.context.workspaceState.get<WorkspaceSyncModeValue>("syncMode", "local");
+
+		const items = [
+			{
+				label: "$(archive) Local",
+				description: "This workspace only",
+				detail: currentMode === "local" ? "Currently selected" : undefined,
+				mode: "local" as WorkspaceSyncModeValue,
+			},
+			{
+				label: "$(github) GitHub Gist",
+				description: "Syncs via GitHub Gist",
+				detail: currentMode === "github" ? "Currently selected" : "Requires gist ID configuration",
+				mode: "github" as WorkspaceSyncModeValue,
+			},
+		];
+
+		const selected = await vscode.window.showQuickPick(items, {
+			placeHolder: "Select sync mode for workspace lists",
+		});
+
+		if (!selected) {
+			return;
+		}
+
+		await this.applyWorkspaceSyncMode(selected.mode);
+	}/**
 	 * Command: Set User File
 	 */
 	private async setUserFile(): Promise<void> {
@@ -612,6 +664,7 @@ export class SyncCommands {
 
 					// Reload store data from new file
 					await this.reloadStoreData("user");
+					notifyGitHubSyncInfo(this.context);
 					return;
 				}
 
@@ -681,6 +734,7 @@ export class SyncCommands {
 
 					// Reload store data from new file
 					await this.reloadStoreData("user");
+					notifyGitHubSyncInfo(this.context);
 				} else {
 					// Select existing file
 					await config.update("github.userFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
@@ -695,6 +749,7 @@ export class SyncCommands {
 
 					// Reload store data from new file
 					await this.reloadStoreData("user");
+					notifyGitHubSyncInfo(this.context);
 				}
 			}
 		);
@@ -766,6 +821,7 @@ export class SyncCommands {
 
 					// Reload store data from new file
 					await this.reloadStoreData("workspace");
+					notifyGitHubSyncInfo(this.context);
 					return;
 				}
 
@@ -831,6 +887,7 @@ export class SyncCommands {
 
 					// Reload store data from new file
 					await this.reloadStoreData("workspace");
+					notifyGitHubSyncInfo(this.context);
 				} else {
 					// Select existing file
 					await config.update("github.workspaceFile", selected.file.fullPath, vscode.ConfigurationTarget.Workspace);
@@ -841,6 +898,7 @@ export class SyncCommands {
 
 					// Reload store data from new file
 					await this.reloadStoreData("workspace");
+					notifyGitHubSyncInfo(this.context);
 				}
 			}
 		);
@@ -952,3 +1010,7 @@ export class SyncCommands {
 		}
 	}
 }
+
+
+
+

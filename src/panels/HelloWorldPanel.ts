@@ -443,6 +443,16 @@ export class HelloWorldPanel {
 						commands.executeCommand("vsc-todo.selectWorkspaceSyncMode");
 						break;
 					}
+					case MessageActionsFromWebview.setUserSyncMode: {
+						const { payload } = message as Message<MessageActionsFromWebview.setUserSyncMode>;
+						commands.executeCommand("vsc-todo.selectUserSyncMode", payload.mode);
+						break;
+					}
+					case MessageActionsFromWebview.setWorkspaceSyncMode: {
+						const { payload } = message as Message<MessageActionsFromWebview.setWorkspaceSyncMode>;
+						commands.executeCommand("vsc-todo.selectWorkspaceSyncMode", payload.mode);
+						break;
+					}
 					case MessageActionsFromWebview.connectGitHub: {
 						commands.executeCommand("vsc-todo.connectGitHub");
 						break;

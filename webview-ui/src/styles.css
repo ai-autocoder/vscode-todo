@@ -120,6 +120,53 @@ markdown pre {
 	--mat-menu-divider-color: var(--vscode-menu-border);
 }
 
+/* Header menu overrides */
+.submenu-item {
+	display: flex !important;
+	justify-content: space-between !important;
+	align-items: center !important;
+	width: 100% !important;
+}
+
+.submenu-item .mat-mdc-menu-item-text {
+	display: flex;
+	align-items: center;
+	width: 100%;
+}
+
+.submenu-item .mat-mdc-menu-submenu-icon {
+	display: none !important;
+}
+
+.submenu-content {
+	display: flex;
+	align-items: center;
+	flex: 1;
+}
+
+.submenu-item .submenu-arrow {
+	margin-left: auto;
+	opacity: 0.6;
+}
+
+.header-menu .menu-section-label,
+.header-menu .menu-info {
+	cursor: default;
+	opacity: 0.75;
+}
+
+.header-menu .menu-info-text {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	white-space: normal;
+	line-height: 1.2;
+	width: 100%;
+	flex: 1 1 auto;
+}
+
 /* Drag and drop -> */
 
 /* Item being dragged */

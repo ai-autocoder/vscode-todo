@@ -10,10 +10,17 @@ import {
 } from "../todo/todoTypes";
 import { Config } from "../utilities/config";
 
+export type UserSyncMode = "profile-local" | "profile-sync" | "github";
+export type WorkspaceSyncMode = "local" | "github";
+
 export type GitHubSyncInfo = {
 	isGitHubSyncEnabled: boolean;
 	userSyncEnabled: boolean;
 	workspaceSyncEnabled: boolean;
+	userSyncMode: UserSyncMode;
+	workspaceSyncMode: WorkspaceSyncMode;
+	userFile: string;
+	workspaceFile: string;
 	userLastSynced?: string;
 	workspaceLastSynced?: string;
 };
@@ -55,12 +62,16 @@ type MessagePayload<T, L> = T extends
 				: never
 			: T extends MessageActionsFromWebview.export
 				? { format: ExportFormats }
-				: T extends MessageActionsFromWebview.import
-					? { format: ImportFormats }
-					: T extends MessageActionsFromWebview.setWideViewEnabled
-						? {
-								isEnabled: boolean;
-							}
+					: T extends MessageActionsFromWebview.import
+						? { format: ImportFormats }
+						: T extends MessageActionsFromWebview.setWideViewEnabled
+							? {
+									isEnabled: boolean;
+								}
+							: T extends MessageActionsFromWebview.setUserSyncMode
+								? { mode: UserSyncMode }
+								: T extends MessageActionsFromWebview.setWorkspaceSyncMode
+									? { mode: WorkspaceSyncMode }
 						: T extends MessageActionsToWebview.syncTodoData
 							? TodoSlice | CurrentFileSlice
 							: T extends MessageActionsToWebview.syncEditorFocusAndRecords
@@ -97,9 +108,11 @@ export type Message<
 		: T extends MessageActionsFromWebview.pinFile
 			? { type: T; scope: TodoScope.currentFile }
 			: T extends
-						| MessageActionsFromWebview.export
-						| MessageActionsFromWebview.import
-						| MessageActionsFromWebview.setWideViewEnabled
+					| MessageActionsFromWebview.export
+					| MessageActionsFromWebview.import
+					| MessageActionsFromWebview.setWideViewEnabled
+					| MessageActionsFromWebview.setUserSyncMode
+					| MessageActionsFromWebview.setWorkspaceSyncMode
 				? {
 						type: T;
 						payload: MessagePayload<T, L>;
@@ -147,6 +160,8 @@ export const enum MessageActionsFromWebview {
 	deleteCompleted = "deleteCompleted",
 	selectUserSyncMode = "selectUserSyncMode",
 	selectWorkspaceSyncMode = "selectWorkspaceSyncMode",
+	setUserSyncMode = "setUserSyncMode",
+	setWorkspaceSyncMode = "setWorkspaceSyncMode",
 	connectGitHub = "connectGitHub",
 	disconnectGitHub = "disconnectGitHub",
 	setUserFile = "setUserFile",
@@ -307,6 +322,16 @@ export const messagesFromWebview = {
 	}),
 	selectWorkspaceSyncMode: (): { type: MessageActionsFromWebview.selectWorkspaceSyncMode } => ({
 		type: MessageActionsFromWebview.selectWorkspaceSyncMode,
+	}),
+	setUserSyncMode: (mode: UserSyncMode): { type: MessageActionsFromWebview.setUserSyncMode; payload: { mode: UserSyncMode } } => ({
+		type: MessageActionsFromWebview.setUserSyncMode,
+		payload: { mode },
+	}),
+	setWorkspaceSyncMode: (
+		mode: WorkspaceSyncMode
+	): { type: MessageActionsFromWebview.setWorkspaceSyncMode; payload: { mode: WorkspaceSyncMode } } => ({
+		type: MessageActionsFromWebview.setWorkspaceSyncMode,
+		payload: { mode },
 	}),
 	connectGitHub: (): { type: MessageActionsFromWebview.connectGitHub } => ({
 		type: MessageActionsFromWebview.connectGitHub,

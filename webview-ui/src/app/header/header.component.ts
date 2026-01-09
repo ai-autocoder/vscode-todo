@@ -1,8 +1,23 @@
 import { Component, Input, OnInit } from "@angular/core";
 import { TodoService } from "../todo/todo.service";
 import { ExportFormats, ImportFormats, TodoScope } from "../../../../src/todo/todoTypes";
-import { combineLatest, map, Observable } from "rxjs";
-import { GitHubSyncInfo } from "../../../../src/panels/message";
+import { BehaviorSubject, combineLatest, map, Observable } from "rxjs";
+import { GitHubSyncInfo, UserSyncMode, WorkspaceSyncMode } from "../../../../src/panels/message";
+
+type SyncModeInfo = {
+	scope: TodoScope;
+	scopeLabel: string;
+	scopeNote: string;
+	isUserScope: boolean;
+	mode: UserSyncMode | WorkspaceSyncMode;
+	modeLabel: string;
+	modeIcon: "github" | "local" | "profile";
+	isGitHubMode: boolean;
+	gistFile: string;
+	pillLabel: string;
+	pillTooltip: string;
+	pillAriaLabel: string;
+};
 
 @Component({
     selector: "app-header",
@@ -16,14 +31,26 @@ export class HeaderComponent implements OnInit {
 	isImportMenuOpen = false;
 	isExportMenuOpen = false;
 	isSettingsMenuOpen = false;
+	isSyncMenuOpen = false;
 	enableWideView!: Observable<boolean>;
 	isGitHubConnected!: Observable<boolean>;
 	isGistIdConfigured!: Observable<boolean>;
 	isGitHubSyncEnabled!: Observable<boolean>;
 	isSyncing!: Observable<boolean>;
 	syncTooltip!: Observable<string>;
+	syncModeInfo!: Observable<SyncModeInfo>;
 	private wideViewDelayHandle: number | null = null;
-	@Input() currentScope!: TodoScope;
+	private currentScopeSource = new BehaviorSubject<TodoScope>(TodoScope.user);
+	private currentScopeValue: TodoScope = TodoScope.user;
+
+	@Input()
+	set currentScope(value: TodoScope) {
+		this.currentScopeValue = value;
+		this.currentScopeSource.next(value);
+	}
+	get currentScope(): TodoScope {
+		return this.currentScopeValue;
+	}
 
 	constructor(readonly todoService: TodoService) {}
 
@@ -40,6 +67,10 @@ export class HeaderComponent implements OnInit {
 			this.todoService.isSyncing,
 			this.todoService.now,
 		]).pipe(map(([info, isSyncing, nowMs]) => this.buildSyncTooltip(info, isSyncing, nowMs)));
+		this.syncModeInfo = combineLatest([
+			this.todoService.gitHubSyncInfo,
+			this.currentScopeSource,
+		]).pipe(map(([info, scope]) => this.buildSyncModeInfo(info, scope)));
 	}
 
 	import(format: ImportFormats) {
@@ -147,12 +178,20 @@ export class HeaderComponent implements OnInit {
 		this.isSettingsMenuOpen = false;
 	}
 
-	selectUserSyncMode() {
-		this.todoService.selectUserSyncMode();
+	onSyncMenuOpened() {
+		this.isSyncMenuOpen = true;
 	}
 
-	selectWorkspaceSyncMode() {
-		this.todoService.selectWorkspaceSyncMode();
+	onSyncMenuClosed() {
+		this.isSyncMenuOpen = false;
+	}
+
+	setUserSyncMode(mode: UserSyncMode) {
+		this.todoService.setUserSyncMode(mode);
+	}
+
+	setWorkspaceSyncMode(mode: WorkspaceSyncMode) {
+		this.todoService.setWorkspaceSyncMode(mode);
 	}
 
 	connectGitHub() {
@@ -171,6 +210,14 @@ export class HeaderComponent implements OnInit {
 		this.todoService.setWorkspaceFile();
 	}
 
+	setGistFileForCurrentScope() {
+		if (this.currentScope === TodoScope.user) {
+			this.setUserFile();
+			return;
+		}
+		this.setWorkspaceFile();
+	}
+
 	openGistIdSettings() {
 		this.todoService.openGistIdSettings();
 	}
@@ -187,11 +234,13 @@ export class HeaderComponent implements OnInit {
 		if (!info.isGitHubSyncEnabled) {
 			return (
 				"GitHub Gist sync is off for all scopes. " +
-				"Enable it via Settings menu > Sync Mode > User/Workspace."
+				"Enable it via the Sync menu in the header."
 			);
 		}
 
-		const summary = isSyncing ? "Syncing with GitHub Gist..." : "Sync GitHub Gist now.";
+		const summary = isSyncing
+			? "Syncing all GitHub-enabled scopes..."
+			: "Sync all GitHub-enabled scopes now.";
 		const userDetail = info.userSyncEnabled
 			? `User: last synced ${this.formatElapsed(info.userLastSynced, nowMs)}`
 			: "User: GitHub sync off";
@@ -200,6 +249,75 @@ export class HeaderComponent implements OnInit {
 			: "Workspace: GitHub sync off";
 
 		return `${summary}\nScopes:\n${userDetail}\n${workspaceDetail}`;
+	}
+
+	private buildSyncModeInfo(info: GitHubSyncInfo, scope: TodoScope): SyncModeInfo {
+		const isUserScope = scope === TodoScope.user;
+		const scopeLabel = isUserScope
+			? "User"
+			: scope === TodoScope.workspace
+				? "Workspace"
+				: "Workspace (File)";
+		const scopeNote = scope === TodoScope.currentFile ? "File tab uses workspace sync." : "";
+		const mode = isUserScope ? info.userSyncMode : info.workspaceSyncMode;
+		const modeLabel = this.getSyncModeLabel(mode);
+		const modeIcon = this.getSyncModeIcon(mode);
+		const isGitHubMode = mode === "github";
+		const gistFile = isGitHubMode
+			? isUserScope
+				? info.userFile
+				: info.workspaceFile
+			: "";
+		const pillLabel = isGitHubMode && gistFile
+			? `Sync: ${scopeLabel} - ${modeLabel} - ${gistFile}`
+			: `Sync: ${scopeLabel} - ${modeLabel}`;
+		const pillTooltipBase = `${scopeLabel} sync mode: ${modeLabel}.`;
+		const scopeNotePart = scopeNote ? ` ${scopeNote}` : "";
+		const filePart = isGitHubMode && gistFile ? ` Gist file: ${gistFile}` : "";
+		const pillTooltip = `${pillTooltipBase}${scopeNotePart}${filePart}`.trim();
+		const pillAriaLabel = `Sync settings for ${scopeLabel}. Mode: ${modeLabel}.`;
+
+		return {
+			scope,
+			scopeLabel,
+			scopeNote,
+			isUserScope,
+			mode,
+			modeLabel,
+			modeIcon,
+			isGitHubMode,
+			gistFile,
+			pillLabel,
+			pillTooltip,
+			pillAriaLabel,
+		};
+	}
+
+	private getSyncModeLabel(mode: UserSyncMode | WorkspaceSyncMode): string {
+		switch (mode) {
+			case "github":
+				return "GitHub";
+			case "profile-sync":
+				return "Profile Sync";
+			case "profile-local":
+			case "local":
+				return "Local";
+			default:
+				return "Local";
+		}
+	}
+
+	private getSyncModeIcon(mode: UserSyncMode | WorkspaceSyncMode): "github" | "local" | "profile" {
+		switch (mode) {
+			case "github":
+				return "github";
+			case "profile-sync":
+				return "profile";
+			case "profile-local":
+			case "local":
+			default:
+				return "local";
+		}
 	}
 
 	private formatElapsed(lastSynced: string | undefined, nowMs: number): string {

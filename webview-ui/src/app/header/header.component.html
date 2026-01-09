@@ -11,17 +11,22 @@
 		</span>
 	</vscode-button>
 
-	<vscode-button
-		appearance="icon"
-		[aria-label]="'Sync GitHub Gist now'"
-		[title]="syncTooltip | async"
-		(click)="syncNow()"
-		[disabled]="!(isGitHubSyncEnabled | async)"
-	>
-		<span>
-			<app-icon name="sync" [class.spinning]="isSyncing | async"></app-icon>
-		</span>
-	</vscode-button>
+	@if (syncModeInfo | async; as syncInfo) {
+		<vscode-button
+			class="sync-pill"
+			appearance="icon"
+			[matMenuTriggerFor]="syncMenu"
+			[aria-label]="syncInfo.pillAriaLabel"
+			[title]="syncInfo.pillTooltip"
+			(menuOpened)="onSyncMenuOpened()"
+			(menuClosed)="onSyncMenuClosed()"
+			[ngClass]="{ 'menu-open': isSyncMenuOpen }"
+		>
+			<span class="sync-pill-content">
+				<app-icon [name]="syncInfo.modeIcon"></app-icon>
+			</span>
+		</vscode-button>
+	}
 
 	<vscode-button
 		appearance="icon"
@@ -37,7 +42,7 @@
 		</span>
 	</vscode-button>
 	<!-- Settings menu -->
-	<mat-menu #settingsMenu="matMenu" yPosition="below" xPosition="before">
+	<mat-menu #settingsMenu="matMenu" yPosition="below" xPosition="before" panelClass="header-menu">
 		<!-- Export submenu -->
 		<button mat-menu-item [matMenuTriggerFor]="exportMenu" aria-label="Export" class="submenu-item">
 			<span class="submenu-content">
@@ -73,30 +78,202 @@
 			</button>
 		}
 
-		<mat-divider></mat-divider>
+	</mat-menu>
 
-		<!-- Sync mode submenu -->
-		<button mat-menu-item [matMenuTriggerFor]="syncModeMenu" aria-label="Sync Mode" class="submenu-item">
-			<span class="submenu-content">
-				<app-icon name="sync"></app-icon>
-				<span style="margin-left: 8px;">Sync Mode</span>
-			</span>
-			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
-		</button>
+	<!-- Sync menu -->
+	<mat-menu #syncMenu="matMenu" panelClass="header-menu">
+		@if (syncModeInfo | async; as syncInfo) {
+			<button mat-menu-item disabled class="menu-section-label" aria-label="Sync scope">
+				<span class="menu-label">Sync - {{ syncInfo.scopeLabel }}</span>
+			</button>
 
-		<!-- GitHub sync submenu -->
-		<button
-			mat-menu-item
-			[matMenuTriggerFor]="gitHubSyncMenu"
-			aria-label="GitHub Sync"
-			class="submenu-item"
-		>
-			<span class="submenu-content">
-				<app-icon name="github"></app-icon>
-				<span style="margin-left: 8px;">GitHub Sync</span>
-			</span>
-			<app-icon name="chevron-right" class="submenu-arrow"></app-icon>
-		</button>
+			@if (syncInfo.isUserScope) {
+				<button
+					mat-menu-item
+					(click)="setUserSyncMode('profile-local')"
+					[title]="'This device only'"
+					aria-label="Sync mode: Local"
+				>
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="local"></app-icon></span>
+						<span class="menu-label">Local</span>
+						<span class="menu-right">
+							@if (syncInfo.mode === "profile-local") {
+								<app-icon name="check"></app-icon>
+							}
+						</span>
+					</div>
+				</button>
+				<button
+					mat-menu-item
+					(click)="setUserSyncMode('profile-sync')"
+					[title]="'Syncs via VS Code Settings Sync'"
+					aria-label="Sync mode: Profile Sync"
+				>
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="profile"></app-icon></span>
+						<span class="menu-label">Profile Sync</span>
+						<span class="menu-right">
+							@if (syncInfo.mode === "profile-sync") {
+								<app-icon name="check"></app-icon>
+							}
+						</span>
+					</div>
+				</button>
+				<button
+					mat-menu-item
+					(click)="setUserSyncMode('github')"
+					[title]="'Syncs via GitHub Gist'"
+					aria-label="Sync mode: GitHub Gist"
+				>
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="github"></app-icon></span>
+						<span class="menu-label">GitHub Gist</span>
+						<span class="menu-right">
+							@if (syncInfo.mode === "github") {
+								<app-icon name="check"></app-icon>
+							}
+						</span>
+					</div>
+				</button>
+			}
+
+			@if (!syncInfo.isUserScope) {
+				<button
+					mat-menu-item
+					(click)="setWorkspaceSyncMode('local')"
+					[title]="'This workspace only'"
+					aria-label="Sync mode: Local"
+				>
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="local"></app-icon></span>
+						<span class="menu-label">Local</span>
+						<span class="menu-right">
+							@if (syncInfo.mode === "local") {
+								<app-icon name="check"></app-icon>
+							}
+						</span>
+					</div>
+				</button>
+				<button
+					mat-menu-item
+					(click)="setWorkspaceSyncMode('github')"
+					[title]="'Syncs via GitHub Gist'"
+					aria-label="Sync mode: GitHub Gist"
+				>
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="github"></app-icon></span>
+						<span class="menu-label">GitHub Gist</span>
+						<span class="menu-right">
+							@if (syncInfo.mode === "github") {
+								<app-icon name="check"></app-icon>
+							}
+						</span>
+					</div>
+				</button>
+			}
+
+			<mat-divider></mat-divider>
+
+			<button mat-menu-item disabled class="menu-section-label" aria-label="GitHub status">
+				<span class="menu-label">
+					GitHub - {{ (isGitHubConnected | async) ? "Connected" : "Not connected" }}
+				</span>
+			</button>
+
+			@if (!(isGitHubConnected | async)) {
+				<button mat-menu-item (click)="connectGitHub()" aria-label="Connect to GitHub">
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="github"></app-icon></span>
+						<span class="menu-label">Connect to GitHub</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+			}
+			@if (isGitHubConnected | async) {
+				<button mat-menu-item (click)="disconnectGitHub()" aria-label="Disconnect from GitHub">
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="github"></app-icon></span>
+						<span class="menu-label">Disconnect GitHub</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+			}
+
+			<button mat-menu-item (click)="openGistIdSettings()" aria-label="Gist: Set ID">
+				<div class="menu-row">
+					<span class="menu-left"><app-icon name="settings"></app-icon></span>
+					<span class="menu-label">Gist: Set ID...</span>
+					<span class="menu-right"></span>
+				</div>
+			</button>
+
+			<button
+				mat-menu-item
+				disabled
+				class="menu-info"
+				aria-label="Gist file"
+				[title]="'Gist file: ' + (syncInfo.gistFile || 'Not set')"
+			>
+				<span class="menu-label menu-info-text">
+					Gist file: {{ syncInfo.gistFile || "Not set" }}
+				</span>
+			</button>
+
+			<button
+				mat-menu-item
+				(click)="setGistFileForCurrentScope()"
+				[disabled]="!syncInfo.isGitHubMode || !(isGitHubConnected | async) || !(isGistIdConfigured | async)"
+				[title]="!syncInfo.isGitHubMode
+					? 'Enable GitHub Gist mode to choose a file.'
+					: !(isGitHubConnected | async)
+						? 'Connect to GitHub to choose a Gist file.'
+						: (isGistIdConfigured | async)
+							? 'Choose a Gist file for this scope.'
+							: 'Set a Gist ID first.'"
+				aria-label="Choose Gist file"
+			>
+				<div class="menu-row">
+					<span class="menu-left"><app-icon name="file"></app-icon></span>
+					<span class="menu-label">Change Gist file...</span>
+					<span class="menu-right"></span>
+				</div>
+			</button>
+
+			<button
+				mat-menu-item
+				(click)="viewGistOnGitHub()"
+				[disabled]="!(isGistIdConfigured | async)"
+				[title]="(isGistIdConfigured | async)
+					? 'Open Gist on GitHub'
+					: 'Set a Gist ID first.'"
+				aria-label="Open Gist on GitHub"
+			>
+				<div class="menu-row">
+					<span class="menu-left"><app-icon name="github"></app-icon></span>
+					<span class="menu-label">Open Gist on GitHub</span>
+					<span class="menu-right"></span>
+				</div>
+			</button>
+
+			<mat-divider></mat-divider>
+
+			<button
+				mat-menu-item
+				(click)="syncNow()"
+				[disabled]="!(isGitHubSyncEnabled | async)"
+				[title]="syncTooltip | async"
+				aria-label="Sync all now"
+			>
+				<div class="menu-row">
+					<span class="menu-left">
+						<app-icon name="sync" [class.spinning]="isSyncing | async"></app-icon>
+					</span>
+					<span class="menu-label">Sync all now</span>
+					<span class="menu-right"></span>
+				</div>
+			</button>
+		}
 	</mat-menu>
 
 	<!-- Export submenu -->
@@ -119,77 +296,6 @@
 		</button>
 	</mat-menu>
 
-	<!-- Sync Mode submenu -->
-	<mat-menu #syncModeMenu="matMenu">
-		<button mat-menu-item (click)="selectUserSyncMode()" aria-label="User: Sync Mode">
-			User: Sync Mode...
-		</button>
-		<button mat-menu-item (click)="selectWorkspaceSyncMode()" aria-label="Workspace: Sync Mode">
-			Workspace: Sync Mode...
-		</button>
-	</mat-menu>
-
-	<!-- GitHub Sync submenu -->
-	<mat-menu #gitHubSyncMenu="matMenu">
-		@if (!(isGitHubConnected | async)) {
-			<button mat-menu-item (click)="connectGitHub()" aria-label="Connect to GitHub">
-				Connect to GitHub
-			</button>
-		}
-		@if (isGitHubConnected | async) {
-			<button mat-menu-item (click)="disconnectGitHub()" aria-label="Disconnect from GitHub">
-				Disconnect from GitHub
-			</button>
-		}
-
-		<mat-divider></mat-divider>
-
-		<button mat-menu-item (click)="openGistIdSettings()" aria-label="Gist: Set ID">
-			Gist: Set ID...
-		</button>
-		<button
-			mat-menu-item
-			(click)="viewGistOnGitHub()"
-			[disabled]="!(isGitHubConnected | async) || !(isGistIdConfigured | async)"
-			[title]="!(isGitHubConnected | async)
-				? 'Connect to GitHub to open your Gist.'
-				: (isGistIdConfigured | async)
-					? 'Open Gist on GitHub'
-					: 'Set a Gist ID first.'"
-			aria-label="Gist: Open on GitHub"
-		>
-			Gist: Open on GitHub
-		</button>
-
-		<mat-divider></mat-divider>
-
-		<button
-			mat-menu-item
-			(click)="setUserFile()"
-			[disabled]="!(isGitHubConnected | async) || !(isGistIdConfigured | async)"
-			[title]="!(isGitHubConnected | async)
-				? 'Connect to GitHub to choose a Gist file.'
-				: (isGistIdConfigured | async)
-					? 'Choose a Gist file for user lists.'
-					: 'Set a Gist ID first.'"
-			aria-label="User: Choose Gist File"
-		>
-			User: Choose Gist File...
-		</button>
-		<button
-			mat-menu-item
-			(click)="setWorkspaceFile()"
-			[disabled]="!(isGitHubConnected | async) || !(isGistIdConfigured | async)"
-			[title]="!(isGitHubConnected | async)
-				? 'Connect to GitHub to choose a Gist file.'
-				: (isGistIdConfigured | async)
-					? 'Choose a Gist file for workspace lists.'
-					: 'Set a Gist ID first.'"
-			aria-label="Workspace: Choose Gist File"
-		>
-			Workspace: Choose Gist File...
-		</button>
-	</mat-menu>
 
 	<vscode-button
 		appearance="icon"

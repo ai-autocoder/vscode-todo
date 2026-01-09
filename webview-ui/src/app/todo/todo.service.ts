@@ -5,6 +5,8 @@ import {
 	MessageActionsToWebview,
 	GitHubSyncInfo,
 	messagesFromWebview,
+	UserSyncMode,
+	WorkspaceSyncMode,
 } from "../../../../src/panels/message";
 import {
 	CurrentFileSlice,
@@ -70,6 +72,10 @@ export class TodoService {
 		isGitHubSyncEnabled: false,
 		userSyncEnabled: false,
 		workspaceSyncEnabled: false,
+		userSyncMode: "profile-local",
+		workspaceSyncMode: "local",
+		userFile: "user-todos.json",
+		workspaceFile: "workspace-default.json",
 	});
 
 	private _isSyncingSource = new BehaviorSubject<boolean>(false);
@@ -380,6 +386,14 @@ export class TodoService {
 
 	selectWorkspaceSyncMode() {
 		vscode.postMessage(messagesFromWebview.selectWorkspaceSyncMode());
+	}
+
+	setUserSyncMode(mode: UserSyncMode) {
+		vscode.postMessage(messagesFromWebview.setUserSyncMode(mode));
+	}
+
+	setWorkspaceSyncMode(mode: WorkspaceSyncMode) {
+		vscode.postMessage(messagesFromWebview.setWorkspaceSyncMode(mode));
 	}
 
 	connectGitHub() {

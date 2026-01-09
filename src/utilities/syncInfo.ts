@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { StorageKeys, GistCache, GlobalGistData, WorkspaceGistData } from "../sync/syncTypes";
-import { GitHubSyncInfo } from "../panels/message";
+import { GitHubSyncInfo, UserSyncMode, WorkspaceSyncMode } from "../panels/message";
 
 function getUserLastSynced(
 	context: vscode.ExtensionContext,
@@ -24,16 +24,24 @@ function getWorkspaceLastSynced(
 }
 
 export function getGitHubSyncInfo(context: vscode.ExtensionContext): GitHubSyncInfo {
-	const userSyncMode = context.globalState.get<string>("syncMode", "profile-local");
-	const workspaceSyncMode = context.workspaceState.get<string>("syncMode", "local");
+	const userSyncMode = context.globalState.get<UserSyncMode>("syncMode", "profile-local");
+	const workspaceSyncMode = context.workspaceState.get<WorkspaceSyncMode>("syncMode", "local");
 	const userSyncEnabled = userSyncMode === "github";
 	const workspaceSyncEnabled = workspaceSyncMode === "github";
 	const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+	const userFile = config.get<string>("github.userFile", "user-todos.json");
+	const workspaceName = vscode.workspace.name || "default";
+	const workspaceFile =
+		config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 
 	return {
 		isGitHubSyncEnabled: userSyncEnabled || workspaceSyncEnabled,
 		userSyncEnabled,
 		workspaceSyncEnabled,
+		userSyncMode,
+		workspaceSyncMode,
+		userFile,
+		workspaceFile,
 		userLastSynced: userSyncEnabled ? getUserLastSynced(context, config) : undefined,
 		workspaceLastSynced: workspaceSyncEnabled ? getWorkspaceLastSynced(context, config) : undefined,
 	};
