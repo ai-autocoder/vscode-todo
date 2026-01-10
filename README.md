@@ -214,7 +214,7 @@ Sync your todos via a **GitHub Gist**. This mode provides:
 
 3. **Enable GitHub sync**
    - Switch to the **User** or **Workspace** tab, open the Sync menu, and select **GitHub Gist** for that scope
-   - Choose **Change Gist file...** if you want a specific file for the current scope
+   - Choose **Change GitHub Gist list...** if you want a specific list for the current scope
 
 Note: GitHub sync uses separate storage from Local/Profile modes. New gists start empty and do not copy your local lists. Use Export/Import if you want to migrate data.
 
@@ -223,7 +223,7 @@ Note: GitHub sync uses separate storage from Local/Profile modes. New gists star
 - **VS Code Todo: Connect GitHub**
 - **VS Code Todo: Set Gist ID**
 - **VS Code Todo: Select User Sync Mode** / **Select Workspace Sync Mode**
-- **VS Code Todo: Set User File** / **Set Workspace File**
+- **VS Code Todo: Change User List (GitHub Gist)...** / **Change Workspace List (GitHub Gist)...**
 - **VS Code Todo: Sync Now**
 
 The gist will store your todos in JSON files using hyphen prefixes:
@@ -235,8 +235,8 @@ The gist will store your todos in JSON files using hyphen prefixes:
 
 - **View on GitHub**: Run command **VS Code Todo: View Gist on GitHub** to open your gist in the browser
 - **Sync Manually**: Run command **VS Code Todo: Sync Now** or click **Sync all now** in the Sync menu
-- **Create New Files**:
-  - Use the file selection commands (Set User File / Set Workspace File) and choose "Create New File"
+- **Create New Lists**:
+  - Use the list selection commands (Change User List (GitHub Gist)... / Change Workspace List (GitHub Gist)...) and choose "Create new user list..." or "Create new workspace list..."
   - Or create files manually on GitHub using the naming pattern: `user-Name.json` or `workspace-Name.json`
   - Workspace files are automatically prefilled with your workspace name
 - **Rename Files**: Rename files on GitHub, then update your settings to point to the new file names

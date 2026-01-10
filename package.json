@@ -108,12 +108,12 @@
 			},
 			{
 				"command": "vsc-todo.setUserFile",
-				"title": "Set User File",
+				"title": "Change User List (GitHub Gist)...",
 				"category": "VS Code Todo"
 			},
 			{
 				"command": "vsc-todo.setWorkspaceFile",
-				"title": "Set Workspace File",
+				"title": "Change Workspace List (GitHub Gist)...",
 				"category": "VS Code Todo"
 			},
 			{
@@ -133,12 +133,12 @@
 				"vscodeTodo.sync.github.userFile": {
 					"type": "string",
 					"default": "user-todos.json",
-					"markdownDescription": "User file name in gist for syncing global/user-scope todos.\n\nExamples: `user-todos.json`, `user-Work.json`, `user-Personal.json`\n\nUse command `Todo: Set User File` to select from existing files in your gist or create a new one."
+					"markdownDescription": "User file name in gist for syncing global/user-scope todos.\n\nExamples: `user-todos.json`, `user-Work.json`, `user-Personal.json`\n\nUse command `VS Code Todo: Change User List (GitHub Gist)...` to select from existing files in your gist or create a new one."
 				},
 				"vscodeTodo.sync.github.workspaceFile": {
 					"type": "string",
 					"default": "",
-					"markdownDescription": "Workspace file name in gist for syncing workspace-scope todos. Auto-derived from workspace name if not set.\n\nExamples: `workspace-ProjectAlpha.json`, `workspace-BugTracking.json`\n\nUse command `Todo: Set Workspace File` to select from existing files in your gist or create a new one."
+					"markdownDescription": "Workspace file name in gist for syncing workspace-scope todos. Auto-derived from workspace name if not set.\n\nExamples: `workspace-ProjectAlpha.json`, `workspace-BugTracking.json`\n\nUse command `VS Code Todo: Change Workspace List (GitHub Gist)...` to select from existing files in your gist or create a new one."
 				},
 				"vscodeTodo.sync.github.pollInterval": {
 					"type": "number",

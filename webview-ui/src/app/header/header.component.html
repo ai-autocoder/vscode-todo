@@ -225,17 +225,17 @@
 				(click)="setGistFileForCurrentScope()"
 				[disabled]="!syncInfo.isGitHubMode || !(isGitHubConnected | async) || !(isGistIdConfigured | async)"
 				[title]="!syncInfo.isGitHubMode
-					? 'Enable GitHub Gist mode to choose a file.'
+					? 'Enable GitHub Gist mode to choose a list.'
 					: !(isGitHubConnected | async)
-						? 'Connect to GitHub to choose a Gist file.'
+						? 'Connect to GitHub to choose a GitHub Gist list.'
 						: (isGistIdConfigured | async)
-							? 'Choose a Gist file for this scope.'
+							? 'Choose a GitHub Gist list for this scope.'
 							: 'Set a Gist ID first.'"
-				aria-label="Choose Gist file"
+				aria-label="Change GitHub Gist list"
 			>
 				<div class="menu-row">
 					<span class="menu-left"><app-icon name="file"></app-icon></span>
-					<span class="menu-label">Change Gist file...</span>
+					<span class="menu-label">Change GitHub Gist list...</span>
 					<span class="menu-right"></span>
 				</div>
 			</button>

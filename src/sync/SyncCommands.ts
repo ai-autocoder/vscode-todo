@@ -599,7 +599,7 @@ export class SyncCommands {
 
 		await this.applyWorkspaceSyncMode(selected.mode);
 	}/**
-	 * Command: Set User File
+	 * Command: Change User List (GitHub Gist)
 	 */
 	private async setUserFile(): Promise<void> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
@@ -776,7 +776,7 @@ export class SyncCommands {
 	}
 
 	/**
-	 * Command: Set Workspace File
+	 * Command: Change Workspace List (GitHub Gist)
 	 */
 	private async setWorkspaceFile(): Promise<void> {
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
