@@ -6,7 +6,7 @@ VS Code Todo
 
 </h1>
 
-<h3 align="center">Todo lists, notes, markdown checklists, and reusable AI prompts for Visual Studio Code.</h3>
+<h3 align="center">Todo lists, notes, markdown checklists, and reusable AI prompts for Visual Studio Code with GitHub Gist sync.</h3>
 
 <p align="center">
   <!-- VS Code Marketplace -->
@@ -109,7 +109,7 @@ VS Code Todo
 
 ## Introduction
 
-**VS Code Todo** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by User profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
+**VS Code Todo** is a todo list and note-taking extension for Visual Studio Code. Capture project tasks, checklists, and meeting notes in one panel with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting. Organize items by User profile, workspace, or file scope, and open them instantly from the status bar or activity bar. Cloud sync lists via GitHub Gist or VS Code Settings Sync. Save reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
 
 ## Getting Started
 
@@ -158,6 +158,7 @@ This covers the essentials; the sections below explore markdown previews, diagra
 ## Key Features
 
 - **Todo and note scopes (profile, workspace, file)** keep personal, project, and file-linked checklists organised.
+- **Cloud sync via GitHub Gist** keeps user/workspace lists in sync across devices and profiles.
 - **Markdown note-taking** with syntax highlighting, Mermaid diagrams, and KaTeX math for rich technical docs.
 - **Keyboard-first capture** with quick add, drag-and-drop ordering, and multi-select bulk actions.
 - **Status bar & activity bar access** keeps your task list one click away anywhere in VS Code.
