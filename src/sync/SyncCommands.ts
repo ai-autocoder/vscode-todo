@@ -669,32 +669,52 @@ export class SyncCommands {
 				}
 
 				const currentFile = config.get<string>("github.userFile", "user-todos.json");
-				const items: Array<
-					| { label: string; description: string; isNew: true; file?: never }
-					| { label: string; description?: string; isNew: false; file: typeof filesResult.data[number] }
-				> = [
-					{
-						label: "$(add) Create New File",
-						description: "Create a new user list file",
-						isNew: true,
-					},
-					...filesResult.data.map((file) => ({
-						label: `$(file) ${file.displayName}`,
-						description: file.fullPath === currentFile ? "✓ Currently selected" : undefined,
+				type CreateItem = vscode.QuickPickItem & { isNew: true };
+				type ExistingItem = vscode.QuickPickItem & {
+					isNew: false;
+					file: typeof filesResult.data[number];
+				};
+				type SeparatorItem = vscode.QuickPickItem & {
+					kind: vscode.QuickPickItemKind.Separator;
+				};
+				type FilePickItem = CreateItem | ExistingItem | SeparatorItem;
+
+				const sortedFiles = [...filesResult.data].sort((a, b) =>
+					a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
+				);
+				const listItems: ExistingItem[] = sortedFiles.map((file) => {
+					const isCurrent = file.fullPath === currentFile;
+					return {
+						label: isCurrent
+							? `$(check) $(file) ${file.displayName}`
+							: `$(file) ${file.displayName}`,
+						description: isCurrent ? `Gist file: ${file.fullPath}` : undefined,
 						file,
 						isNew: false as const,
-					})),
+					};
+				});
+
+				const items: FilePickItem[] = [
+					{ label: "Actions", kind: vscode.QuickPickItemKind.Separator },
+					{
+						label: "$(add) Create new user list...",
+						description: "Creates a new list in your GitHub Gist",
+						isNew: true,
+					},
+					{ label: "GitHub Gist lists", kind: vscode.QuickPickItemKind.Separator },
+					...listItems,
 				];
 
 				const selected = await vscode.window.showQuickPick(items, {
-					placeHolder: "Select user list from gist or create new",
+					title: "User lists (GitHub Gist)",
+					placeHolder: "Select a user list to sync",
 				});
 
-				if (!selected) {
+				if (!selected || selected.kind === vscode.QuickPickItemKind.Separator) {
 					return;
 				}
 
-				if (selected.isNew) {
+				if ("isNew" in selected && selected.isNew) {
 					// Create new file
 					const fileName = await vscode.window.showInputBox({
 						prompt: "Enter a name for your new user list",
@@ -735,7 +755,7 @@ export class SyncCommands {
 					// Reload store data from new file
 					await this.reloadStoreData("user");
 					notifyGitHubSyncInfo(this.context);
-				} else {
+				} else if ("file" in selected) {
 					// Select existing file
 					await config.update("github.userFile", selected.file.fullPath, vscode.ConfigurationTarget.Global);
 
@@ -826,32 +846,52 @@ export class SyncCommands {
 				}
 
 				const currentFile = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
-				const items: Array<
-					| { label: string; description: string; isNew: true; file?: never }
-					| { label: string; description?: string; isNew: false; file: typeof filesResult.data[number] }
-				> = [
-					{
-						label: "$(add) Create New File",
-						description: "Create a new workspace list file",
-						isNew: true,
-					},
-					...filesResult.data.map((file) => ({
-						label: `$(file) ${file.displayName}`,
-						description: file.fullPath === currentFile ? "✓ Currently selected" : undefined,
+				type CreateItem = vscode.QuickPickItem & { isNew: true };
+				type ExistingItem = vscode.QuickPickItem & {
+					isNew: false;
+					file: typeof filesResult.data[number];
+				};
+				type SeparatorItem = vscode.QuickPickItem & {
+					kind: vscode.QuickPickItemKind.Separator;
+				};
+				type FilePickItem = CreateItem | ExistingItem | SeparatorItem;
+
+				const sortedFiles = [...filesResult.data].sort((a, b) =>
+					a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
+				);
+				const listItems: ExistingItem[] = sortedFiles.map((file) => {
+					const isCurrent = file.fullPath === currentFile;
+					return {
+						label: isCurrent
+							? `$(check) $(file) ${file.displayName}`
+							: `$(file) ${file.displayName}`,
+						description: isCurrent ? `Gist file: ${file.fullPath}` : undefined,
 						file,
 						isNew: false as const,
-					})),
+					};
+				});
+
+				const items: FilePickItem[] = [
+					{ label: "Actions", kind: vscode.QuickPickItemKind.Separator },
+					{
+						label: "$(add) Create new workspace list...",
+						description: "Creates a new workspace list in your GitHub Gist",
+						isNew: true,
+					},
+					{ label: "GitHub Gist lists", kind: vscode.QuickPickItemKind.Separator },
+					...listItems,
 				];
 
 				const selected = await vscode.window.showQuickPick(items, {
-					placeHolder: "Select workspace list from gist or create new",
+					title: "Workspace lists (GitHub Gist)",
+					placeHolder: "Select a workspace list to sync",
 				});
 
-				if (!selected) {
+				if (!selected || selected.kind === vscode.QuickPickItemKind.Separator) {
 					return;
 				}
 
-				if (selected.isNew) {
+				if ("isNew" in selected && selected.isNew) {
 					// Create new file with workspace name prefilled
 					const fileName = await vscode.window.showInputBox({
 						prompt: "Enter a name for your new workspace list",
@@ -888,7 +928,7 @@ export class SyncCommands {
 					// Reload store data from new file
 					await this.reloadStoreData("workspace");
 					notifyGitHubSyncInfo(this.context);
-				} else {
+				} else if ("file" in selected) {
 					// Select existing file
 					await config.update("github.workspaceFile", selected.file.fullPath, vscode.ConfigurationTarget.Workspace);
 					vscode.window.showInformationMessage(`Workspace file set to: ${selected.file.displayName}`);
@@ -1010,7 +1050,6 @@ export class SyncCommands {
 		}
 	}
 }
-
 
 
 
