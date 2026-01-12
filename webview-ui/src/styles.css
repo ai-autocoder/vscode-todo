@@ -71,6 +71,44 @@ markdown pre {
 	}
 }
 
+markdown .mermaid,
+markdown .mermaid-zoom-target {
+	position: relative;
+	max-width: 100%;
+}
+
+markdown .mermaid svg,
+markdown .mermaid-zoom-target svg {
+	max-width: 100%;
+	height: auto;
+}
+
+markdown .mermaid-zoom-target .mermaid-zoom-button {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	opacity: 0;
+	transition: opacity 120ms ease-in-out;
+}
+
+markdown .mermaid-zoom-target:hover .mermaid-zoom-button,
+markdown .mermaid-zoom-target:focus-within .mermaid-zoom-button {
+	opacity: 1;
+}
+
+markdown .mermaid-zoom-target .mermaid-zoom-button > span {
+	display: flex;
+}
+
+markdown .mermaid-zoom-target .mermaid-zoom-button svg {
+	width: calc(var(--design-unit) * 4px);
+	height: calc(var(--design-unit) * 4px);
+}
+
+markdown .mermaid-zoom-target .mermaid-zoom-button:not(:hover) {
+	background: rgba(39, 40, 34, 0.5);
+}
+
 /* Overrides for Angular Material theme -> */
 
 /* Menu */

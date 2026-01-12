@@ -1,13 +1,16 @@
 import {
 	Component,
+	ChangeDetectorRef,
 	ElementRef,
 	EventEmitter,
 	Input,
+	NgZone,
 	OnChanges,
 	OnInit,
 	Output,
 	Renderer2,
 	SimpleChanges,
+	ViewChild,
 } from "@angular/core";
 import { Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
@@ -26,6 +29,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 	@Input() selected = false;
 	@Input() selectionMode = false;
 	@Input() selectionCount = 0;
+	@ViewChild("markdownContainer") markdownContainer?: ElementRef<HTMLElement>;
 	isEditable = false;
 	footerActive?: boolean;
 	previousText!: string;
@@ -35,13 +39,19 @@ export class TodoItemComponent implements OnInit, OnChanges {
 	enableMarkdownDiagrams: boolean = true;
 	enableMarkdownKatex: boolean = true;
 	collapsedPreviewLines: number = 1;
+	diagramZoomOpen = false;
+	zoomSvgSource?: SVGSVGElement;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
+	private mermaidListeners: Array<() => void> = [];
+	private mermaidObserver?: MutationObserver;
 
 	constructor(
 		private todoService: TodoService,
 		private renderer: Renderer2,
-		private elRef: ElementRef
+		private elRef: ElementRef,
+		private ngZone: NgZone,
+		private cdr: ChangeDetectorRef
 	) {}
 
 	ngOnInit() {
@@ -57,6 +67,11 @@ export class TodoItemComponent implements OnInit, OnChanges {
 	}
 
 	ngOnChanges(changes: SimpleChanges) {
+		const todoChange = changes["todo"];
+		if (todoChange && !todoChange.currentValue?.isMarkdown) {
+			this.clearMermaidListeners();
+		}
+
 		if (!this.isEditable) {
 			return;
 		}
@@ -94,7 +109,11 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		this.isActionMenuOpen = false;
 	}
 
-		saveEdit() {
+	onMarkdownReady(): void {
+		this.refreshMermaidZoomTargets();
+	}
+
+	saveEdit() {
 		const newText = this.todo.text.trim();
 		// If edited text is empty, delete the item instead of saving an empty value.
 		// Restore previous text on the object so UNDO can bring it back correctly.
@@ -159,6 +178,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		this.previousText = this.todo.text;
 		this.todoService.setActiveEditor(this.scope, this.todo.id);
 		this.isEditable = true;
+		this.clearMermaidListeners();
 		setTimeout(() => {
 			this.globalClickUnlistener = this.renderer.listen("document", "click", (event) => {
 				if (!this.elRef.nativeElement.contains(event.target) && event.target.id !== "cancel-button") {
@@ -184,6 +204,120 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		this.delete.emit(todo);
 	}
 
+	closeDiagramZoom(): void {
+		this.diagramZoomOpen = false;
+		this.zoomSvgSource = undefined;
+	}
+
+	private refreshMermaidZoomTargets(): void {
+		this.clearMermaidListeners();
+		const container = this.markdownContainer?.nativeElement;
+		if (!container) {
+			return;
+		}
+
+		this.injectMermaidZoomButtons(container);
+		this.mermaidObserver = new MutationObserver(() => {
+			this.injectMermaidZoomButtons(container);
+		});
+		this.mermaidObserver.observe(container, { childList: true, subtree: true });
+	}
+
+	private openDiagramZoom(svg: SVGSVGElement, event?: Event): void {
+		if (event) {
+			event.preventDefault();
+			event.stopPropagation();
+		}
+		this.ngZone.run(() => {
+			this.zoomSvgSource = svg;
+			this.diagramZoomOpen = true;
+			this.cdr.detectChanges();
+		});
+	}
+
+	private clearMermaidListeners(): void {
+		for (const unlisten of this.mermaidListeners) {
+			unlisten();
+		}
+		this.mermaidListeners = [];
+		if (this.mermaidObserver) {
+			this.mermaidObserver.disconnect();
+			this.mermaidObserver = undefined;
+		}
+	}
+
+	private injectMermaidZoomButtons(container: HTMLElement): void {
+		const mermaidBlocks = Array.from(container.querySelectorAll<Element>(".mermaid"));
+		for (const block of mermaidBlocks) {
+			const svg = this.getMermaidSvg(block);
+			if (!svg) {
+				continue;
+			}
+			const host = this.ensureMermaidZoomHost(block);
+			const existingButton = host.querySelector(".mermaid-zoom-button");
+			if (existingButton) {
+				continue;
+			}
+
+			const zoomButton = this.renderer.createElement("vscode-button");
+			zoomButton.classList.add("mermaid-zoom-button");
+			zoomButton.setAttribute("appearance", "icon");
+			zoomButton.setAttribute("aria-label", "Zoom");
+			zoomButton.setAttribute("title", "Zoom");
+
+			const zoomIcon = this.renderer.createElement("span");
+			this.renderer.setProperty(
+				zoomIcon,
+				"innerHTML",
+				'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path fill="#C5C5C5" d="M11.742 10.344a6.5 6.5 0 1 0-1.398 1.398l2.48 2.48a1 1 0 0 0 1.414-1.414l-2.496-2.464zM6.5 11A4.5 4.5 0 1 1 6.5 2a4.5 4.5 0 0 1 0 9z"/><path fill="#C5C5C5" d="M6.5 4a.5.5 0 0 1 .5.5V6h1.5a.5.5 0 0 1 0 1H7v1.5a.5.5 0 0 1-1 0V7H4.5a.5.5 0 0 1 0-1H6V4.5a.5.5 0 0 1 .5-.5z"/></svg>'
+			);
+			zoomButton.appendChild(zoomIcon);
+			host.appendChild(zoomButton);
+
+			this.mermaidListeners.push(
+				this.renderer.listen(zoomButton, "click", (event: MouseEvent) => {
+					this.openDiagramZoom(svg, event);
+				})
+			);
+			this.mermaidListeners.push(
+				this.renderer.listen(zoomButton, "keydown", (event: KeyboardEvent) => {
+					if (event.key === "Enter" || event.key === " ") {
+						event.preventDefault();
+						this.openDiagramZoom(svg, event);
+					}
+				})
+			);
+		}
+	}
+
+	private getMermaidSvg(block: Element): SVGSVGElement | null {
+		if (block instanceof SVGSVGElement) {
+			return block as SVGSVGElement;
+		}
+		const svg = block.querySelector("svg") as SVGSVGElement | null;
+		return svg ?? null;
+	}
+
+	private ensureMermaidZoomHost(block: Element): HTMLElement {
+		if (block instanceof SVGSVGElement) {
+			const svg = block as SVGSVGElement;
+			const parent = svg.parentElement;
+			if (parent && parent.classList.contains("mermaid-zoom-target")) {
+				return parent;
+			}
+			const wrapper = this.renderer.createElement("div");
+			wrapper.classList.add("mermaid-zoom-target");
+			if (parent) {
+				parent.insertBefore(wrapper, svg);
+			}
+			wrapper.appendChild(svg);
+			return wrapper;
+		}
+		const host = block as HTMLElement;
+		host.classList.add("mermaid-zoom-target");
+		return host;
+	}
+
 	private removeGlobalClickListener(): void {
 		if (this.globalClickUnlistener) {
 			this.globalClickUnlistener();
@@ -192,6 +326,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 
 	ngOnDestroy(): void {
 		this.removeGlobalClickListener();
+		this.clearMermaidListeners();
 		if (this.activeEditorSubscription) {
 			this.activeEditorSubscription.unsubscribe();
 		}

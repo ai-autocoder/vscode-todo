@@ -1,0 +1,77 @@
+.mermaid-zoom-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 2000;
+	background: var(--vscode-editor-background);
+	display: grid;
+	grid-template-rows: auto 1fr;
+}
+
+.mermaid-zoom-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	background: var(--vscode-editor-background);
+	border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.mermaid-zoom-input {
+	width: 4.5rem;
+	padding: 2px 6px;
+	border-radius: 3px;
+	border: 1px solid var(--vscode-input-border, transparent);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.mermaid-zoom-input:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
+.mermaid-zoom-percent {
+	color: var(--vscode-foreground);
+	opacity: 0.8;
+}
+
+.mermaid-zoom-reset {
+	min-width: 4rem;
+}
+
+.mermaid-zoom-spacer {
+	flex: 1;
+}
+
+.mermaid-zoom-stage {
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: grab;
+	user-select: none;
+	touch-action: none;
+}
+
+.mermaid-zoom-stage.panning {
+	cursor: grabbing;
+}
+
+.mermaid-zoom-canvas {
+	display: inline-flex;
+	transform-origin: 0 0;
+	will-change: transform;
+}
+
+.mermaid-zoom-canvas svg {
+	max-width: none;
+	max-height: none;
+}
+
+.mermaid-zoom-icon-button {
+	margin: 0;
+}

@@ -1,0 +1,76 @@
+<div
+	class="mermaid-zoom-overlay"
+	(click)="close($event)"
+	(pointerdown)="$event.stopPropagation()"
+	(mousedown)="stopOverlayMouse($event)"
+	(dragstart)="stopOverlayMouse($event)"
+	role="dialog"
+	aria-modal="true"
+	aria-label="Mermaid diagram zoom"
+>
+	<div
+		class="mermaid-zoom-toolbar"
+		(click)="$event.stopPropagation()"
+		(pointerdown)="$event.stopPropagation()"
+		(mousedown)="stopOverlayMouse($event)"
+		(dragstart)="stopOverlayMouse($event)"
+	>
+		<vscode-button
+			appearance="icon"
+			class="mermaid-zoom-icon-button"
+			(click)="zoomOut($event)"
+			aria-label="Zoom out"
+			title="Zoom out"
+		>
+			<span><app-icon name="zoom-out"></app-icon></span>
+		</vscode-button>
+		<input
+			class="mermaid-zoom-input"
+			type="text"
+			inputmode="numeric"
+			[(ngModel)]="zoomInputValue"
+			(keydown)="onZoomInputKeydown($event)"
+			(blur)="commitZoomInput()"
+			aria-label="Zoom percent"
+		/>
+		<span class="mermaid-zoom-percent">%</span>
+		<vscode-button
+			appearance="icon"
+			class="mermaid-zoom-icon-button"
+			(click)="zoomIn($event)"
+			aria-label="Zoom in"
+			title="Zoom in"
+		>
+			<span><app-icon name="zoom-in"></app-icon></span>
+		</vscode-button>
+		<vscode-button
+			appearance="secondary"
+			class="mermaid-zoom-reset"
+			(click)="resetZoom($event)"
+			aria-label="Reset zoom"
+			title="Reset zoom"
+		>
+			Reset
+		</vscode-button>
+		<span class="mermaid-zoom-spacer"></span>
+		<vscode-button
+			appearance="icon"
+			class="mermaid-zoom-icon-button"
+			(click)="close($event)"
+			aria-label="Close zoom"
+			title="Close"
+		>
+			<span><app-icon name="close"></app-icon></span>
+		</vscode-button>
+	</div>
+	<div
+		class="mermaid-zoom-stage"
+		[class.panning]="zoomPanning"
+		(click)="$event.stopPropagation()"
+		(wheel)="onZoomWheel($event)"
+		(pointerdown)="startZoomPan($event)"
+		#diagramZoomStage
+	>
+		<div class="mermaid-zoom-canvas" #diagramZoomCanvas></div>
+	</div>
+</div>
