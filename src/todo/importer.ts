@@ -18,12 +18,16 @@ import {
 	Todo,
 	TodoFilesData,
 	TodoFilesDataPartialInput,
+	TodoFilesDataPaths,
 	TodoPartialInput,
 } from "./todoTypes";
 import {
+	ensureFilesDataPaths,
 	generateUniqueId,
+	getWorkspacePath,
 	getWorkspaceFilesWithRecords,
 	isEqual,
+	resolveFilesDataKey,
 	sortByFileName,
 } from "./todoUtils";
 
@@ -81,17 +85,29 @@ async function importCommand(
 		const sortedResult = sortByFileName(newData);
 
 		if (!isEqual(previousData, sortedResult)) {
+			const filesDataPaths = ensureFilesDataPaths(
+				sortedResult,
+				(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {},
+				getWorkspacePath()
+			);
 			context.workspaceState.update("TodoFilesData", sortedResult);
+			context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
 			// Update the store
 			store.dispatch(
 				editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
 					getWorkspaceFilesWithRecords(sortedResult || {})
 				)
 			);
+			const targetFilePath = state.editorFocusAndRecords.editorFocusedFilePath;
+			const resolved = resolveFilesDataKey({
+				filePath: targetFilePath,
+				filesData: sortedResult,
+				filesDataPaths,
+			});
 			store.dispatch(
 				currentFileActions.loadData({
-					filePath: state.editorFocusAndRecords.editorFocusedFilePath,
-					data: sortedResult[state.editorFocusAndRecords.editorFocusedFilePath] || [],
+					filePath: targetFilePath,
+					data: resolved.key ? sortedResult[resolved.key] ?? [] : [],
 				})
 			);
 			vscode.window.showInformationMessage("Files data imported");

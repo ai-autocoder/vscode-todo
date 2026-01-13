@@ -4,7 +4,7 @@
  */
 
 import * as vscode from "vscode";
-import { Todo, TodoFilesData } from "../todo/todoTypes";
+import { Todo, TodoFilesData, TodoFilesDataPaths } from "../todo/todoTypes";
 import {
 	GlobalSyncMode,
 	WorkspaceSyncMode,
@@ -137,6 +137,29 @@ export class SyncStorageManager {
 	}
 
 	/**
+	 * Get file path aliases (always from workspace scope)
+	 */
+	public async getFilesDataPaths(
+		mode: WorkspaceSyncMode,
+		fileName?: string
+	): Promise<TodoFilesDataPaths> {
+		switch (mode) {
+			case WorkspaceSyncMode.Local:
+				return this.getFromWorkspaceState<TodoFilesDataPaths>(StorageKeys.filesPathsLocal, {});
+
+			case WorkspaceSyncMode.GitHub:
+				if (!fileName) {
+					throw new Error("File name required for GitHub mode");
+				}
+				const cache = await this.getWorkspaceGistCache(fileName);
+				return cache?.data.filesDataPaths || {};
+
+			default:
+				return {};
+		}
+	}
+
+	/**
 	 * Set file data (always from workspace scope)
 	 */
 	public async setFilesData(mode: WorkspaceSyncMode, filesData: TodoFilesData, fileName?: string): Promise<void> {
@@ -152,6 +175,32 @@ export class SyncStorageManager {
 				// Update cache and mark as dirty
 				const cache = (await this.getWorkspaceGistCache(fileName)) || this.createEmptyWorkspaceCache();
 				cache.data.filesData = filesData;
+				cache.isDirty = true;
+				await this.setWorkspaceGistCache(fileName, cache);
+				break;
+		}
+	}
+
+	/**
+	 * Set file path aliases (always from workspace scope)
+	 */
+	public async setFilesDataPaths(
+		mode: WorkspaceSyncMode,
+		filesDataPaths: TodoFilesDataPaths,
+		fileName?: string
+	): Promise<void> {
+		switch (mode) {
+			case WorkspaceSyncMode.Local:
+				await this.setToWorkspaceState(StorageKeys.filesPathsLocal, filesDataPaths);
+				break;
+
+			case WorkspaceSyncMode.GitHub:
+				if (!fileName) {
+					throw new Error("File name required for GitHub mode");
+				}
+				// Update cache and mark as dirty
+				const cache = (await this.getWorkspaceGistCache(fileName)) || this.createEmptyWorkspaceCache();
+				cache.data.filesDataPaths = filesDataPaths;
 				cache.isDirty = true;
 				await this.setWorkspaceGistCache(fileName, cache);
 				break;
@@ -227,6 +276,7 @@ export class SyncStorageManager {
 			data: {
 					workspaceTodos: [],
 				filesData: {},
+				filesDataPaths: {},
 			},
 			lastSynced: new Date().toISOString(),
 			isDirty: false,

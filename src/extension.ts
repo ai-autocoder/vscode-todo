@@ -24,14 +24,18 @@ import {
 	Slices,
 	StoreState,
 	TodoFilesData,
+	TodoFilesDataPaths,
 	TodoScope,
 	TodoSlice,
 } from "./todo/todoTypes";
 import {
 	deleteCompletedTodos,
 	deleteCompletedTodosCurrentFile,
+	ensureFilesDataPaths,
+	getWorkspacePath,
 	getWorkspaceFilesWithRecords,
 	removeDataForDeletedFile,
+	resolveFilesDataKey,
 	updateDataForRenamedFile,
 } from "./todo/todoUtils";
 import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands, SyncStatus } from "./sync";
@@ -80,7 +84,7 @@ export async function activate(context: ExtensionContext) {
 
 	// Listen for data downloads and reload store
 	const dataDownloadListener = syncManager.onDataDownloaded(async (event) => {
-		await reloadScopeData(event.scope, store, storageSyncManager);
+		await reloadScopeData(event.scope, store, storageSyncManager, context);
 	});
 	context.subscriptions.push(dataDownloadListener);
 
@@ -128,11 +132,11 @@ export async function activate(context: ExtensionContext) {
 		}
 
 		if (reloadUser) {
-			void reloadScopeData("user", store, storageSyncManager);
+			void reloadScopeData("user", store, storageSyncManager, context);
 		}
 
 		if (reloadWorkspace) {
-			void reloadScopeData("workspace", store, storageSyncManager);
+			void reloadScopeData("workspace", store, storageSyncManager, context);
 		}
 	});
 	context.subscriptions.push(configListener);
@@ -171,6 +175,13 @@ export async function activate(context: ExtensionContext) {
 	const initialWorkspaceTodos = await storageSyncManager.getWorkspaceTodos();
 	const initialUserTodos = await storageSyncManager.getUserTodos();
 	const initialWorkspaceFilesData = await storageSyncManager.getWorkspaceFilesData();
+	const initialWorkspaceFilesDataPaths = ensureFilesDataPaths(
+		initialWorkspaceFilesData ?? {},
+		await storageSyncManager.getWorkspaceFilesDataPaths(),
+		getWorkspacePath()
+	);
+	await context.workspaceState.update("TodoFilesData", initialWorkspaceFilesData ?? {});
+	await context.workspaceState.update("TodoFilesDataPaths", initialWorkspaceFilesDataPaths);
 
 	// Load workspace slice
 	store.dispatch(
@@ -304,8 +315,19 @@ function handleEditorFocusAndRecordsChange(
 		state.editorFocusAndRecords.lastActionType === `${Slices.editorFocusAndRecords}/setCurrentFile` &&
 		!state.currentFile.isPinned
 	) {
-		const data = context.workspaceState.get("TodoFilesData") as TodoFilesData | undefined;
-		const todos = data?.[state.editorFocusAndRecords.editorFocusedFilePath] || [];
+		const filesData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {};
+		const filesDataPaths = ensureFilesDataPaths(
+			filesData,
+			(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) ?? {},
+			getWorkspacePath()
+		);
+		void context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
+		const resolved = resolveFilesDataKey({
+			filePath: state.editorFocusAndRecords.editorFocusedFilePath,
+			filesData,
+			filesDataPaths,
+		});
+		const todos = resolved.key ? filesData[resolved.key] ?? [] : [];
 		store.dispatch(
 			currentFileActions.loadData({
 				filePath: state.editorFocusAndRecords.editorFocusedFilePath,

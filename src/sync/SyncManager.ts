@@ -509,6 +509,10 @@ export class SyncManager {
 				typeof cache.data.filesData === "object" && cache.data.filesData !== null
 					? cache.data.filesData
 					: {};
+			const cachedFilesDataPaths =
+				typeof cache.data.filesDataPaths === "object" && cache.data.filesDataPaths !== null
+					? cache.data.filesDataPaths
+					: {};
 			const cachedCleanWorkspaceTodos = Array.isArray(cache.lastCleanRemoteData?.workspaceTodos)
 				? cache.lastCleanRemoteData?.workspaceTodos
 				: undefined;
@@ -517,12 +521,19 @@ export class SyncManager {
 				cache.lastCleanRemoteData?.filesData !== null
 					? cache.lastCleanRemoteData?.filesData
 					: undefined;
+			const cachedCleanFilesDataPaths =
+				typeof cache.lastCleanRemoteData?.filesDataPaths === "object" &&
+				cache.lastCleanRemoteData?.filesDataPaths !== null
+					? cache.lastCleanRemoteData?.filesDataPaths
+					: undefined;
 			const localHasChanges =
 				cache.isDirty &&
 				(!cachedCleanWorkspaceTodos ||
 					!cachedCleanFilesData ||
+					!cachedCleanFilesDataPaths ||
 					!isEqual(cachedWorkspaceTodos, cachedCleanWorkspaceTodos) ||
-					!isEqual(cachedFilesData, cachedCleanFilesData));
+					!isEqual(cachedFilesData, cachedCleanFilesData) ||
+					!isEqual(cachedFilesDataPaths, cachedCleanFilesDataPaths));
 
 			if (cache.isDirty && !localHasChanges) {
 				cache.isDirty = false;
@@ -573,20 +584,26 @@ export class SyncManager {
 				typeof remoteData.filesData === "object" && remoteData.filesData !== null
 					? remoteData.filesData
 					: {};
+			const remoteFilesDataPaths =
+				typeof remoteData.filesDataPaths === "object" && remoteData.filesDataPaths !== null
+					? remoteData.filesDataPaths
+					: {};
 
 			// Content-based comparison - compare with last known clean remote state
 			let hasRemoteChanges: boolean;
-			if (cachedCleanWorkspaceTodos && cachedCleanFilesData) {
+			if (cachedCleanWorkspaceTodos && cachedCleanFilesData && cachedCleanFilesDataPaths) {
 				// Compare remote with last known clean remote (not current cache which includes local changes)
 				const workspaceTodosChanged = !isEqual(remoteWorkspaceTodos, cachedCleanWorkspaceTodos);
 				const filesDataChanged = !isEqual(remoteFilesData, cachedCleanFilesData);
-				hasRemoteChanges = workspaceTodosChanged || filesDataChanged;
+				const filesDataPathsChanged = !isEqual(remoteFilesDataPaths, cachedCleanFilesDataPaths);
+				hasRemoteChanges = workspaceTodosChanged || filesDataChanged || filesDataPathsChanged;
 			} else {
 				// Backwards compatibility: first time with new code, don't know last clean state
 				// Treat as potentially changed and update lastCleanRemoteData on download/upload
 				const workspaceTodosChanged = !isEqual(remoteWorkspaceTodos, cachedWorkspaceTodos);
 				const filesDataChanged = !isEqual(remoteFilesData, cachedFilesData);
-				hasRemoteChanges = workspaceTodosChanged || filesDataChanged;
+				const filesDataPathsChanged = !isEqual(remoteFilesDataPaths, cachedFilesDataPaths);
+				hasRemoteChanges = workspaceTodosChanged || filesDataChanged || filesDataPathsChanged;
 			}
 
 			// TRUE CONFLICT: Both remote and local have different content - perform three-way merge
@@ -605,7 +622,10 @@ export class SyncManager {
 					remoteWorkspaceTodos,
 					baseFilesData,
 					localFilesData,
-					remoteFilesData
+					remoteFilesData,
+					cachedCleanFilesDataPaths || {},
+					cachedFilesDataPaths,
+					remoteFilesDataPaths
 				);
 
 				// Check if there are any conflicts (workspace or file-level)
@@ -701,6 +721,7 @@ export class SyncManager {
 					const finalMerged: WorkspaceGistData = {
 						workspaceTodos: mergeResult.autoMergedWorkspaceTodos,
 						filesData: mergeResult.autoMergedFilesData,
+						filesDataPaths: mergeResult.autoMergedFilesDataPaths,
 					};
 					const updatedCleanData = cloneData(finalMerged);
 					const updatedCache: GistCache<WorkspaceGistData> = {
@@ -727,6 +748,7 @@ export class SyncManager {
 				const finalMerged: WorkspaceGistData = {
 					workspaceTodos: mergeResult.autoMergedWorkspaceTodos,
 					filesData: mergeResult.autoMergedFilesData,
+					filesDataPaths: mergeResult.autoMergedFilesDataPaths,
 				};
 				const updatedCleanData = cloneData(finalMerged);
 				const updatedCache: GistCache<WorkspaceGistData> = {
@@ -793,6 +815,7 @@ export class SyncManager {
 				const emptyData: WorkspaceGistData = {
 						workspaceTodos: [],
 					filesData: {},
+					filesDataPaths: {},
 				};
 				const cleanData = cloneData(emptyData);
 				const cache: GistCache<WorkspaceGistData> = {
@@ -814,6 +837,10 @@ export class SyncManager {
 
 		try {
 			const data: WorkspaceGistData = JSON.parse(fileResult.data);
+			data.filesDataPaths =
+				typeof data.filesDataPaths === "object" && data.filesDataPaths !== null
+					? data.filesDataPaths
+					: {};
 			const cleanData = cloneData(data);
 			const cache: GistCache<WorkspaceGistData> = {
 				data,
@@ -853,6 +880,15 @@ export class SyncManager {
 				sortedFilesData[key] = cache.data.filesData[key];
 			});
 		cache.data.filesData = sortedFilesData;
+		const filesDataPaths = cache.data.filesDataPaths ?? {};
+
+		const sortedFilesDataPaths: typeof filesDataPaths = {};
+		Object.keys(filesDataPaths)
+			.sort()
+			.forEach((key) => {
+				sortedFilesDataPaths[key] = filesDataPaths[key];
+			});
+		cache.data.filesDataPaths = sortedFilesDataPaths;
 
 		// Serialize with pretty-printing
 		const content = JSON.stringify(cache.data, null, 2);

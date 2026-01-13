@@ -17,6 +17,7 @@ import {
 	Slices,
 	Todo,
 	TodoFilesData,
+	TodoFilesDataPaths,
 	TodoScope,
 	TodoSlice,
 } from "../todo/todoTypes";
@@ -29,7 +30,7 @@ import { Message, MessageActionsFromWebview, messagesToWebview, GitHubSyncInfo }
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
-import { deleteCompletedTodos } from "../todo/todoUtils";
+import { deleteCompletedTodos, ensureFilesDataPaths, getWorkspacePath, resolveFilesDataKey } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 import { getGitHubSyncInfo } from "../utilities/syncInfo";
@@ -332,8 +333,20 @@ export class HelloWorldPanel {
 							currentFilePath &&
 							store.getState().currentFilePath !== currentFilePath
 						) {
-							const data = context.workspaceState.get<TodoFilesData>("TodoFilesData");
-							const todos = data?.[currentFilePath] ?? [];
+							const filesData =
+								context.workspaceState.get<TodoFilesData>("TodoFilesData") ?? {};
+							const filesDataPaths = ensureFilesDataPaths(
+								filesData,
+								(context.workspaceState.get<TodoFilesDataPaths>("TodoFilesDataPaths") ?? {}),
+								getWorkspacePath()
+							);
+							void context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
+							const resolved = resolveFilesDataKey({
+								filePath: currentFilePath,
+								filesData,
+								filesDataPaths,
+							});
+							const todos = resolved.key ? filesData[resolved.key] ?? [] : [];
 
 							store.dispatch(
 								currentFileActions.loadData({

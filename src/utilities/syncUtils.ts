@@ -8,7 +8,12 @@ import {
 	workspaceActions,
 } from "../todo/store";
 import { TodoScope } from "../todo/todoTypes";
-import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
+import {
+	ensureFilesDataPaths,
+	getWorkspacePath,
+	getWorkspaceFilesWithRecords,
+	resolveFilesDataKey,
+} from "../todo/todoUtils";
 import LogChannel from "./LogChannel";
 import { HelloWorldPanel } from "../panels/HelloWorldPanel";
 import { TodoViewProvider } from "../panels/TodoViewProvider";
@@ -24,7 +29,8 @@ import { getGitHubSyncInfo } from "./syncInfo";
 export async function reloadScopeData(
 	scope: "user" | "workspace",
 	store: EnhancedStore,
-	storageSyncManager: StorageSyncManager
+	storageSyncManager: StorageSyncManager,
+	context: vscode.ExtensionContext
 ): Promise<void> {
 	if (scope === "user") {
 		// Reload user todos
@@ -39,6 +45,13 @@ export async function reloadScopeData(
 
 		// Reload workspace files data
 		const filesData = await storageSyncManager.getWorkspaceFilesData();
+		const filesDataPaths = ensureFilesDataPaths(
+			filesData,
+			await storageSyncManager.getWorkspaceFilesDataPaths(),
+			getWorkspacePath()
+		);
+		await context.workspaceState.update("TodoFilesData", filesData);
+		await context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
 		store.dispatch(
 			editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
 				getWorkspaceFilesWithRecords(filesData)
@@ -52,7 +65,12 @@ export async function reloadScopeData(
 			currentState.editorFocusAndRecords.editorFocusedFilePath;
 
 		if (targetFilePath) {
-			const todos = filesData[targetFilePath] ?? [];
+			const resolved = resolveFilesDataKey({
+				filePath: targetFilePath,
+				filesData,
+				filesDataPaths,
+			});
+			const todos = resolved.key ? filesData[resolved.key] ?? [] : [];
 			storageSyncManager.suppressNextPersistForScope(TodoScope.currentFile);
 			store.dispatch(
 				currentFileActions.loadData({

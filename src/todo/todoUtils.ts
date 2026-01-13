@@ -1,4 +1,5 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
+import path = require("node:path");
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
@@ -13,6 +14,8 @@ import {
 	StoreState,
 	Todo,
 	TodoFilesData,
+	TodoFilesDataPaths,
+	TodoFilesDataPathsEntry,
 	TodoPartialInput,
 	TodoScope,
 	TodoSlice,
@@ -178,6 +181,208 @@ export function sortByFileName(data: TodoFilesData = {}): TodoFilesData {
 	return sortedData;
 }
 
+export type FilesDataPathIndexes = {
+	absIndex: Record<string, string>;
+	relIndex: Record<string, string>;
+};
+
+export function normalizeAbsolutePath(filePath: string): string {
+	const normalized = path.normalize(filePath);
+	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+export function normalizeRelativePath(filePath: string): string {
+	const normalized = filePath.replace(/\\/g, "/");
+	const posixPath = path.posix.normalize(normalized);
+	return posixPath.startsWith("./") ? posixPath.slice(2) : posixPath;
+}
+
+function getWorkspaceFolderPathForFile(filePath: string): string | null {
+	const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
+	return folder?.uri.fsPath ?? null;
+}
+
+export function getRelativePathIfInsideWorkspace(
+	filePath: string,
+	workspaceRoot?: string | null
+): string | null {
+	const root = workspaceRoot ?? getWorkspaceFolderPathForFile(filePath) ?? getWorkspacePath();
+	if (!root) {
+		return null;
+	}
+
+	const relPath = path.relative(root, filePath);
+	if (!relPath || relPath.startsWith("..") || path.isAbsolute(relPath)) {
+		return null;
+	}
+
+	return normalizeRelativePath(relPath);
+}
+
+export function buildFilesDataPathIndexes(
+	filesData: TodoFilesData,
+	filesDataPaths: TodoFilesDataPaths
+): FilesDataPathIndexes {
+	const absIndex: Record<string, string> = {};
+	const relIndex: Record<string, string> = {};
+
+	for (const primaryKey of Object.keys(filesData)) {
+		absIndex[normalizeAbsolutePath(primaryKey)] = primaryKey;
+	}
+
+	for (const [primaryKey, entry] of Object.entries(filesDataPaths)) {
+		const absPaths = Array.isArray(entry?.absPaths) ? entry.absPaths : [];
+		const relPaths = Array.isArray(entry?.relPaths) ? entry.relPaths : [];
+
+		for (const absPath of absPaths) {
+			const normalized = normalizeAbsolutePath(absPath);
+			if (!(normalized in absIndex)) {
+				absIndex[normalized] = primaryKey;
+			}
+		}
+
+		for (const relPath of relPaths) {
+			const normalized = normalizeRelativePath(relPath);
+			if (!(normalized in relIndex)) {
+				relIndex[normalized] = primaryKey;
+			}
+		}
+	}
+
+	return { absIndex, relIndex };
+}
+
+export function resolveFilesDataKey({
+	filePath,
+	filesData,
+	filesDataPaths,
+}: {
+	filePath: string;
+	filesData: TodoFilesData;
+	filesDataPaths: TodoFilesDataPaths;
+}): { key: string | null; relPath: string | null } {
+	const relPath = getRelativePathIfInsideWorkspace(filePath);
+
+	if (Object.prototype.hasOwnProperty.call(filesData, filePath)) {
+		return { key: filePath, relPath };
+	}
+
+	if (relPath && Object.prototype.hasOwnProperty.call(filesData, relPath)) {
+		return { key: relPath, relPath };
+	}
+
+	const { absIndex, relIndex } = buildFilesDataPathIndexes(filesData, filesDataPaths);
+	const absKey = absIndex[normalizeAbsolutePath(filePath)];
+	if (absKey) {
+		return { key: absKey, relPath };
+	}
+
+	if (relPath) {
+		const relKey = relIndex[normalizeRelativePath(relPath)];
+		if (relKey) {
+			return { key: relKey, relPath };
+		}
+	}
+
+	return { key: null, relPath };
+}
+
+function addUniquePath(
+	list: string[],
+	value: string,
+	normalize: (value: string) => string
+): void {
+	const normalizedValue = normalize(value);
+	if (list.some((item) => normalize(item) === normalizedValue)) {
+		return;
+	}
+	list.push(value);
+}
+
+function removeNormalizedPath(
+	list: string[],
+	value: string,
+	normalize: (value: string) => string
+): string[] {
+	const normalizedValue = normalize(value);
+	return list.filter((item) => normalize(item) !== normalizedValue);
+}
+
+function normalizePathEntry(entry?: TodoFilesDataPathsEntry): {
+	absPaths: string[];
+	relPaths: string[];
+} {
+	const absPaths: string[] = [];
+	const relPaths: string[] = [];
+
+	if (entry && Array.isArray(entry.absPaths)) {
+		for (const absPath of entry.absPaths) {
+			addUniquePath(absPaths, absPath, normalizeAbsolutePath);
+		}
+	}
+
+	if (entry && Array.isArray(entry.relPaths)) {
+		for (const relPath of entry.relPaths) {
+			const normalizedRel = normalizeRelativePath(relPath);
+			addUniquePath(relPaths, normalizedRel, normalizeRelativePath);
+		}
+	}
+
+	return { absPaths, relPaths };
+}
+
+export function ensureFilesDataPaths(
+	filesData: TodoFilesData,
+	filesDataPaths: TodoFilesDataPaths | undefined,
+	workspaceRoot?: string | null
+): TodoFilesDataPaths {
+	const updated: TodoFilesDataPaths = {};
+	const source = filesDataPaths ?? {};
+
+	for (const primaryKey of Object.keys(filesData)) {
+		const entry = normalizePathEntry(source[primaryKey]);
+
+		if (path.isAbsolute(primaryKey)) {
+			addUniquePath(entry.absPaths, primaryKey, normalizeAbsolutePath);
+			const relPath = getRelativePathIfInsideWorkspace(primaryKey, workspaceRoot);
+			if (relPath) {
+				addUniquePath(entry.relPaths, relPath, normalizeRelativePath);
+			}
+		} else {
+			const normalizedRel = normalizeRelativePath(primaryKey);
+			addUniquePath(entry.relPaths, normalizedRel, normalizeRelativePath);
+		}
+
+		updated[primaryKey] = entry;
+	}
+
+	return updated;
+}
+
+export function upsertFilesDataPathEntry({
+	filesDataPaths,
+	primaryKey,
+	absPath,
+	relPath,
+}: {
+	filesDataPaths: TodoFilesDataPaths;
+	primaryKey: string;
+	absPath: string;
+	relPath: string | null;
+}): void {
+	const entry = filesDataPaths[primaryKey] ?? { absPaths: [], relPaths: [] };
+
+	addUniquePath(entry.absPaths, primaryKey, normalizeAbsolutePath);
+	addUniquePath(entry.absPaths, absPath, normalizeAbsolutePath);
+
+	if (relPath) {
+		const normalizedRel = normalizeRelativePath(relPath);
+		addUniquePath(entry.relPaths, normalizedRel, normalizeRelativePath);
+	}
+
+	filesDataPaths[primaryKey] = entry;
+}
+
 export function getWorkspacePath() {
 	// Check if there is any workspace folder open
 	if (!vscode.workspace.workspaceFolders) {
@@ -206,24 +411,73 @@ export function updateDataForRenamedFile({
 	store: EnhancedStore;
 }) {
 	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
-	if (!previousData[oldPath]) {
+	const previousPaths =
+		(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {};
+	const resolved = resolveFilesDataKey({
+		filePath: oldPath,
+		filesData: previousData,
+		filesDataPaths: previousPaths,
+	});
+	if (!resolved.key) {
 		return;
 	}
 
-	const state = store.getState();
-	const { [oldPath]: renamedFileData, ...restOfData } = previousData;
-	const newData: TodoFilesData = { ...restOfData, [newPath]: renamedFileData };
+	const oldRelPath = getRelativePathIfInsideWorkspace(oldPath);
+	const newRelPath = getRelativePathIfInsideWorkspace(newPath);
+	let newData: TodoFilesData = { ...previousData };
+	let newPaths: TodoFilesDataPaths = { ...previousPaths };
+
+	const updateEntryPaths = (entry: TodoFilesDataPathsEntry) => {
+		entry.absPaths = removeNormalizedPath(entry.absPaths, oldPath, normalizeAbsolutePath);
+		addUniquePath(entry.absPaths, newPath, normalizeAbsolutePath);
+
+		if (oldRelPath) {
+			entry.relPaths = removeNormalizedPath(entry.relPaths, oldRelPath, normalizeRelativePath);
+		}
+		if (newRelPath) {
+			addUniquePath(entry.relPaths, newRelPath, normalizeRelativePath);
+		}
+	};
+
+	if (resolved.key === oldPath && Object.prototype.hasOwnProperty.call(previousData, oldPath)) {
+		const { [oldPath]: renamedFileData, ...restOfData } = previousData;
+		newData = { ...restOfData, [newPath]: renamedFileData };
+		const entry = normalizePathEntry(newPaths[oldPath]);
+		delete newPaths[oldPath];
+		updateEntryPaths(entry);
+		newPaths[newPath] = entry;
+		upsertFilesDataPathEntry({
+			filesDataPaths: newPaths,
+			primaryKey: newPath,
+			absPath: newPath,
+			relPath: newRelPath,
+		});
+	} else {
+		const entry = normalizePathEntry(newPaths[resolved.key]);
+		updateEntryPaths(entry);
+		newPaths[resolved.key] = entry;
+	}
+
 	const sortedNewData = sortByFileName(newData);
+	newPaths = ensureFilesDataPaths(sortedNewData, newPaths, getWorkspacePath());
 	context.workspaceState.update("TodoFilesData", sortedNewData);
+	context.workspaceState.update("TodoFilesDataPaths", newPaths);
 	store.dispatch(
 		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
 			getWorkspaceFilesWithRecords(sortedNewData || {})
 		)
 	);
+	const state = store.getState();
+	const targetFilePath = state.editorFocusAndRecords.editorFocusedFilePath;
+	const targetResolved = resolveFilesDataKey({
+		filePath: targetFilePath,
+		filesData: sortedNewData,
+		filesDataPaths: newPaths,
+	});
 	store.dispatch(
 		currentFileActions.loadData({
-			filePath: state.editorFocusAndRecords.editorFocusedFilePath,
-			data: sortedNewData[state.fileDataInfo.editorFocusedFilePath] || [],
+			filePath: targetFilePath,
+			data: targetResolved.key ? sortedNewData[targetResolved.key] ?? [] : [],
 		})
 	);
 }
@@ -238,25 +492,76 @@ export function removeDataForDeletedFile({
 	store: EnhancedStore;
 }) {
 	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
-
-	if (!previousData[filePath]) {
+	const previousPaths =
+		(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {};
+	const resolved = resolveFilesDataKey({
+		filePath,
+		filesData: previousData,
+		filesDataPaths: previousPaths,
+	});
+	if (!resolved.key) {
 		return;
 	}
 
-	const state: StoreState = store.getState();
-	const { [filePath]: deletedFileData, ...restOfData } = previousData;
-	const newData: TodoFilesData = { ...restOfData };
-	context.workspaceState.update("TodoFilesData", newData);
+	const relPath = resolved.relPath ?? getRelativePathIfInsideWorkspace(filePath);
+	let newData: TodoFilesData = { ...previousData };
+	let newPaths: TodoFilesDataPaths = { ...previousPaths };
+	const entry = normalizePathEntry(newPaths[resolved.key]);
+
+	entry.absPaths = removeNormalizedPath(entry.absPaths, filePath, normalizeAbsolutePath);
+	if (relPath) {
+		entry.relPaths = removeNormalizedPath(entry.relPaths, relPath, normalizeRelativePath);
+	}
+
+	if (resolved.key === filePath) {
+		if (entry.absPaths.length > 0) {
+			const promotedKey = entry.absPaths[0];
+			if (promotedKey !== resolved.key && Object.prototype.hasOwnProperty.call(newData, resolved.key)) {
+				const { [resolved.key]: deletedFileData, ...restOfData } = newData;
+				newData = { ...restOfData, [promotedKey]: deletedFileData };
+				delete newPaths[resolved.key];
+				newPaths[promotedKey] = entry;
+				const promotedRelPath = getRelativePathIfInsideWorkspace(promotedKey);
+				upsertFilesDataPathEntry({
+					filesDataPaths: newPaths,
+					primaryKey: promotedKey,
+					absPath: promotedKey,
+					relPath: promotedRelPath,
+				});
+			} else {
+				newPaths[resolved.key] = entry;
+			}
+		} else {
+			delete newData[resolved.key];
+			delete newPaths[resolved.key];
+		}
+	} else if (entry.absPaths.length === 0 && entry.relPaths.length === 0) {
+		delete newPaths[resolved.key];
+	} else {
+		newPaths[resolved.key] = entry;
+	}
+
+	const sortedData = sortByFileName(newData);
+	newPaths = ensureFilesDataPaths(sortedData, newPaths, getWorkspacePath());
+	context.workspaceState.update("TodoFilesData", sortedData);
+	context.workspaceState.update("TodoFilesDataPaths", newPaths);
 	store.dispatch(
 		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-			getWorkspaceFilesWithRecords(newData || {})
+			getWorkspaceFilesWithRecords(sortedData || {})
 		)
 	);
+	const state: StoreState = store.getState();
 	if (state.currentFile.filePath === filePath) {
+		const targetFilePath = state.editorFocusAndRecords.editorFocusedFilePath;
+		const targetResolved = resolveFilesDataKey({
+			filePath: targetFilePath,
+			filesData: sortedData,
+			filesDataPaths: newPaths,
+		});
 		store.dispatch(
 			currentFileActions.loadData({
-				filePath: state.editorFocusAndRecords.editorFocusedFilePath,
-				data: newData[state.editorFocusAndRecords.editorFocusedFilePath] || [],
+				filePath: targetFilePath,
+				data: targetResolved.key ? sortedData[targetResolved.key] ?? [] : [],
 			})
 		);
 	}

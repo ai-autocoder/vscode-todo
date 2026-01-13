@@ -1,5 +1,5 @@
-import { Todo, TodoFilesData } from "../todo/todoTypes";
-import { isEqual } from "../todo/todoUtils";
+import { Todo, TodoFilesData, TodoFilesDataPaths } from "../todo/todoTypes";
+import { isEqual, normalizeAbsolutePath, normalizeRelativePath } from "../todo/todoUtils";
 import { WorkspaceMergeResult, FileConflictSet } from "./syncTypes";
 
 /**
@@ -357,17 +357,26 @@ export function threeWayMergeWorkspace(
 	remoteWorkspaceTodos: Todo[],
 	baseFilesData: TodoFilesData,
 	localFilesData: TodoFilesData,
-	remoteFilesData: TodoFilesData
+	remoteFilesData: TodoFilesData,
+	baseFilesDataPaths: TodoFilesDataPaths,
+	localFilesDataPaths: TodoFilesDataPaths,
+	remoteFilesDataPaths: TodoFilesDataPaths
 ): WorkspaceMergeResult {
 	// Merge workspace todos using standard three-way merge
 	const workspaceMergeResult = threeWayMerge(baseWorkspaceTodos, localWorkspaceTodos, remoteWorkspaceTodos);
 
 	// Merge filesData dictionary
 	const filesDataMergeResult = mergeFilesData(baseFilesData, localFilesData, remoteFilesData);
+	const filesDataPathsMergeResult = mergeFilesDataPaths(
+		baseFilesDataPaths,
+		localFilesDataPaths,
+		remoteFilesDataPaths
+	);
 
 	return {
 		autoMergedWorkspaceTodos: workspaceMergeResult.autoMerged,
 		autoMergedFilesData: filesDataMergeResult.autoMerged,
+		autoMergedFilesDataPaths: filesDataPathsMergeResult,
 		workspaceConflicts: workspaceMergeResult.conflicts,
 		fileConflicts: filesDataMergeResult.conflicts,
 	};
@@ -502,6 +511,65 @@ export function mergeFilesData(
 	}
 
 	return { autoMerged, conflicts };
+}
+
+/**
+ * Merges the filesDataPaths dictionary (primary file paths -> alias arrays).
+ *
+ * Strategy:
+ * - Union local + remote entries for each key
+ * - Deduplicate paths using normalized comparisons
+ */
+export function mergeFilesDataPaths(
+	_base: TodoFilesDataPaths,
+	local: TodoFilesDataPaths,
+	remote: TodoFilesDataPaths
+): TodoFilesDataPaths {
+	const merged: TodoFilesDataPaths = {};
+	const allKeys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+
+	const addUnique = (list: string[], value: string, normalize: (value: string) => string) => {
+		const normalizedValue = normalize(value);
+		if (list.some((item) => normalize(item) === normalizedValue)) {
+			return;
+		}
+		list.push(value);
+	};
+
+	for (const key of allKeys) {
+		const localEntry = local[key];
+		const remoteEntry = remote[key];
+		const absPaths: string[] = [];
+		const relPaths: string[] = [];
+
+		if (localEntry?.absPaths) {
+			for (const absPath of localEntry.absPaths) {
+				addUnique(absPaths, absPath, normalizeAbsolutePath);
+			}
+		}
+
+		if (remoteEntry?.absPaths) {
+			for (const absPath of remoteEntry.absPaths) {
+				addUnique(absPaths, absPath, normalizeAbsolutePath);
+			}
+		}
+
+		if (localEntry?.relPaths) {
+			for (const relPath of localEntry.relPaths) {
+				addUnique(relPaths, relPath, normalizeRelativePath);
+			}
+		}
+
+		if (remoteEntry?.relPaths) {
+			for (const relPath of remoteEntry.relPaths) {
+				addUnique(relPaths, relPath, normalizeRelativePath);
+			}
+		}
+
+		merged[key] = { absPaths, relPaths };
+	}
+
+	return merged;
 }
 
 /**

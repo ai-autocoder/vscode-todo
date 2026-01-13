@@ -62,6 +62,15 @@ export interface TodoFilesData {
 	[filePath: string]: Todo[];
 }
 
+export interface TodoFilesDataPathsEntry {
+	absPaths: string[];
+	relPaths: string[];
+}
+
+export interface TodoFilesDataPaths {
+	[primaryFilePath: string]: TodoFilesDataPathsEntry;
+}
+
 export interface TodoFilesDataPartialInput {
 	[filePath: string]: TodoPartialInput[];
 }

@@ -62,7 +62,7 @@ export class SyncCommands {
 	 * Reload store data from current sync mode
 	 */
 	private async reloadStoreData(scope: "user" | "workspace"): Promise<void> {
-		await reloadScopeData(scope, this.store, this.storageSyncManager);
+		await reloadScopeData(scope, this.store, this.storageSyncManager, this.context);
 	}
 
 	/**
@@ -270,6 +270,7 @@ export class SyncCommands {
 		const workspaceData: WorkspaceGistData = {
 			workspaceTodos: [],
 			filesData: {},
+			filesDataPaths: {},
 		};
 
 		return {

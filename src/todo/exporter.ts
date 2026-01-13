@@ -11,8 +11,9 @@ import {
 	StoreState,
 	Todo,
 	TodoFilesData,
+	TodoFilesDataPaths,
 } from "./todoTypes";
-import { getWorkspacePath } from "./todoUtils";
+import { ensureFilesDataPaths, getWorkspacePath, resolveFilesDataKey } from "./todoUtils";
 
 export async function exportCommand(
 	context: ExtensionContext,
@@ -87,14 +88,25 @@ function getDataToExport(scopeSelection: ScopesSelection, context: ExtensionCont
 	} else if (scopeSelection.some((scope) => scope.label === ExportScopes.currentFile)) {
 		const currentFilePath = scopeSelection.find((scope) => scope.label === ExportScopes.currentFile)
 			?.description as string;
-		const filesData = context.workspaceState.get("TodoFilesData") as TodoFilesData;
+		const filesData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {};
+		const filesDataPaths = ensureFilesDataPaths(
+			filesData ?? {},
+			(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) ?? {},
+			getWorkspacePath()
+		);
+		const resolved = resolveFilesDataKey({
+			filePath: currentFilePath,
+			filesData,
+			filesDataPaths,
+		});
+		const key = resolved.key ?? currentFilePath;
 		if (
 			currentFilePath &&
-			Array.isArray(filesData[currentFilePath]) &&
-			filesData[currentFilePath].length > 0
+			Array.isArray(filesData[key]) &&
+			filesData[key].length > 0
 		) {
 		}
-		data.files = { [currentFilePath]: filesData[currentFilePath] };
+		data.files = { [key]: filesData[key] };
 	}
 
 	return data;

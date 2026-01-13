@@ -3,7 +3,7 @@
  * Types for GitHub Gist sync feature (v1.18.0)
  */
 
-import { Todo, TodoFilesData } from "../todo/todoTypes";
+import { Todo, TodoFilesData, TodoFilesDataPaths } from "../todo/todoTypes";
 
 /**
  * Sync modes for global scope
@@ -105,8 +105,10 @@ export interface GlobalGistData {
 export interface WorkspaceGistData {
 	/** Workspace todo items */
 	workspaceTodos: Todo[];
-	/** File-specific todos (relative paths as keys) */
+	/** File-specific todos (absolute primary paths as keys) */
 	filesData: TodoFilesData;
+	/** Optional file path aliases for cross-device mapping */
+	filesDataPaths?: TodoFilesDataPaths;
 }
 
 /**
@@ -196,6 +198,7 @@ export const StorageKeys = {
 
 	// File scope
 	filesLocal: "filesData",
+	filesPathsLocal: "filesDataPaths",
 
 	// GitHub auth
 	githubToken: "vscodeTodo.sync.githubToken",
@@ -245,6 +248,8 @@ export interface WorkspaceMergeResult {
 	autoMergedWorkspaceTodos: Todo[];
 	/** Files data that was successfully auto-merged */
 	autoMergedFilesData: TodoFilesData;
+	/** Files path aliases that were successfully auto-merged */
+	autoMergedFilesDataPaths: TodoFilesDataPaths;
 	/** Workspace todo conflicts that require user resolution */
 	workspaceConflicts: ConflictSet[];
 	/** File path conflicts (file added/removed/modified in conflicting ways) */

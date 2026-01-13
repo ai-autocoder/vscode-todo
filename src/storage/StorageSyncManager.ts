@@ -13,16 +13,27 @@ import {
 	StoreState,
 	Todo,
 	TodoFilesData,
+	TodoFilesDataPaths,
 	TodoScope,
 	TodoSlice,
 } from "../todo/todoTypes";
-import { getWorkspaceFilesWithRecords, isEqual, sortByFileName } from "../todo/todoUtils";
+import {
+	ensureFilesDataPaths,
+	getRelativePathIfInsideWorkspace,
+	getWorkspacePath,
+	getWorkspaceFilesWithRecords,
+	isEqual,
+	resolveFilesDataKey,
+	sortByFileName,
+	upsertFilesDataPathEntry,
+} from "../todo/todoUtils";
 import { SyncStorageManager } from "../sync/SyncStorageManager";
 import { GlobalSyncMode, WorkspaceSyncMode } from "../sync/syncTypes";
 
 type WorkspacePersistedData = {
 	workspaceTodos: Todo[];
 	filesData: TodoFilesData;
+	filesDataPaths: TodoFilesDataPaths;
 };
 
 type GlobalPersistedData = {
@@ -37,7 +48,11 @@ export default class StorageSyncManager {
 	private ignoreWorkspaceWatcher = false;
 	private ignoreGlobalWatcher = false;
 	private readonly suppressedScopes = new Set<TodoScope>();
-	private cachedWorkspaceData: WorkspacePersistedData = { workspaceTodos: [], filesData: {} };
+private cachedWorkspaceData: WorkspacePersistedData = {
+	workspaceTodos: [],
+	filesData: {},
+	filesDataPaths: {},
+};
 	private cachedGlobalData: GlobalPersistedData = { userTodos: [] };
 	private syncStorageManager: SyncStorageManager;
 
@@ -80,6 +95,20 @@ export default class StorageSyncManager {
 		}
 
 		return this.cachedWorkspaceData.filesData;
+	}
+
+	public async getWorkspaceFilesDataPaths(): Promise<TodoFilesDataPaths> {
+		const workspaceSyncMode = this.context.workspaceState.get<string>("syncMode", "local");
+
+		if (workspaceSyncMode === "github") {
+			const workspaceMode = WorkspaceSyncMode.GitHub;
+			const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+			const workspaceName = vscode.workspace.name || "default";
+			const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
+			return await this.syncStorageManager.getFilesDataPaths(workspaceMode, fileName);
+		}
+
+		return this.cachedWorkspaceData.filesDataPaths;
 	}
 
 	public async getUserTodos(): Promise<Todo[]> {
@@ -139,6 +168,7 @@ export default class StorageSyncManager {
 						await this.writeWorkspaceData({
 							workspaceTodos: state.todos,
 							filesData: this.cachedWorkspaceData.filesData,
+							filesDataPaths: this.cachedWorkspaceData.filesDataPaths,
 						});
 					}
 					break;
@@ -146,6 +176,7 @@ export default class StorageSyncManager {
 				case TodoScope.currentFile: {
 					const currentFileState = state as CurrentFileSlice;
 					let filesData: TodoFilesData;
+					let filesDataPaths: TodoFilesDataPaths;
 
 					if (workspaceSyncMode === "github") {
 						// Get current files data from gist cache
@@ -153,17 +184,42 @@ export default class StorageSyncManager {
 						const workspaceName = vscode.workspace.name || "default";
 						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 						filesData = await this.syncStorageManager.getFilesData(workspaceMode, fileName);
+						filesDataPaths = await this.syncStorageManager.getFilesDataPaths(workspaceMode, fileName);
 					} else {
 						filesData = { ...this.cachedWorkspaceData.filesData };
+						filesDataPaths = { ...this.cachedWorkspaceData.filesDataPaths };
 					}
 
-					filesData[currentFileState.filePath] = currentFileState.todos;
+					filesDataPaths = ensureFilesDataPaths(filesData, filesDataPaths, getWorkspacePath());
+					const resolved = resolveFilesDataKey({
+						filePath: currentFileState.filePath,
+						filesData,
+						filesDataPaths,
+					});
+					const primaryKey = resolved.key ?? currentFileState.filePath;
+
+					filesData[primaryKey] = currentFileState.todos;
 					const sortedResult = sortByFileName(filesData);
 					if (currentFileState.todos.length === 0) {
-						delete sortedResult[currentFileState.filePath];
+						delete sortedResult[primaryKey];
+						delete filesDataPaths[primaryKey];
+					} else {
+						const relPath = getRelativePathIfInsideWorkspace(currentFileState.filePath);
+						upsertFilesDataPathEntry({
+							filesDataPaths,
+							primaryKey,
+							absPath: currentFileState.filePath,
+							relPath,
+						});
 					}
 
 					await this.context.workspaceState.update("TodoFilesData", sortedResult);
+					await this.context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
+					this.updateWorkspaceCache({
+						workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
+						filesData: sortedResult,
+						filesDataPaths,
+					});
 
 					if (workspaceSyncMode === "github") {
 						// Write to gist cache
@@ -171,11 +227,13 @@ export default class StorageSyncManager {
 						const workspaceName = vscode.workspace.name || "default";
 						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
 						await this.syncStorageManager.setFilesData(workspaceMode, sortedResult, fileName);
+						await this.syncStorageManager.setFilesDataPaths(workspaceMode, filesDataPaths, fileName);
 					} else {
 						// Write to local file
 						await this.writeWorkspaceData({
 							workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
 							filesData: sortedResult,
+							filesDataPaths,
 						});
 					}
 					break;
@@ -218,10 +276,22 @@ export default class StorageSyncManager {
 	private async ensureWorkspaceStorageInitialized(): Promise<void> {
 		const workspaceRoot = this.context.storageUri;
 		if (!workspaceRoot) {
+			const rawFilesData = sortByFileName(
+				(this.context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {}
+			);
+			const rawFilesDataPaths =
+				(this.context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) ?? {};
+			const filesDataPaths = ensureFilesDataPaths(
+				rawFilesData,
+				rawFilesDataPaths,
+				getWorkspacePath()
+			);
 			this.updateWorkspaceCache({
 				workspaceTodos: (this.context.workspaceState.get("TodoData") as Todo[]) ?? [],
-				filesData: sortByFileName((this.context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {}),
+				filesData: rawFilesData,
+				filesDataPaths,
 			});
+			void this.context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
 			LogChannel.log(
 				"[StorageSync] Workspace storage path not available. Workspace sync is disabled."
 			);
@@ -234,12 +304,28 @@ export default class StorageSyncManager {
 			const existing = await this.tryReadWorkspaceData();
 
 			if (existing) {
-				this.updateWorkspaceCache(existing);
+				const filesDataPaths = ensureFilesDataPaths(
+					existing.filesData,
+					existing.filesDataPaths,
+					getWorkspacePath()
+				);
+				this.updateWorkspaceCache({
+					workspaceTodos: existing.workspaceTodos,
+					filesData: existing.filesData,
+					filesDataPaths,
+				});
 			} else {
 				const initialData: WorkspacePersistedData = {
 					workspaceTodos: (this.context.workspaceState.get("TodoData") as Todo[]) ?? [],
 					filesData: sortByFileName(
 						(this.context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {}
+					),
+					filesDataPaths: ensureFilesDataPaths(
+						sortByFileName(
+							(this.context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {}
+						),
+						(this.context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) ?? {},
+						getWorkspacePath()
 					),
 				};
 				this.updateWorkspaceCache(initialData);
@@ -250,6 +336,10 @@ export default class StorageSyncManager {
 			await this.context.workspaceState.update(
 				"TodoFilesData",
 				this.cachedWorkspaceData.filesData
+			);
+			await this.context.workspaceState.update(
+				"TodoFilesDataPaths",
+				this.cachedWorkspaceData.filesDataPaths
 			);
 		} catch (error) {
 			LogChannel.log(
@@ -294,15 +384,30 @@ export default class StorageSyncManager {
 			return;
 		}
 
-		if (this.isSameWorkspaceData(this.cachedWorkspaceData, data)) {
+		const filesDataPaths = ensureFilesDataPaths(
+			data.filesData,
+			data.filesDataPaths,
+			getWorkspacePath()
+		);
+		const normalizedData: WorkspacePersistedData = {
+			workspaceTodos: data.workspaceTodos,
+			filesData: data.filesData,
+			filesDataPaths,
+		};
+
+		if (this.isSameWorkspaceData(this.cachedWorkspaceData, normalizedData)) {
 			return;
 		}
 
-		this.updateWorkspaceCache(data);
+		this.updateWorkspaceCache(normalizedData);
 		await this.context.workspaceState.update("TodoData", this.cachedWorkspaceData.workspaceTodos);
 		await this.context.workspaceState.update(
 			"TodoFilesData",
 			this.cachedWorkspaceData.filesData
+		);
+		await this.context.workspaceState.update(
+			"TodoFilesDataPaths",
+			this.cachedWorkspaceData.filesDataPaths
 		);
 
 		this.suppressNextPersistForScope(TodoScope.workspace);
@@ -323,7 +428,12 @@ export default class StorageSyncManager {
 			currentState.editorFocusAndRecords.editorFocusedFilePath;
 
 		if (targetFilePath) {
-			const todos = this.cachedWorkspaceData.filesData[targetFilePath] ?? [];
+			const resolved = resolveFilesDataKey({
+				filePath: targetFilePath,
+				filesData: this.cachedWorkspaceData.filesData,
+				filesDataPaths: this.cachedWorkspaceData.filesDataPaths,
+			});
+			const todos = resolved.key ? this.cachedWorkspaceData.filesData[resolved.key] ?? [] : [];
 			this.store.dispatch(
 				currentFileActions.loadData({
 					filePath: targetFilePath,
@@ -379,6 +489,7 @@ export default class StorageSyncManager {
 			const payload: WorkspacePersistedData = {
 				workspaceTodos: Array.isArray(data.workspaceTodos) ? data.workspaceTodos : [],
 				filesData: sortByFileName(data.filesData ?? {}),
+				filesDataPaths: data.filesDataPaths ?? {},
 			};
 			await vscode.workspace.fs.writeFile(
 				this.workspaceDataUri,
@@ -439,6 +550,10 @@ export default class StorageSyncManager {
 					typeof parsed.filesData === "object" && parsed.filesData !== null
 						? (parsed.filesData as TodoFilesData)
 						: {},
+				filesDataPaths:
+					typeof parsed.filesDataPaths === "object" && parsed.filesDataPaths !== null
+						? (parsed.filesDataPaths as TodoFilesDataPaths)
+						: {},
 			};
 		} catch (error) {
 			if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") {
@@ -486,13 +601,18 @@ export default class StorageSyncManager {
 		a: WorkspacePersistedData,
 		b: WorkspacePersistedData
 	): boolean {
-		return isEqual(a.workspaceTodos, b.workspaceTodos) && isEqual(a.filesData, b.filesData);
+		return (
+			isEqual(a.workspaceTodos, b.workspaceTodos) &&
+			isEqual(a.filesData, b.filesData) &&
+			isEqual(a.filesDataPaths, b.filesDataPaths)
+		);
 	}
 
 	private updateWorkspaceCache(data: WorkspacePersistedData): void {
 		this.cachedWorkspaceData = {
 			workspaceTodos: Array.isArray(data.workspaceTodos) ? data.workspaceTodos : [],
 			filesData: sortByFileName(data.filesData ?? {}),
+			filesDataPaths: data.filesDataPaths ?? {},
 		};
 	}
 
