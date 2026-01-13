@@ -84,7 +84,14 @@ function getDataToExport(scopeSelection: ScopesSelection, context: ExtensionCont
 	}
 
 	if (scopeSelection.some((scope) => scope.label === ExportScopes.files)) {
-		data.files = context.workspaceState.get("TodoFilesData") || {};
+		const filesData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {};
+		const filesDataPaths = ensureFilesDataPaths(
+			filesData,
+			(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) ?? {},
+			getWorkspacePath()
+		);
+		data.files = filesData;
+		data.filesDataPaths = filesDataPaths;
 	} else if (scopeSelection.some((scope) => scope.label === ExportScopes.currentFile)) {
 		const currentFilePath = scopeSelection.find((scope) => scope.label === ExportScopes.currentFile)
 			?.description as string;
@@ -107,6 +114,9 @@ function getDataToExport(scopeSelection: ScopesSelection, context: ExtensionCont
 		) {
 		}
 		data.files = { [key]: filesData[key] };
+		if (filesDataPaths[key]) {
+			data.filesDataPaths = { [key]: filesDataPaths[key] };
+		}
 	}
 
 	return data;

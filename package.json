@@ -63,12 +63,12 @@
 			},
 			{
 				"command": "vsc-todo.exportDataToJSON",
-				"title": "Export to JSON",
+				"title": "Export to JSON (lossless)",
 				"category": "VS Code Todo"
 			},
 			{
 				"command": "vsc-todo.exportDataToMarkdown",
-				"title": "Export to Markdown",
+				"title": "Export to Markdown (lossy)",
 				"category": "VS Code Todo"
 			},
 			{

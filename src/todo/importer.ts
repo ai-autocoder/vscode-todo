@@ -27,6 +27,8 @@ import {
 	getWorkspacePath,
 	getWorkspaceFilesWithRecords,
 	isEqual,
+	normalizeAbsolutePath,
+	normalizeRelativePath,
 	resolveFilesDataKey,
 	sortByFileName,
 } from "./todoUtils";
@@ -79,17 +81,31 @@ async function importCommand(
 			LogChannel.log("Workspace data not changed");
 		}
 	}
-	if (isTodoFilesDataPartialInput(rawImportData.files)) {
-		const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
-		const newData = processAndMergeFilesData(previousData, rawImportData.files);
-		const sortedResult = sortByFileName(newData);
+	const hasFilesData = isTodoFilesDataPartialInput(rawImportData.files);
+	const hasFilesDataPaths = isTodoFilesDataPathsInput(rawImportData.filesDataPaths);
 
-		if (!isEqual(previousData, sortedResult)) {
-			const filesDataPaths = ensureFilesDataPaths(
-				sortedResult,
-				(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {},
-				getWorkspacePath()
+	if (hasFilesData || hasFilesDataPaths) {
+		const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
+		const previousPaths =
+			(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {};
+		const newData = hasFilesData
+			? processAndMergeFilesData(previousData, rawImportData.files as TodoFilesDataPartialInput)
+			: previousData;
+		const sortedResult = sortByFileName(newData);
+		let filesDataPaths = ensureFilesDataPaths(sortedResult, previousPaths, getWorkspacePath());
+
+		if (hasFilesDataPaths) {
+			filesDataPaths = mergeFilesDataPaths(
+				filesDataPaths,
+				rawImportData.filesDataPaths as TodoFilesDataPaths
 			);
+			filesDataPaths = ensureFilesDataPaths(sortedResult, filesDataPaths, getWorkspacePath());
+		}
+
+		const dataChanged = !isEqual(previousData, sortedResult);
+		const pathsChanged = !isEqual(previousPaths, filesDataPaths);
+
+		if (dataChanged || pathsChanged) {
 			context.workspaceState.update("TodoFilesData", sortedResult);
 			context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
 			// Update the store
@@ -216,6 +232,76 @@ function isTodoFilesDataPartialInput(files: any): files is TodoFilesDataPartialI
 	);
 }
 
+function isTodoFilesDataPathsInput(paths: any): paths is TodoFilesDataPaths {
+	if (typeof paths !== "object" || paths === null) {
+		return false;
+	}
+
+	return Object.entries(paths).some(([key, value]) => {
+		if (key.trim() === "" || typeof value !== "object" || value === null) {
+			return false;
+		}
+
+		const entry = value as { absPaths?: unknown; relPaths?: unknown };
+		const absPaths = Array.isArray(entry.absPaths)
+			? entry.absPaths.filter((item) => typeof item === "string" && item.trim())
+			: [];
+		const relPaths = Array.isArray(entry.relPaths)
+			? entry.relPaths.filter((item) => typeof item === "string" && item.trim())
+			: [];
+
+		return absPaths.length > 0 || relPaths.length > 0;
+	});
+}
+
+function mergeFilesDataPaths(
+	current: TodoFilesDataPaths,
+	incoming: TodoFilesDataPaths
+): TodoFilesDataPaths {
+	const merged: TodoFilesDataPaths = { ...current };
+	const addUniquePath = (
+		list: string[],
+		value: string,
+		normalize: (value: string) => string
+	) => {
+		const normalizedValue = normalize(value);
+		if (list.some((item) => normalize(item) === normalizedValue)) {
+			return;
+		}
+		list.push(value);
+	};
+
+	for (const [primaryKey, entry] of Object.entries(incoming)) {
+		if (!entry || typeof entry !== "object") {
+			continue;
+		}
+
+		const absPaths = Array.isArray(entry.absPaths) ? entry.absPaths : [];
+		const relPaths = Array.isArray(entry.relPaths) ? entry.relPaths : [];
+		const existing = merged[primaryKey];
+		const nextEntry = {
+			absPaths: existing?.absPaths ? [...existing.absPaths] : [],
+			relPaths: existing?.relPaths ? [...existing.relPaths] : [],
+		};
+
+		for (const absPath of absPaths) {
+			if (typeof absPath === "string" && absPath.trim()) {
+				addUniquePath(nextEntry.absPaths, absPath, normalizeAbsolutePath);
+			}
+		}
+
+		for (const relPath of relPaths) {
+			if (typeof relPath === "string" && relPath.trim()) {
+				addUniquePath(nextEntry.relPaths, relPath, normalizeRelativePath);
+			}
+		}
+
+		merged[primaryKey] = nextEntry;
+	}
+
+	return merged;
+}
+
 function isImportObject(parsedData: any): parsedData is ImportObject {
 	if (typeof parsedData !== "object" || parsedData === null) {
 		vscode.window.showErrorMessage("Imported data is not in the correct format");
@@ -225,7 +311,9 @@ function isImportObject(parsedData: any): parsedData is ImportObject {
 	return (
 		(parsedData.user !== undefined && isTodoPartialInput(parsedData.user)) ||
 		(parsedData.workspace !== undefined && isTodoPartialInput(parsedData.workspace)) ||
-		(parsedData.files !== undefined && isTodoFilesDataPartialInput(parsedData.files))
+		(parsedData.files !== undefined && isTodoFilesDataPartialInput(parsedData.files)) ||
+		(parsedData.filesDataPaths !== undefined &&
+			isTodoFilesDataPathsInput(parsedData.filesDataPaths))
 	);
 }
 

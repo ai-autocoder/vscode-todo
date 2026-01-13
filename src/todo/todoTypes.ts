@@ -81,11 +81,13 @@ export interface ExportObject {
 	user?: Todo[];
 	workspace?: Todo[];
 	files?: TodoFilesData;
+	filesDataPaths?: TodoFilesDataPaths;
 }
 export interface ImportObject {
 	user?: TodoPartialInput[];
 	workspace?: TodoPartialInput[];
 	files?: TodoFilesDataPartialInput;
+	filesDataPaths?: TodoFilesDataPaths;
 }
 
 export enum ExportScopes {

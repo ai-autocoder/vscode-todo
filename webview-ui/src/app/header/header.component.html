@@ -278,11 +278,11 @@
 
 	<!-- Export submenu -->
 	<mat-menu #exportMenu="matMenu">
-		<button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON">
-			JSON
+		<button mat-menu-item (click)="export(ExportFormats.JSON)" aria-label="Export to JSON (lossless)">
+			JSON (lossless)
 		</button>
-		<button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown">
-			Markdown
+		<button mat-menu-item (click)="export(ExportFormats.MARKDOWN)" aria-label="Export to Markdown (lossy)">
+			Markdown (lossy)
 		</button>
 	</mat-menu>
 

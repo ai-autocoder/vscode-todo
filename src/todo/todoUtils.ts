@@ -1,5 +1,4 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
-import path = require("node:path");
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import { getConfig } from "../utilities/config";
@@ -186,15 +185,71 @@ export type FilesDataPathIndexes = {
 	relIndex: Record<string, string>;
 };
 
+function isWindowsPath(filePath: string): boolean {
+	return /^[a-zA-Z]:[\\/]/.test(filePath) || /^\\\\/.test(filePath);
+}
+
+function isAbsolutePath(filePath: string): boolean {
+	return /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(filePath);
+}
+
+function normalizeSlashes(filePath: string): string {
+	return filePath.replace(/\\/g, "/");
+}
+
+function normalizePathSegments(filePath: string, allowAboveRoot: boolean): string {
+	const segments = normalizeSlashes(filePath).split("/");
+	const result: string[] = [];
+
+	for (const segment of segments) {
+		if (!segment || segment === ".") {
+			continue;
+		}
+		if (segment === "..") {
+			if (result.length > 0) {
+				result.pop();
+			} else if (allowAboveRoot) {
+				result.push("..");
+			}
+			continue;
+		}
+		result.push(segment);
+	}
+
+	return result.join("/");
+}
+
 export function normalizeAbsolutePath(filePath: string): string {
-	const normalized = path.normalize(filePath);
-	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+	const normalized = normalizeSlashes(filePath);
+	let prefix = "";
+	let rest = normalized;
+
+	if (/^[a-zA-Z]:\//.test(normalized)) {
+		prefix = normalized.slice(0, 2);
+		rest = normalized.slice(2);
+	} else if (normalized.startsWith("//")) {
+		prefix = "//";
+		rest = normalized.slice(2);
+	} else if (normalized.startsWith("/")) {
+		prefix = "/";
+		rest = normalized.slice(1);
+	}
+
+	const cleaned = normalizePathSegments(rest, false);
+	let result = prefix;
+	if (cleaned) {
+		if (prefix && !prefix.endsWith("/")) {
+			result += "/";
+		}
+		result += cleaned;
+	}
+
+	return isWindowsPath(filePath) ? result.toLowerCase() : result;
 }
 
 export function normalizeRelativePath(filePath: string): string {
-	const normalized = filePath.replace(/\\/g, "/");
-	const posixPath = path.posix.normalize(normalized);
-	return posixPath.startsWith("./") ? posixPath.slice(2) : posixPath;
+	const normalized = normalizePathSegments(filePath, true);
+	return normalized.startsWith("./") ? normalized.slice(2) : normalized;
 }
 
 function getWorkspaceFolderPathForFile(filePath: string): string | null {
@@ -211,8 +266,21 @@ export function getRelativePathIfInsideWorkspace(
 		return null;
 	}
 
-	const relPath = path.relative(root, filePath);
-	if (!relPath || relPath.startsWith("..") || path.isAbsolute(relPath)) {
+	const rootNormalized = normalizeSlashes(root).replace(/\/+$/, "");
+	const fileNormalized = normalizeSlashes(filePath);
+	const isWindows = isWindowsPath(rootNormalized) || isWindowsPath(filePath);
+	const rootCompare = isWindows ? rootNormalized.toLowerCase() : rootNormalized;
+	const fileCompare = isWindows ? fileNormalized.toLowerCase() : fileNormalized;
+
+	if (fileCompare === rootCompare) {
+		return null;
+	}
+	if (!fileCompare.startsWith(`${rootCompare}/`)) {
+		return null;
+	}
+
+	const relPath = fileNormalized.slice(rootNormalized.length + 1);
+	if (!relPath) {
 		return null;
 	}
 
@@ -342,7 +410,7 @@ export function ensureFilesDataPaths(
 	for (const primaryKey of Object.keys(filesData)) {
 		const entry = normalizePathEntry(source[primaryKey]);
 
-		if (path.isAbsolute(primaryKey)) {
+		if (isAbsolutePath(primaryKey)) {
 			addUniquePath(entry.absPaths, primaryKey, normalizeAbsolutePath);
 			const relPath = getRelativePathIfInsideWorkspace(primaryKey, workspaceRoot);
 			if (relPath) {

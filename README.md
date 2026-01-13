@@ -175,6 +175,7 @@ Tasks and notes are organized across three different scopes, each with its respe
 2. **Workspace Tab**: Data tied to the current workspace.
 3. **File-specific Tab**: Data associated with a **specific file** within the current workspace. The file displayed in this tab is **automatically updated** to reflect the **most recently focused file** in the editor. However, you can **pin** the tab to a specific file, preventing it from changing when you switch focus to other files.
 Additionally, you can **manually select** and display data for any file that already has an associated record from the list on the left-hand side.
+File-specific lists match by absolute path; if a workspace-relative alias exists, they also match by relative path (useful for cross-device gist sync). Files outside the workspace still match by absolute path on the current device.
 
 ### Sync Modes (User and Workspace)
 
@@ -495,10 +496,12 @@ Use **Command palette**:
 
 **Behavior:**
 
+**Note:** JSON import is lossless (preserves metadata and file path mappings via `filesDataPaths`). Markdown import is lossy and only captures text and checkbox state.
+
 #### JSON
 
 - If an `id` matches an existing record, the provided values will override the existing ones. Otherwise, a new record will be added.
-- `text` is the only required property (and the `file path` for file-specific records).
+- `text` is the only required property (and the `file path` for file-specific records). Optional `filesDataPaths` preserves file list path aliases.
 
 <details>
 <summary>JSON example (click to expand)</summary>
@@ -551,6 +554,16 @@ Use **Command palette**:
         "completionDate": "2024-05-17T18:30:00.123Z"
       }
     ]
+  },
+  "filesDataPaths": {
+    "c:\\Users\\username\\Documents\\project\\README.md": {
+      "absPaths": ["c:\\Users\\username\\Documents\\project\\README.md"],
+      "relPaths": ["README.md"]
+    },
+    "c:\\Users\\username\\Documents\\project\\src\\main.js": {
+      "absPaths": ["c:\\Users\\username\\Documents\\project\\src\\main.js"],
+      "relPaths": ["src/main.js"]
+    }
   }
 }
 ```
@@ -565,10 +578,11 @@ Use **Command palette**:
 
 You can export data by using the **Command palette**:
 
-- Select  `Export data to JSON` or
-- Select  `Export data to Markdown`
+- Select  `Export to JSON (lossless)` or
+- Select  `Export to Markdown (lossy)`
 
 The exported file will be saved in the root folder of your workspace.
+JSON export is lossless (includes `filesDataPaths`). Markdown export is presentation-ready but lossy.
 
 ## Contributing
 
