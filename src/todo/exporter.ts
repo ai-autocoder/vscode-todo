@@ -27,17 +27,19 @@ export async function exportCommand(
 		return;
 	}
 
-	exportData({ scopes, format, context });
+	exportData({ scopes, format, context, store });
 }
 
 export function exportData({
 	scopes,
 	format = ExportFormats.JSON,
 	context,
+	store,
 }: {
 	scopes: ScopesSelection;
 	format: ExportFormats;
 	context: ExtensionContext;
+	store: EnhancedStore<StoreState>;
 }) {
 	const rootDir = getWorkspacePath();
 	const isWorkspaceOpen = rootDir !== null;
@@ -45,7 +47,7 @@ export function exportData({
 		vscode.window.showErrorMessage("No workspace open, export aborted");
 		return;
 	}
-	const data = getDataToExport(scopes, context);
+	const data = getDataToExport(scopes, context, store);
 	if (!data) {
 		vscode.window.showErrorMessage("No data to export, export aborted");
 		return;
@@ -72,15 +74,20 @@ function formatData(data: ExportObject, format: ExportFormats) {
 	}
 }
 
-function getDataToExport(scopeSelection: ScopesSelection, context: ExtensionContext): ExportObject {
+function getDataToExport(
+	scopeSelection: ScopesSelection,
+	context: ExtensionContext,
+	store: EnhancedStore<StoreState>
+): ExportObject {
 	const data: ExportObject = {};
+	const state = store.getState();
 
 	if (scopeSelection.some((scope) => scope.label === ExportScopes.user)) {
-		data.user = context.globalState.get("TodoData") || [];
+		data.user = Array.isArray(state.user.todos) ? state.user.todos : [];
 	}
 
 	if (scopeSelection.some((scope) => scope.label === ExportScopes.workspace)) {
-		data.workspace = context.workspaceState.get("TodoData") || [];
+		data.workspace = Array.isArray(state.workspace.todos) ? state.workspace.todos : [];
 	}
 
 	if (scopeSelection.some((scope) => scope.label === ExportScopes.files)) {
