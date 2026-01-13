@@ -19,6 +19,7 @@ import { AngularSplitModule } from "angular-split";
 import { ClipboardButtonComponent } from "./shared/clipboard-button.component";
 import { IconComponent } from "./shared/icon/icon.component";
 import { HeaderComponent } from "./header/header.component";
+import { MermaidZoomOverlayComponent } from "./shared/mermaid-zoom-overlay/mermaid-zoom-overlay.component";
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
@@ -63,7 +64,8 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		}),
 		AngularSplitModule,
 		IconComponent,
-		ClipboardButtonComponent
+		ClipboardButtonComponent,
+		MermaidZoomOverlayComponent
 	],
 	providers: [],
 	bootstrap: [AppComponent],
