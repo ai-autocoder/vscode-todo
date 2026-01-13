@@ -107,6 +107,9 @@ export class TodoList implements OnInit, AfterViewInit {
             case "deleteSelected":
                 void this.deleteSelected();
                 break;
+            case "deleteCompleted":
+                void this.deleteCompleted();
+                break;
             case "clearSelection":
                 this.clearSelection();
                 break;
@@ -336,6 +339,65 @@ export class TodoList implements OnInit, AfterViewInit {
         });
 
         this.clearSelection();
+    }
+
+    async deleteCompleted(): Promise<void> {
+        const snapshot = this.todos
+            .map((todo, position) => ({ todo: { ...todo }, position }))
+            .filter(({ todo }) => todo.completed && !todo.isNote);
+
+        if (!snapshot.length) {
+            return;
+        }
+
+        let currentFilePath: string | null = null;
+        if (this.scope === TodoScope.currentFile) {
+            currentFilePath = await firstValueFrom(this.todoService.currentFilePath);
+        }
+
+        snapshot.forEach(({ todo }) => {
+            this.todoService.deleteTodo(this.scope, { id: todo.id });
+        });
+
+        const message =
+            snapshot.length === 1 ? "Item deleted" : `${snapshot.length} items deleted`;
+
+        const snackBarRef = this.snackBar.open(message, "UNDO", {
+            duration: 7000
+        });
+        this.decorateSnackBarOverlay(snackBarRef);
+        snackBarRef.onAction().subscribe(() => {
+            const queue = [...snapshot].sort((a, b) => a.position - b.position);
+            const restoreNext = () => {
+                const entry = queue.shift();
+                if (!entry) {
+                    return;
+                }
+
+                const payload = {
+                    id: entry.todo.id,
+                    text: entry.todo.text,
+                    completed: entry.todo.completed,
+                    creationDate: entry.todo.creationDate,
+                    isMarkdown: entry.todo.isMarkdown,
+                    isNote: entry.todo.isNote,
+                    collapsed: entry.todo.collapsed,
+                    itemPosition: entry.position,
+                };
+
+                if (this.scope === TodoScope.currentFile) {
+                    this.todoService.undoDelete(this.scope, { ...payload, currentFilePath });
+                } else {
+                    this.todoService.undoDelete(this.scope, payload);
+                }
+
+                if (queue.length) {
+                    requestAnimationFrame(restoreNext);
+                }
+            };
+
+            restoreNext();
+        });
     }
 
     clearSelection(): void {

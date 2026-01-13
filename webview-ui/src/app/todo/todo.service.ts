@@ -28,7 +28,7 @@ export interface SelectionState {
 	totalCount: number;
 }
 
-export type SelectionCommand = "selectAll" | "deleteSelected" | "clearSelection";
+export type SelectionCommand = "selectAll" | "deleteSelected" | "deleteCompleted" | "clearSelection";
 
 @Injectable({
 	providedIn: "root",
@@ -386,7 +386,12 @@ export class TodoService {
 	}
 
 	deleteCompleted(scope: TodoScope) {
-		vscode.postMessage(messagesFromWebview.deleteCompleted(scope));
+		const todos = this.getTodosInScope(scope);
+		if (!todos.some((todo) => todo.completed && !todo.isNote)) {
+			return;
+		}
+
+		this.emitSelectionCommand(scope, "deleteCompleted");
 	}
 
 	selectUserSyncMode() {
