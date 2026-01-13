@@ -78,6 +78,7 @@ export class TodoService {
 		workspaceSyncMode: "local",
 		userFile: "user-todos.json",
 		workspaceFile: "workspace-default.json",
+		isWorkspaceOpen: true,
 	});
 
 	private _isSyncingSource = new BehaviorSubject<boolean>(false);
@@ -287,6 +288,10 @@ export class TodoService {
 
 	get isPinned(): boolean {
 		return this._currentFileSlice.isPinned;
+	}
+
+	get isWorkspaceOpen(): boolean {
+		return this._gitHubSyncInfoSource.getValue().isWorkspaceOpen;
 	}
 
 	addTodo(...args: Parameters<typeof messagesFromWebview.addTodo>) {

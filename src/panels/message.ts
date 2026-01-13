@@ -21,6 +21,7 @@ export type GitHubSyncInfo = {
 	workspaceSyncMode: WorkspaceSyncMode;
 	userFile: string;
 	workspaceFile: string;
+	isWorkspaceOpen: boolean;
 	userLastSynced?: string;
 	workspaceLastSynced?: string;
 };

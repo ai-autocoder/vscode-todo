@@ -316,6 +316,16 @@ export class HelloWorldPanel {
 					}
 					case MessageActionsFromWebview.addTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.addTodo, TodoScope>;
+						if (
+							(message.scope === TodoScope.workspace ||
+								message.scope === TodoScope.currentFile) &&
+							!getWorkspacePath()
+						) {
+							window.showWarningMessage(
+								"No workspace open. Open a folder to add workspace or file todos."
+							);
+							break;
+						}
 						store.dispatch(storeActions!.addTodo(payload));
 						break;
 					}

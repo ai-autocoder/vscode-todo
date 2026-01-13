@@ -2,7 +2,6 @@
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
 	width: 100%;
 }
 
@@ -90,5 +89,10 @@ vscode-button::part(content) {
 
 .selection-toolbar__button--destructive::part(control):focus-visible {
 	outline-color: var(--vscode-errorForeground);
+}
+
+.new-todo-warning {
+	color: var(--vscode-errorForeground);
+	font-size: calc(var(--vscode-editor-font-size) * 0.9);
 }
 

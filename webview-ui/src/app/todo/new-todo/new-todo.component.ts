@@ -46,9 +46,52 @@ export class NewTodoComponent implements OnChanges, OnDestroy {
 		return this.selectionState.totalCount;
 	}
 
+	get workspaceAddBlockedMessage(): string {
+		return this.scope === TodoScope.currentFile
+			? "Open a workspace to add file todos."
+			: "Open a workspace to add workspace todos.";
+	}
+
+	get isWorkspaceAddBlocked(): boolean {
+		const isWorkspaceScope =
+			this.scope === TodoScope.workspace || this.scope === TodoScope.currentFile;
+		return isWorkspaceScope && !this.todoService.isWorkspaceOpen;
+	}
+
+	get addButtonDisabled(): boolean {
+		return (
+			!this.newTodoText.trim().length ||
+			this.isCurrentFileEmpty ||
+			this.isWorkspaceAddBlocked
+		);
+	}
+
+	get addButtonTitle(): string {
+		if (this.isWorkspaceAddBlocked) {
+			return this.workspaceAddBlockedMessage;
+		}
+		if (this.isCurrentFileEmpty) {
+			return "Please select a file first";
+		}
+		return "";
+	}
+
+	get placeholderText(): string {
+		if (this.isWorkspaceAddBlocked) {
+			return this.workspaceAddBlockedMessage;
+		}
+		return "New todo: Enter | Line break: Shift+Enter";
+	}
+
 	addTodo($event: Event): void {
 		$event.preventDefault();
-		if (!this.newTodoText.trim().length || this.isCurrentFileEmpty) return;
+		if (
+			!this.newTodoText.trim().length ||
+			this.isCurrentFileEmpty ||
+			this.isWorkspaceAddBlocked
+		) {
+			return;
+		}
 		this.todoService.addTodo(this.scope, { text: this.newTodoText.trim() });
 		this.newTodoText = "";
 	}

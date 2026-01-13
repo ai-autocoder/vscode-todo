@@ -20,6 +20,12 @@ export async function exportCommand(
 	format: ExportFormats,
 	store: EnhancedStore<StoreState>
 ) {
+	const rootDir = getWorkspacePath();
+	if (!rootDir) {
+		vscode.window.showErrorMessage("No workspace open, export aborted");
+		return;
+	}
+
 	const scopes = await getExportScopes(store);
 
 	if (!scopes || scopes.length === 0) {

@@ -38,6 +38,12 @@ async function importCommand(
 	format: ImportFormats,
 	store: EnhancedStore<StoreState>
 ) {
+	const rootDir = getWorkspacePath();
+	if (!rootDir) {
+		vscode.window.showErrorMessage("No workspace open, import aborted");
+		return;
+	}
+
 	const selectedFile = await getImportFile(format);
 	if (!selectedFile || !selectedFile.description?.trim()) {
 		vscode.window.showInformationMessage("File selection cancelled.");

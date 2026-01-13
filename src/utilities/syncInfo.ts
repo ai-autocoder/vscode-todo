@@ -28,6 +28,7 @@ export function getGitHubSyncInfo(context: vscode.ExtensionContext): GitHubSyncI
 	const workspaceSyncMode = context.workspaceState.get<WorkspaceSyncMode>("syncMode", "local");
 	const userSyncEnabled = userSyncMode === "github";
 	const workspaceSyncEnabled = workspaceSyncMode === "github";
+	const isWorkspaceOpen = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
 	const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
 	const userFile = config.get<string>("github.userFile", "user-todos.json");
 	const workspaceName = vscode.workspace.name || "default";
@@ -42,6 +43,7 @@ export function getGitHubSyncInfo(context: vscode.ExtensionContext): GitHubSyncI
 		workspaceSyncMode,
 		userFile,
 		workspaceFile,
+		isWorkspaceOpen,
 		userLastSynced: userSyncEnabled ? getUserLastSynced(context, config) : undefined,
 		workspaceLastSynced: workspaceSyncEnabled ? getWorkspaceLastSynced(context, config) : undefined,
 	};

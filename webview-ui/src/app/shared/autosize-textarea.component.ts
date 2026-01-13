@@ -20,6 +20,7 @@ import {
 			(input)="onInput($event)"
 			[placeholder]="placeholder"
 			[value]="text"
+			[disabled]="disabled"
 		></textarea>
 	`,
     styles: [
@@ -60,6 +61,12 @@ import {
 				border-color: var(--vscode-dropdown-border);
 			}
 		`,
+		`
+			textarea:disabled {
+				opacity: 0.6;
+				cursor: not-allowed;
+			}
+		`,
         `
 			textarea:active:enabled,
 			textarea:focus:enabled {
@@ -79,6 +86,7 @@ export class AutosizeTextArea implements AfterViewInit, OnDestroy {
 	@Input() placeholder: string = "";
 	@Input() autofocus: boolean = false;
 	@Input() maxHeightVh: number = AutosizeTextArea.DEFAULT_MAX_HEIGHT_VH;
+	@Input() disabled: boolean = false;
 	@ViewChild("textarea") textareaElement!: ElementRef<HTMLTextAreaElement>;
 
 	@Input()
