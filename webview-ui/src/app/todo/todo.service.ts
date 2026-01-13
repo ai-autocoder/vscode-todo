@@ -13,6 +13,7 @@ import {
 	EditorFocusAndRecordsSlice,
 	Todo,
 	TodoCount,
+	TodoFilesDataPaths,
 	TodoScope,
 	TodoSlice,
 	ExportFormats,
@@ -62,6 +63,7 @@ export class TodoService {
 	private _workspaceFilesWithRecordsSource = new BehaviorSubject<
 		{ filePath: string; todoNumber: number }[]
 	>([]);
+	private _filesDataPathsSource = new BehaviorSubject<TodoFilesDataPaths>({});
 	private _enableWideViewSource = new BehaviorSubject<boolean>(this._config.enableWideView);
 
 	private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
@@ -110,6 +112,7 @@ export class TodoService {
 	currentFileLastAction = new BehaviorSubject<string>("");
 	currentFilePath = this._currentFilePathSource.asObservable();
 	workspaceFilesWithRecords = this._workspaceFilesWithRecordsSource.asObservable();
+	filesDataPaths = this._filesDataPathsSource.asObservable();
 
 	setSelectionState(scope: TodoScope, state: SelectionState): void {
 		this._selectionStateMap[scope].next(state);
@@ -246,6 +249,7 @@ export class TodoService {
 
 	private handleSyncEditorFocusAndRecords(payload: EditorFocusAndRecordsSlice) {
 		this._workspaceFilesWithRecordsSource.next(payload.workspaceFilesWithRecords);
+		this._filesDataPathsSource.next(payload.filesDataPaths ?? {});
 	}
 
 	private handleUpdateGitHubStatus(payload: { isConnected: boolean; hasGistId: boolean }) {

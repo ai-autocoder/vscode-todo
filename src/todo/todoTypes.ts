@@ -48,6 +48,7 @@ export interface CurrentFileSlice extends TodoSlice {
 export interface EditorFocusAndRecordsSlice {
 	editorFocusedFilePath: string;
 	workspaceFilesWithRecords: Array<{ filePath: string; todoNumber: number }> | [];
+	filesDataPaths: TodoFilesDataPaths;
 	lastActionType: string;
 }
 

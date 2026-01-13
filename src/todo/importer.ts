@@ -111,7 +111,10 @@ async function importCommand(
 			// Update the store
 			store.dispatch(
 				editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-					getWorkspaceFilesWithRecords(sortedResult || {})
+					{
+						workspaceFilesWithRecords: getWorkspaceFilesWithRecords(sortedResult || {}),
+						filesDataPaths,
+					}
 				)
 			);
 			const targetFilePath = state.editorFocusAndRecords.editorFocusedFilePath;

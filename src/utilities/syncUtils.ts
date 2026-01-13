@@ -54,7 +54,10 @@ export async function reloadScopeData(
 		await context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
 		store.dispatch(
 			editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-				getWorkspaceFilesWithRecords(filesData)
+				{
+					workspaceFilesWithRecords: getWorkspaceFilesWithRecords(filesData),
+					filesDataPaths,
+				}
 			)
 		);
 

@@ -418,7 +418,10 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		);
 		this.store.dispatch(
 			editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-				getWorkspaceFilesWithRecords(this.cachedWorkspaceData.filesData)
+				{
+					workspaceFilesWithRecords: getWorkspaceFilesWithRecords(this.cachedWorkspaceData.filesData),
+					filesDataPaths: this.cachedWorkspaceData.filesDataPaths,
+				}
 			)
 		);
 

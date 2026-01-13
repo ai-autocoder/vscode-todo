@@ -532,7 +532,10 @@ export function updateDataForRenamedFile({
 	context.workspaceState.update("TodoFilesDataPaths", newPaths);
 	store.dispatch(
 		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-			getWorkspaceFilesWithRecords(sortedNewData || {})
+			{
+				workspaceFilesWithRecords: getWorkspaceFilesWithRecords(sortedNewData || {}),
+				filesDataPaths: newPaths,
+			}
 		)
 	);
 	const state = store.getState();
@@ -615,7 +618,10 @@ export function removeDataForDeletedFile({
 	context.workspaceState.update("TodoFilesDataPaths", newPaths);
 	store.dispatch(
 		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-			getWorkspaceFilesWithRecords(sortedData || {})
+			{
+				workspaceFilesWithRecords: getWorkspaceFilesWithRecords(sortedData || {}),
+				filesDataPaths: newPaths,
+			}
 		)
 	);
 	const state: StoreState = store.getState();

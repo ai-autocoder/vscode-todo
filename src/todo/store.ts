@@ -14,6 +14,7 @@ import {
 	EditorFocusAndRecordsSlice,
 	Slices,
 	Todo,
+	TodoFilesDataPaths,
 	TodoScope,
 	TodoSlice,
 } from "./todoTypes";
@@ -195,6 +196,7 @@ const editorFocusAndRecordsSlice = createSlice({
 	initialState: {
 		editorFocusedFilePath: "",
 		workspaceFilesWithRecords: [],
+		filesDataPaths: {},
 		lastActionType: "",
 	} as EditorFocusAndRecordsSlice,
 	reducers: {
@@ -204,9 +206,13 @@ const editorFocusAndRecordsSlice = createSlice({
 		},
 		setWorkspaceFilesWithRecords: (
 			state,
-			action: PayloadAction<{ filePath: string; todoNumber: number }[]>
+			action: PayloadAction<{
+				workspaceFilesWithRecords: { filePath: string; todoNumber: number }[];
+				filesDataPaths: TodoFilesDataPaths;
+			}>
 		) => {
-			state.workspaceFilesWithRecords = action.payload;
+			state.workspaceFilesWithRecords = action.payload.workspaceFilesWithRecords;
+			state.filesDataPaths = action.payload.filesDataPaths;
 			state.lastActionType = action.type;
 		},
 	},

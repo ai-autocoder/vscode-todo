@@ -32,10 +32,13 @@ import {
 	deleteCompletedTodos,
 	deleteCompletedTodosCurrentFile,
 	ensureFilesDataPaths,
+	getRelativePathIfInsideWorkspace,
 	getWorkspacePath,
 	getWorkspaceFilesWithRecords,
 	removeDataForDeletedFile,
 	resolveFilesDataKey,
+	sortByFileName,
+	upsertFilesDataPathEntry,
 	updateDataForRenamedFile,
 } from "./todo/todoUtils";
 import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands, SyncStatus } from "./sync";
@@ -200,7 +203,10 @@ export async function activate(context: ExtensionContext) {
 	// Load list of files with records
 	store.dispatch(
 		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-			getWorkspaceFilesWithRecords(initialWorkspaceFilesData ?? {})
+			{
+				workspaceFilesWithRecords: getWorkspaceFilesWithRecords(initialWorkspaceFilesData ?? {}),
+				filesDataPaths: initialWorkspaceFilesDataPaths,
+			}
 		)
 	);
 
@@ -295,10 +301,47 @@ function handleTodoChange(
 	}
 
 	if (sliceState.scope === TodoScope.currentFile) {
-		// Update editorFocusAndRecordsSlice
+		const currentFileState = sliceState as CurrentFileSlice;
+		const workspaceRoot = getWorkspacePath();
+		const existingData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) ?? {};
+		const existingPaths =
+			(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) ?? {};
+		let filesData = { ...existingData };
+		let filesDataPaths = ensureFilesDataPaths(filesData, existingPaths, workspaceRoot);
+
+		if (currentFileState.filePath) {
+			const resolved = resolveFilesDataKey({
+				filePath: currentFileState.filePath,
+				filesData,
+				filesDataPaths,
+			});
+			const primaryKey = resolved.key ?? currentFileState.filePath;
+
+			if (currentFileState.todos.length === 0) {
+				delete filesData[primaryKey];
+				delete filesDataPaths[primaryKey];
+			} else {
+				filesData[primaryKey] = currentFileState.todos;
+				const relPath = getRelativePathIfInsideWorkspace(currentFileState.filePath, workspaceRoot);
+				upsertFilesDataPathEntry({
+					filesDataPaths,
+					primaryKey,
+					absPath: currentFileState.filePath,
+					relPath,
+				});
+			}
+
+			filesData = sortByFileName(filesData);
+			filesDataPaths = ensureFilesDataPaths(filesData, filesDataPaths, workspaceRoot);
+		}
+
+		// Update editorFocusAndRecordsSlice with the latest file list snapshot.
 		store.dispatch(
 			editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-				getWorkspaceFilesWithRecords(context.workspaceState.get("TodoFilesData") ?? {})
+				{
+					workspaceFilesWithRecords: getWorkspaceFilesWithRecords(filesData),
+					filesDataPaths,
+				}
 			)
 		);
 	}
