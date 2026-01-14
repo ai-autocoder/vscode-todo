@@ -42,6 +42,10 @@ docs/**
 .vscode-test.mjs
 .history/**
 GEMINI.md
+AGENTS.md
+CLAUDE.md
+.gemini/**
+.github/**
 
 # Ignore prettier config files
 .prettierignore
