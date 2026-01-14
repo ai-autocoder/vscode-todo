@@ -1,5 +1,16 @@
 # Change Log
 
+## [2.0.0]
+
+- Add GitHub Gist sync with guided setup, status indicators, and conflict resolution.
+- Ensure cross-device workspace file resolution and lossless export/import with file path metadata.
+- Webview: redesign the UI/UX to be more user-friendly.
+- Webview: add a Mermaid diagram zoom overlay.
+- Webview: fix realtime file list updates when change detection missed updates.
+- UX: add undo for clear-completed action.
+- Infra: add CI.
+- Docs: update documentation.
+
 ## [1.17.1]
 
 - Layout improvements for overflow handling in webview
