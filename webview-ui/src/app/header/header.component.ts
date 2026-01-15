@@ -1,4 +1,4 @@
-import { Component, Input, OnInit } from "@angular/core";
+import { Component, ElementRef, Input, OnInit, ViewChild, inject } from "@angular/core";
 import { TodoService } from "../todo/todo.service";
 import { ExportFormats, ImportFormats, TodoScope } from "../../../../src/todo/todoTypes";
 import { BehaviorSubject, combineLatest, map, Observable } from "rxjs";
@@ -26,6 +26,8 @@ type SyncModeInfo = {
     standalone: false
 })
 export class HeaderComponent implements OnInit {
+	private readonly todoService = inject(TodoService);
+
 	ExportFormats = ExportFormats;
 	ImportFormats = ImportFormats;
 	isImportMenuOpen = false;
@@ -42,6 +44,11 @@ export class HeaderComponent implements OnInit {
 	private wideViewDelayHandle: number | null = null;
 	private currentScopeSource = new BehaviorSubject<TodoScope>(TodoScope.user);
 	private currentScopeValue: TodoScope = TodoScope.user;
+	private searchFocusHandle: number | null = null;
+	readonly searchQuery = this.todoService.searchQuery;
+
+	@ViewChild("searchInput")
+	private searchInput?: ElementRef<HTMLInputElement>;
 
 	@Input()
 	set currentScope(value: TodoScope) {
@@ -51,8 +58,6 @@ export class HeaderComponent implements OnInit {
 	get currentScope(): TodoScope {
 		return this.currentScopeValue;
 	}
-
-	constructor(readonly todoService: TodoService) {}
 
 	ngOnInit(): void {
 		this.enableWideView = this.todoService.enableWideView;
@@ -184,6 +189,23 @@ export class HeaderComponent implements OnInit {
 
 	onSyncMenuClosed() {
 		this.isSyncMenuOpen = false;
+	}
+
+	clearSearch() {
+		this.todoService.clearSearchQuery();
+		this.queueSearchFocus(false);
+	}
+
+	onSearchInput(event: Event) {
+		const target = event.target as HTMLInputElement | null;
+		this.todoService.setSearchQuery(target?.value ?? "");
+	}
+
+	onSearchEscape(event: Event) {
+		event.preventDefault();
+		event.stopPropagation();
+		this.todoService.clearSearchQuery();
+		this.searchInput?.nativeElement.blur();
 	}
 
 	setUserSyncMode(mode: UserSyncMode) {
@@ -348,6 +370,24 @@ export class HeaderComponent implements OnInit {
 
 		const days = Math.floor(hours / 24);
 		return `${days}d ago`;
+	}
+
+	private queueSearchFocus(selectText: boolean): void {
+		if (this.searchFocusHandle !== null) {
+			clearTimeout(this.searchFocusHandle);
+		}
+
+		this.searchFocusHandle = window.setTimeout(() => {
+			this.searchFocusHandle = null;
+			const input = this.searchInput?.nativeElement;
+			if (!input) {
+				return;
+			}
+			input.focus();
+			if (selectText) {
+				input.select();
+			}
+		}, 0);
 	}
 
 }

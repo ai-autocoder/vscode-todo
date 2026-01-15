@@ -1,12 +1,113 @@
 .header-container {
-	position: absolute;
+	--header-icon-button-size: 22px;
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
+	justify-content: space-between;
 	gap: 0.5rem;
 	width: 100%;
 	padding: 5.5px 0;
+	flex-wrap: nowrap;
 }
+
+.header-search {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+}
+
+.header-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex: 0 0 auto;
+}
+
+.header-container vscode-button[appearance="icon"]::part(control) {
+	width: var(--header-icon-button-size);
+	height: var(--header-icon-button-size);
+	min-width: var(--header-icon-button-size);
+	min-height: var(--header-icon-button-size);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.search-bar {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+	width: 100%;
+	background: var(--vscode-settings-textInputBackground, var(--vscode-input-background));
+	border: 1px solid var(--vscode-settings-textInputBorder, var(--vscode-input-border));
+	border-radius: 4px;
+	padding: 2px 4px;
+	min-height: 28px;
+	color: var(--vscode-settings-textInputForeground, var(--vscode-input-foreground));
+}
+
+.search-bar:focus-within {
+	border-color: var(--vscode-focusBorder);
+	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.search-bar input {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: 0;
+	outline: none;
+	background: transparent;
+	color: inherit;
+	font-family: var(--app-font-family);
+	font-size: var(--app-font-size);
+}
+
+.search-bar input[type="search"]::-webkit-search-cancel-button,
+.search-bar input[type="search"]::-webkit-search-decoration {
+	-webkit-appearance: none;
+	appearance: none;
+	display: none;
+}
+
+.search-bar input[type="search"]::-ms-clear,
+.search-bar input[type="search"]::-ms-reveal {
+	display: none;
+	width: 0;
+	height: 0;
+}
+
+.search-bar input::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+.search-actions {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
+	padding-left: 4px;
+	border-left: 1px solid var(--vscode-settings-textInputBorder, var(--vscode-input-border));
+}
+
+.search-clear::part(control) {
+	background: transparent;
+	padding: 0;
+	border-radius: 4px;
+}
+
+.search-clear::part(control):hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.search-clear::part(control):focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}
+
+.search-clear[disabled] {
+	opacity: 0.45;
+}
+
 .menu-open {
 	background-color: var(--vscode-menu-background);
 }
@@ -15,6 +116,11 @@
 	.header-container {
 		position: relative;
 		padding: 0;
+		gap: 0.35rem;
+	}
+
+	.search-bar {
+		width: 100%;
 	}
 }
 

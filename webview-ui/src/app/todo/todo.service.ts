@@ -1,4 +1,4 @@
-import { Injectable } from "@angular/core";
+import { Injectable, computed, signal } from "@angular/core";
 import { BehaviorSubject, Subject } from "rxjs";
 import {
 	Message,
@@ -101,6 +101,12 @@ export class TodoService {
 		[TodoScope.currentFile]: new BehaviorSubject<number | null>(null),
 	};
 
+	private readonly _searchQuery = signal<string>("");
+
+	readonly searchQuery = computed(() => this._searchQuery());
+	readonly normalizedSearchQuery = computed(() => this._searchQuery().trim().toLowerCase());
+	readonly isSearchActive = computed(() => this.normalizedSearchQuery().length > 0);
+
 	enableWideView = this._enableWideViewSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
 	isGitHubConnected = this._isGitHubConnectedSource.asObservable();
@@ -129,6 +135,14 @@ export class TodoService {
 
 	selectionCommand(scope: TodoScope) {
 		return this._selectionCommandMap[scope].asObservable();
+	}
+
+	setSearchQuery(query: string): void {
+		this._searchQuery.set(query);
+	}
+
+	clearSearchQuery(): void {
+		this._searchQuery.set("");
 	}
 
 

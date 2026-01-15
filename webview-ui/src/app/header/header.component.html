@@ -1,15 +1,46 @@
 <div class="header-container">
-	<vscode-button
-		appearance="icon"
-		[aria-label]="allCollapsed ? 'Expand all' : 'Collapse all'"
-		[title]="allCollapsed ? 'Expand all' : 'Collapse all'"
-		(click)="toggleAllCollapsed()"
-		[disabled]="isListEmpty"
-	>
-		<span>
-			<app-icon [name]="allCollapsed ? 'chevron-right' : 'chevron-down'"></app-icon>
-		</span>
-	</vscode-button>
+	<div class="header-search">
+		<div class="search-bar" role="search">
+			<input
+				#searchInput
+				id="todo-search-input"
+				type="search"
+				placeholder="Search todos and notes"
+				aria-label="Search todos and notes"
+				[value]="searchQuery()"
+				(input)="onSearchInput($event)"
+				(keydown.escape)="onSearchEscape($event)"
+				autocapitalize="none"
+				autocomplete="off"
+				spellcheck="false"
+			/>
+			<div class="search-actions">
+				<vscode-button
+					class="search-clear"
+					appearance="icon"
+					[disabled]="!searchQuery().length"
+					aria-label="Clear search"
+					title="Clear search"
+					(click)="clearSearch()"
+				>
+					<app-icon name="clear-all"></app-icon>
+				</vscode-button>
+			</div>
+		</div>
+	</div>
+
+	<div class="header-actions">
+		<vscode-button
+			appearance="icon"
+			[aria-label]="allCollapsed ? 'Expand all' : 'Collapse all'"
+			[title]="allCollapsed ? 'Expand all' : 'Collapse all'"
+			(click)="toggleAllCollapsed()"
+			[disabled]="isListEmpty"
+		>
+			<span>
+				<app-icon [name]="allCollapsed ? 'chevron-right' : 'chevron-down'"></app-icon>
+			</span>
+		</vscode-button>
 
 	@if (syncModeInfo | async; as syncInfo) {
 		<vscode-button
@@ -20,7 +51,7 @@
 			[title]="syncInfo.pillTooltip"
 			(menuOpened)="onSyncMenuOpened()"
 			(menuClosed)="onSyncMenuClosed()"
-			[ngClass]="{ 'menu-open': isSyncMenuOpen }"
+			[class.menu-open]="isSyncMenuOpen"
 		>
 			<span class="sync-pill-content">
 				<app-icon [name]="syncInfo.modeIcon"></app-icon>
@@ -35,7 +66,7 @@
 		[title]="'Settings'"
 		(menuOpened)="onSettingsMenuOpened()"
 		(menuClosed)="onSettingsMenuClosed()"
-		[ngClass]="{ 'menu-open': isSettingsMenuOpen }"
+		[class.menu-open]="isSettingsMenuOpen"
 	>
 		<span>
 			<app-icon name="settings"></app-icon>
@@ -316,4 +347,5 @@
 	>
 		<app-icon name="clear"></app-icon>
 	</vscode-button>
+	</div>
 </div>

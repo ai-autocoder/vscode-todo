@@ -1,16 +1,18 @@
 import { animate, style, transition, trigger } from "@angular/animations";
 import { CdkDrag, CdkDragDrop, moveItemInArray } from "@angular/cdk/drag-drop";
 import {
-    AfterViewInit,
-    ChangeDetectionStrategy,
-    ChangeDetectorRef,
-    Component,
-    ElementRef,
-    Input,
-    OnInit,
-    QueryList,
-    ViewChildren,
-    HostListener,
+	AfterViewInit,
+	ChangeDetectionStrategy,
+	ChangeDetectorRef,
+	Component,
+	ElementRef,
+	effect,
+	Input,
+	inject,
+	OnInit,
+	QueryList,
+	ViewChildren,
+	HostListener,
 } from "@angular/core";
 import { MatSnackBar, MatSnackBarRef } from "@angular/material/snack-bar";
 import { firstValueFrom, Subscription } from "rxjs";
@@ -45,13 +47,20 @@ import { SelectionCommand, TodoService } from "../todo.service";
     standalone: false
 })
 export class TodoList implements OnInit, AfterViewInit {
+	private readonly todoService = inject(TodoService);
+	private readonly cdRef = inject(ChangeDetectorRef);
+	private readonly snackBar = inject(MatSnackBar);
+	private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+
 	@Input()
 	scope!: TodoScope;
 	todos: Todo[] = [];
+	private allTodos: Todo[] = [];
 	todoCount = 0;
     isEnterAnimationEnabled = false;
 	isLeaveAnimationEnabled = false;
 	isInitialized = false;
+	isFilterActive = false;
     private lastActionTypeSubscription!: Subscription;
     private selectionCommandSubscription?: Subscription;
     private lastActionName: string | null = null;
@@ -64,12 +73,15 @@ export class TodoList implements OnInit, AfterViewInit {
 
     enterAnimationEnabledActions: string[] = ["addTodo", "toggleTodo", "undoDelete"];
 
-	constructor(
-		private todoService: TodoService,
-		private cdRef: ChangeDetectorRef,
-		private snackBar: MatSnackBar,
-		private hostElement: ElementRef<HTMLElement>
-	) {}
+	private searchQuery = "";
+	private readonly searchEffect = effect(() => {
+		const query = this.todoService.normalizedSearchQuery();
+		if (query === this.searchQuery) {
+			return;
+		}
+		this.searchQuery = query;
+		this.applyFilter(false, true);
+	});
 
 	ngOnInit(): void {
 		let lastAction;
@@ -134,6 +146,9 @@ export class TodoList implements OnInit, AfterViewInit {
         if (!this.isInitialized || this.isDragging) {
             return false;
         }
+		if (this.isFilterActive) {
+			return false;
+		}
 
         if (!this.lastActionName || this.lastActionName === "loadData") {
             return false;
@@ -144,27 +159,65 @@ export class TodoList implements OnInit, AfterViewInit {
 
     pullTodos() {
         const prevRects = this.isInitialized ? this.snapshotRects() : new Map<number, DOMRect>();
+		const query = this.todoService.normalizedSearchQuery();
+		this.searchQuery = query;
+		const suppressAnimations = query.length > 0 && !this.isInitialized;
 
         switch (this.scope) {
             case TodoScope.user:
-                this.todos = [...this.todoService.userTodos];
+                this.allTodos = [...this.todoService.userTodos];
                 break;
             case TodoScope.workspace:
-                this.todos = [...this.todoService.workspaceTodos];
+                this.allTodos = [...this.todoService.workspaceTodos];
                 break;
             case TodoScope.currentFile:
-                this.todos = [...this.todoService.currentFileTodos];
+                this.allTodos = [...this.todoService.currentFileTodos];
                 break;
         }
-        this.syncSelectionWithTodos();
-        this.cdRef.detectChanges();
+        this.applyFilter(true, suppressAnimations, query);
 
         if (this.shouldRunReorderAnimation()) {
             this.animateReorder(prevRects);
         }
     }
 
+	private applyFilter(
+		shouldDetectChanges: boolean,
+		suppressAnimations: boolean,
+		queryOverride?: string
+	): void {
+		if (!this.scope) {
+			return;
+		}
+
+		const query = queryOverride ?? this.searchQuery;
+		this.isFilterActive = query.length > 0;
+
+		if (suppressAnimations) {
+			this.isEnterAnimationEnabled = false;
+			this.isLeaveAnimationEnabled = false;
+		}
+
+		if (this.isFilterActive) {
+			this.todos = this.allTodos.filter((todo) =>
+				todo.text.toLowerCase().includes(query)
+			);
+		} else {
+			this.todos = [...this.allTodos];
+		}
+
+		this.syncSelectionWithTodos();
+		if (shouldDetectChanges) {
+			this.cdRef.detectChanges();
+		} else {
+			this.cdRef.markForCheck();
+		}
+	}
+
 	onDrop(event: CdkDragDrop<Todo[]>) {
+		if (this.isFilterActive) {
+			return;
+		}
 		// Move item within the array and update the order
 		moveItemInArray(this.todos, event.previousIndex, event.currentIndex);
 
