@@ -2,7 +2,7 @@
 	"name": "vsc-todo",
 	"displayName": "VS Code Todo",
 	"publisher": "FrancescoAnzalone",
-	"description": "Markdown notes, todos, tasks, and AI prompt snippets with profile, workspace, and file context plus GitHub Gist sync. Render inline Mermaid diagrams, KaTeX math, and code highlighting.",
+	"description": "Markdown notes, todos, tasks, and AI prompt snippets with profile, workspace, and file context plus cloud sync via GitHub Gist. Render inline Mermaid diagrams, KaTeX math, and code highlighting.",
 	"icon": "icon.png",
 	"galleryBanner": {
 		"color": "#0f172a",
@@ -17,6 +17,8 @@
 		"notes",
 		"note-taking",
 		"sync",
+		"cloud",
+		"cloud sync",
 		"github",
 		"gist",
 		"github gist",
