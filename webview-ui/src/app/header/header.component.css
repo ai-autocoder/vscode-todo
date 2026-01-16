@@ -40,15 +40,14 @@
 	width: 100%;
 	background: var(--vscode-settings-textInputBackground, var(--vscode-input-background));
 	border: 1px solid var(--vscode-settings-textInputBorder, var(--vscode-input-border));
-	border-radius: 4px;
-	padding: 2px 4px;
+	border-radius: 2px;
+	padding: 2px;
 	min-height: 28px;
 	color: var(--vscode-settings-textInputForeground, var(--vscode-input-foreground));
 }
 
 .search-bar:focus-within {
 	border-color: var(--vscode-focusBorder);
-	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
 .search-bar input {
@@ -86,7 +85,6 @@
 	gap: 2px;
 	margin-left: auto;
 	padding-left: 4px;
-	border-left: 1px solid var(--vscode-settings-textInputBorder, var(--vscode-input-border));
 }
 
 .search-clear::part(control) {
