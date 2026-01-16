@@ -19,7 +19,7 @@
 .header-actions {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.35rem;
 	flex: 0 0 auto;
 }
 

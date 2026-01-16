@@ -62,17 +62,17 @@
 	<vscode-button
 		appearance="icon"
 		[matMenuTriggerFor]="settingsMenu"
-		[aria-label]="'Settings'"
-		[title]="'Settings'"
+		[aria-label]="'Menu'"
+		[title]="'Menu'"
 		(menuOpened)="onSettingsMenuOpened()"
 		(menuClosed)="onSettingsMenuClosed()"
 		[class.menu-open]="isSettingsMenuOpen"
 	>
 		<span>
-			<app-icon name="settings"></app-icon>
+			<app-icon name="menu"></app-icon>
 		</span>
 	</vscode-button>
-	<!-- Settings menu -->
+	<!-- Menu -->
 	<mat-menu #settingsMenu="matMenu" yPosition="below" xPosition="before" panelClass="header-menu">
 		<!-- Export submenu -->
 		<button mat-menu-item [matMenuTriggerFor]="exportMenu" aria-label="Export" class="submenu-item">
@@ -109,6 +109,33 @@
 			</button>
 		}
 
+		<mat-divider></mat-divider>
+
+		<button
+			mat-menu-item
+			(click)="deleteAll()"
+			[disabled]="isListEmpty"
+			aria-label="Delete all items in this tab"
+			title="Delete all items in this tab"
+		>
+			<span class="submenu-content">
+				<app-icon name="trash"></app-icon>
+				<span style="margin-left: 8px;">Delete all</span>
+			</span>
+		</button>
+
+		<button
+			mat-menu-item
+			(click)="deleteCompleted()"
+			[disabled]="!hasCompletedTodos"
+			aria-label="Clear completed todos in this tab"
+			title="Clear completed todos in this tab"
+		>
+			<span class="submenu-content">
+				<app-icon name="clear"></app-icon>
+				<span style="margin-left: 8px;">Clear completed</span>
+			</span>
+		</button>
 	</mat-menu>
 
 	<!-- Sync menu -->
@@ -326,26 +353,5 @@
 			Markdown
 		</button>
 	</mat-menu>
-
-
-	<vscode-button
-		appearance="icon"
-		[aria-label]="'Delete all items in this tab'"
-		[title]="'Delete all items in this tab'"
-		(click)="deleteAll()"
-		[disabled]="isListEmpty"
-	>
-		<app-icon name="trash"></app-icon>
-	</vscode-button>
-
-	<vscode-button
-		appearance="icon"
-		[aria-label]="'Clear completed todos in this tab'"
-		[title]="'Clear completed todos in this tab'"
-		(click)="deleteCompleted()"
-		[disabled]="!hasCompletedTodos"
-	>
-		<app-icon name="clear"></app-icon>
-	</vscode-button>
 	</div>
 </div>
