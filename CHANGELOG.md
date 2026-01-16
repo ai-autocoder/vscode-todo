@@ -1,5 +1,12 @@
 # Change Log
 
+## [2.1.0]
+
+- Webview: add always-visible header search with shared filtering, clear-all icon, and header button layout tweaks.
+- Webview: move delete/clear actions into the menu with updated icons/labels.
+- Webview: upgrade to Angular 21 and Angular Material 21; update dependencies.
+- Docs: update marketplace metadata keywords.
+
 ## [2.0.0]
 
 - Add GitHub Gist sync with guided setup, status indicators, and conflict resolution.
