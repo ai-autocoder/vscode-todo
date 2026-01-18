@@ -325,6 +325,7 @@
 		"install:all": "npm install && cd webview-ui && npm install",
 		"start:webview": "cd webview-ui && npm run start",
 		"build:webview": "cd webview-ui && npm run build",
+		"mcp:inspector": "mcp-inspector",
 		"vscode:prepublish": "npm run compile",
 		"compile": "tsc -p ./",
 		"watch": "tsc -watch -p ./",
@@ -333,6 +334,7 @@
 		"test": "vscode-test"
 	},
 	"devDependencies": {
+		"@modelcontextprotocol/inspector": "^0.18.0",
 		"@types/mocha": "^10.0.6",
 		"@types/node": "^18.18.0",
 		"@types/vscode": "^1.75.0",
