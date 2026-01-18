@@ -44,6 +44,7 @@ import {
 import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands, SyncStatus } from "./sync";
 import { messagesToWebview } from "./panels/message";
 import { WebviewVisibilityCoordinator } from "./sync/WebviewVisibilityCoordinator";
+import McpServerHost from "./mcp/McpServerHost";
 
 const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
 
@@ -57,6 +58,8 @@ export async function activate(context: ExtensionContext) {
 	const apiClient = new GitHubApiClient(context);
 	const syncManager = new SyncManager(context);
 	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager, store, storageSyncManager);
+	const mcpServerHost = new McpServerHost(context, store, storageSyncManager, syncManager);
+	mcpServerHost.initialize();
 
 	// Start GitHub sync polling if enabled
 	const userSyncMode = context.globalState.get<string>("syncMode", "profile-local");
@@ -171,6 +174,22 @@ export async function activate(context: ExtensionContext) {
 		vscode.commands.registerCommand("vsc-todo.importDataFromMarkdown", () =>
 			importCommand(context, ImportFormats.MARKDOWN, store)
 		),
+		vscode.commands.registerCommand("vsc-todo.startMcpServer", async () => {
+			const config = vscode.workspace.getConfiguration("vscodeTodo.mcp");
+			const target = vscode.workspace.workspaceFolders
+				? vscode.ConfigurationTarget.Workspace
+				: vscode.ConfigurationTarget.Global;
+			await config.update("enabled", true, target);
+			await mcpServerHost.start();
+		}),
+		vscode.commands.registerCommand("vsc-todo.stopMcpServer", async () => {
+			const config = vscode.workspace.getConfiguration("vscodeTodo.mcp");
+			const target = vscode.workspace.workspaceFolders
+				? vscode.ConfigurationTarget.Workspace
+				: vscode.ConfigurationTarget.Global;
+			await config.update("enabled", false, target);
+			await mcpServerHost.stop();
+		}),
 	];
 
 	const statusBarItem = initStatusBarItem(context);
@@ -266,7 +285,8 @@ export async function activate(context: ExtensionContext) {
 		onDidRenameFilesSubscription,
 		onDidDeleteFilesSubscription,
 		vscode.window.registerWebviewViewProvider(TodoViewProvider.viewType, provider),
-		{ dispose: () => syncManager.dispose() }
+		{ dispose: () => syncManager.dispose() },
+		mcpServerHost
 	);
 
 	deleteCompletedTodos(store);

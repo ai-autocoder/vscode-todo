@@ -127,6 +127,16 @@
 				"command": "vsc-todo.syncNow",
 				"title": "Sync Now",
 				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.startMcpServer",
+				"title": "Start MCP Server",
+				"category": "VS Code Todo"
+			},
+			{
+				"command": "vsc-todo.stopMcpServer",
+				"title": "Stop MCP Server",
+				"category": "VS Code Todo"
 			}
 		],
 		"configuration": {
@@ -234,6 +244,53 @@
 					"default": 0,
 					"minimum": 0,
 					"maximum": 36
+				},
+				"vscodeTodo.mcp.enabled": {
+					"type": "boolean",
+					"default": false,
+					"description": "Enable the MCP server for AI agents."
+				},
+				"vscodeTodo.mcp.readOnly": {
+					"type": "boolean",
+					"default": true,
+					"description": "Restrict MCP access to read-only operations."
+				},
+				"vscodeTodo.mcp.allowedScopes": {
+					"type": "array",
+					"default": [
+						"user",
+						"workspace",
+						"file"
+					],
+					"items": {
+						"type": "string",
+						"enum": [
+							"user",
+							"workspace",
+							"file"
+						]
+					},
+					"description": "Scopes the MCP server may access."
+				},
+				"vscodeTodo.mcp.transport": {
+					"type": "string",
+					"default": "streamableHttp",
+					"enum": [
+						"streamableHttp"
+					],
+					"description": "Transport to expose the MCP server."
+				},
+				"vscodeTodo.mcp.port": {
+					"type": "number",
+					"default": 7337,
+					"minimum": 0,
+					"maximum": 65535,
+					"description": "Port for the MCP server (0 for random available port)."
+				},
+				"vscodeTodo.mcp.token": {
+					"type": "string",
+					"default": "",
+					"description": "Optional bearer token required for MCP requests."
 				}
 			}
 		},
@@ -281,15 +338,16 @@
 		"@types/vscode": "^1.75.0",
 		"@typescript-eslint/eslint-plugin": "^8.43.0",
 		"@typescript-eslint/parser": "^8.43.0",
+		"@vscode/test-cli": "^0.0.10",
+		"@vscode/test-electron": "^2.3.10",
 		"eslint": "^8.57.1",
 		"mocha": "^10.8.2",
 		"prettier": "^3.2.5",
 		"typescript": "~5.9.2",
-		"typescript-eslint": "^8.43.0",
-		"@vscode/test-cli": "^0.0.10",
-		"@vscode/test-electron": "^2.3.10"
+		"typescript-eslint": "^8.43.0"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.25.2",
 		"@reduxjs/toolkit": "^2.2.1"
 	}
 }
