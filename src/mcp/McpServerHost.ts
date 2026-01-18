@@ -2,9 +2,9 @@ import * as http from "node:http";
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import * as z from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
-import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp";
-import type { Resource } from "@modelcontextprotocol/sdk/types";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { Resource } from "@modelcontextprotocol/sdk/types.js";
 import { TodoScope } from "../todo/todoTypes";
 import TodoService, { TodoUpdateFields } from "./TodoService";
 import McpLogChannel from "./McpLogChannel";
@@ -24,10 +24,10 @@ type McpConfig = {
 };
 
 type McpSdk = {
-	mcpServer: typeof import("@modelcontextprotocol/sdk/server/mcp").McpServer;
-	resourceTemplate: typeof import("@modelcontextprotocol/sdk/server/mcp").ResourceTemplate;
-	streamableHttpServerTransport: typeof import("@modelcontextprotocol/sdk/server/streamableHttp").StreamableHTTPServerTransport;
-	isInitializeRequest: typeof import("@modelcontextprotocol/sdk/types").isInitializeRequest;
+	mcpServer: typeof import("@modelcontextprotocol/sdk/server/mcp.js").McpServer;
+	resourceTemplate: typeof import("@modelcontextprotocol/sdk/server/mcp.js").ResourceTemplate;
+	streamableHttpServerTransport: typeof import("@modelcontextprotocol/sdk/server/streamableHttp.js").StreamableHTTPServerTransport;
+	isInitializeRequest: typeof import("@modelcontextprotocol/sdk/types.js").isInitializeRequest;
 };
 
 type SessionEntry = {
@@ -641,9 +641,9 @@ export default class McpServerHost implements vscode.Disposable {
 			return this.sdk;
 		}
 		const [mcpModule, transportModule, typesModule] = await Promise.all([
-			import("@modelcontextprotocol/sdk/server/mcp"),
-			import("@modelcontextprotocol/sdk/server/streamableHttp"),
-			import("@modelcontextprotocol/sdk/types"),
+			import("@modelcontextprotocol/sdk/server/mcp.js"),
+			import("@modelcontextprotocol/sdk/server/streamableHttp.js"),
+			import("@modelcontextprotocol/sdk/types.js"),
 		]);
 		this.sdk = {
 			mcpServer: mcpModule.McpServer,
