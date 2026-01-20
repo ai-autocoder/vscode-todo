@@ -88,6 +88,7 @@ VS Code Todo
 - [Key Features](#key-features)
   - [User, Workspace & File-specific Management](#user-workspace--file-specific-management)
   - [Sync Modes (User and Workspace)](#sync-modes-user-and-workspace)
+  - [MCP Server (AI Agent Integration)](#mcp-server-ai-agent-integration)
   - [Markdown Support for Todos and Notes](#markdown-support-for-todos-and-notes)
   - [Syntax Highlighting](#syntax-highlighting)
   - [Mermaid Diagram Support](#mermaid-diagram-support)
@@ -138,6 +139,7 @@ Quick start:
 
 - **Todo and note scopes (profile, workspace, file)** keep personal, project, and file-linked checklists organised.
 - **Cloud sync via GitHub Gist** keeps user/workspace lists in sync across devices and profiles.
+- **Local MCP server for AI agents** exposes your todos via the Model Context Protocol with optional read-only and scope restrictions.
 - **Markdown note-taking** with syntax highlighting, Mermaid diagrams, and KaTeX math for rich technical docs.
 - **Keyboard-first capture** with quick add, drag-and-drop ordering, and multi-select bulk actions.
 - **Status bar & activity bar access** keeps your task list one click away anywhere in VS Code.
@@ -277,6 +279,30 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 - The extension uses content-based detection to avoid false positives
 - True conflicts only occur when both you and another user (or device) modify the same data
 - Use the conflict wizard to resolve each conflict, or select **Keep All Local** / **Keep All Remote** / **View Gist**
+
+### MCP Server (AI Agent Integration)
+
+VS Code Todo can expose a local Model Context Protocol (MCP) server so any MCP-capable AI client can read or update your todos.
+
+Enable it (User or Workspace settings):
+
+```json
+{
+  "vscodeTodo.mcp.enabled": true,
+  "vscodeTodo.mcp.readOnly": true,
+  "vscodeTodo.mcp.allowedScopes": ["user", "workspace", "file"],
+  "vscodeTodo.mcp.port": 7337,
+  "vscodeTodo.mcp.token": ""
+}
+```
+
+Connect your MCP client:
+
+- Transport: streamable HTTP
+- URL: `http://127.0.0.1:<port>/mcp`
+- Authorization: `Bearer <token>` if `vscodeTodo.mcp.token` is set
+
+Tip: use **VS Code Todo: Start MCP Server** / **Stop MCP Server** and set `readOnly` to `false` only if you want to allow writes. Workspace must be trusted.
 
 ### Markdown Support for Todos and Notes
 
