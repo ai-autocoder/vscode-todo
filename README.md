@@ -302,6 +302,8 @@ Connect your MCP client:
 - URL: `http://127.0.0.1:<port>/mcp`
 - Authorization: `Bearer <token>` if `vscodeTodo.mcp.token` is set
 
+The token is a shared secret (like a password). Use a random 32+ character string and keep it private; leave it empty to disable auth.
+
 Tip: use **VS Code Todo: Start MCP Server** / **Stop MCP Server** and set `readOnly` to `false` only if you want to allow writes. Workspace must be trusted.
 
 ### Markdown Support for Todos and Notes

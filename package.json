@@ -290,7 +290,7 @@
 				"vscodeTodo.mcp.token": {
 					"type": "string",
 					"default": "",
-					"description": "Optional bearer token required for MCP requests."
+					"description": "Optional bearer token (shared secret) required for MCP requests. Leave empty to disable auth."
 				}
 			}
 		},
