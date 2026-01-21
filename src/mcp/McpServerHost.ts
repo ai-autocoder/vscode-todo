@@ -401,7 +401,7 @@ export default class McpServerHost implements vscode.Disposable {
 				mimeType: "application/json",
 			},
 			async (uri, variables) => {
-				const rawPath = variables.path ?? uri.searchParams.get("path");
+			const rawPath = uri.searchParams.get("path") ?? variables.path;
 				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
 				if (!filePath) {
 					throw new Error("Missing file path.");
@@ -425,7 +425,7 @@ export default class McpServerHost implements vscode.Disposable {
 				mimeType: "application/json",
 			},
 			async (uri, variables) => {
-				const rawPath = variables.path ?? uri.searchParams.get("path");
+			const rawPath = uri.searchParams.get("path") ?? variables.path;
 				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
 				if (!filePath) {
 					throw new Error("Missing file path.");
