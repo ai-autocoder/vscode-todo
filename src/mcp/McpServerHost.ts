@@ -401,7 +401,7 @@ export default class McpServerHost implements vscode.Disposable {
 				mimeType: "application/json",
 			},
 			async (uri, variables) => {
-			const rawPath = uri.searchParams.get("path") ?? variables.path;
+				const rawPath = uri.searchParams.get("path") ?? variables.path;
 				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
 				if (!filePath) {
 					throw new Error("Missing file path.");
@@ -411,27 +411,216 @@ export default class McpServerHost implements vscode.Disposable {
 			}
 		);
 
-		const instructionsTemplate = new sdk.resourceTemplate("todo://instructions?path={path}", {
+		const instructionsScopeTemplate = new sdk.resourceTemplate("todo://instructions?scope={scope}", {
+			list: async () => {
+				return {
+					resources: [
+						this.buildScopeResource(
+							"todo://instructions?scope=user",
+							"User Instructions",
+							"User-scope instruction notes"
+						),
+						this.buildScopeResource(
+							"todo://instructions?scope=workspace",
+							"Workspace Instructions",
+							"Workspace-scope instruction notes"
+						),
+					],
+				};
+			},
+		});
+		server.registerResource(
+			"instruction-notes-scope",
+			instructionsScopeTemplate,
+			{
+				title: "Instruction Notes (Scope)",
+				description: "Instruction notes for user/workspace scopes",
+				mimeType: "application/json",
+			},
+			async (uri, variables) => {
+				const rawScope = this.getFirstValue(uri.searchParams.get("scope") ?? variables.scope);
+				const scope = this.parseScopeParam(rawScope);
+				if (!scope) {
+					throw new Error("Missing or invalid scope.");
+				}
+				if (scope === TodoScope.currentFile) {
+					throw new Error("File scope requires a path. Use todo://instructions?path=...");
+				}
+				const data = this.todoService.getInstructionNotesForScope(scope);
+				return this.toResourceResult(uri.toString(), data);
+			}
+		);
+
+		const instructionsFileTemplate = new sdk.resourceTemplate("todo://instructions?path={path}", {
 			list: async () => {
 				return { resources: this.buildFileResources("todo://instructions") };
 			},
 		});
 		server.registerResource(
 			"instruction-notes",
-			instructionsTemplate,
+			instructionsFileTemplate,
 			{
-				title: "Instruction Notes",
+				title: "Instruction Notes (File)",
 				description: "Instruction notes for a file with scope precedence",
 				mimeType: "application/json",
 			},
 			async (uri, variables) => {
-			const rawPath = uri.searchParams.get("path") ?? variables.path;
+				const rawPath = uri.searchParams.get("path") ?? variables.path;
 				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
 				if (!filePath) {
 					throw new Error("Missing file path.");
 				}
 				const data = this.todoService.getInstructionNotesForFile(filePath);
 				return this.toResourceResult(uri.toString(), data);
+			}
+		);
+
+		const plansScopeTemplate = new sdk.resourceTemplate("todo://plans?scope={scope}", {
+			list: async () => {
+				return {
+					resources: [
+						this.buildScopeResource(
+							"todo://plans?scope=user",
+							"User Plans",
+							"Plan headers in user scope"
+						),
+						this.buildScopeResource(
+							"todo://plans?scope=workspace",
+							"Workspace Plans",
+							"Plan headers in workspace scope"
+						),
+					],
+				};
+			},
+		});
+		server.registerResource(
+			"plan-headers",
+			plansScopeTemplate,
+			{
+				title: "Plan Headers (Scope)",
+				description: "Plan headers declared with @plan <slug> <title>",
+				mimeType: "application/json",
+			},
+			async (uri, variables) => {
+				const rawScope = this.getFirstValue(uri.searchParams.get("scope") ?? variables.scope);
+				const scope = this.parseScopeParam(rawScope);
+				if (!scope) {
+					throw new Error("Missing or invalid scope.");
+				}
+				if (scope === TodoScope.currentFile) {
+					throw new Error("File scope requires a path. Use todo://plans?path=...");
+				}
+				const data = this.todoService.getPlanHeadersForScope(scope);
+				return this.toResourceResult(uri.toString(), data);
+			}
+		);
+
+		const plansFileTemplate = new sdk.resourceTemplate("todo://plans?path={path}", {
+			list: async () => {
+				return { resources: this.buildFileResources("todo://plans") };
+			},
+		});
+		server.registerResource(
+			"plan-headers-file",
+			plansFileTemplate,
+			{
+				title: "Plan Headers (File)",
+				description: "Plan headers in file scope",
+				mimeType: "application/json",
+			},
+			async (uri, variables) => {
+				const rawPath = uri.searchParams.get("path") ?? variables.path;
+				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
+				if (!filePath) {
+					throw new Error("Missing file path.");
+				}
+				const data = this.todoService.getPlanHeadersForScope(TodoScope.currentFile, filePath);
+				return this.toResourceResult(uri.toString(), data);
+			}
+		);
+
+		const planItemsScopeTemplate = new sdk.resourceTemplate(
+			"todo://plan?scope={scope}&slug={slug}",
+			{
+				list: undefined,
+			}
+		);
+		server.registerResource(
+			"plan-items",
+			planItemsScopeTemplate,
+			{
+				title: "Plan Items (Scope)",
+				description: "Plan items grouped by @plan:<slug> prefix",
+				mimeType: "application/json",
+			},
+			async (uri, variables) => {
+				const slugRaw = uri.searchParams.get("slug") ?? variables.slug;
+				const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw;
+				if (!slug) {
+					throw new Error("Missing plan slug.");
+				}
+				const rawScope = this.getFirstValue(uri.searchParams.get("scope") ?? variables.scope);
+				const scope = this.parseScopeParam(rawScope);
+				if (!scope) {
+					throw new Error("Missing or invalid scope.");
+				}
+				if (scope === TodoScope.currentFile) {
+					throw new Error("File scope requires a path. Use todo://plan?path=...&slug=...");
+				}
+				const normalizedSlug = slug.trim().toLowerCase();
+
+				const headers = this.todoService
+					.getPlanHeadersForScope(scope)
+					.filter((header) => header.slug === normalizedSlug);
+				const items = this.todoService.getPlanItemsForScope(scope, slug);
+				return this.toResourceResult(uri.toString(), {
+					slug: normalizedSlug,
+					scope: this.formatScope(scope),
+					headers,
+					items,
+				});
+			}
+		);
+
+		const planItemsFileTemplate = new sdk.resourceTemplate("todo://plan?path={path}&slug={slug}", {
+			list: undefined,
+		});
+		server.registerResource(
+			"plan-items-file",
+			planItemsFileTemplate,
+			{
+				title: "Plan Items (File)",
+				description: "Plan items grouped by @plan:<slug> prefix for a file",
+				mimeType: "application/json",
+			},
+			async (uri, variables) => {
+				const slugRaw = uri.searchParams.get("slug") ?? variables.slug;
+				const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw;
+				if (!slug) {
+					throw new Error("Missing plan slug.");
+				}
+				const rawPath = uri.searchParams.get("path") ?? variables.path;
+				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
+				if (!filePath) {
+					throw new Error("Missing file path.");
+				}
+				const normalizedSlug = slug.trim().toLowerCase();
+
+				const headers = this.todoService
+					.getPlanHeadersForScope(TodoScope.currentFile, filePath)
+					.filter((header) => header.slug === normalizedSlug);
+				const items = this.todoService.getPlanItemsForScope(
+					TodoScope.currentFile,
+					slug,
+					filePath
+				);
+				return this.toResourceResult(uri.toString(), {
+					slug: normalizedSlug,
+					scope: "file",
+					filePath,
+					headers,
+					items,
+				});
 			}
 		);
 	}
@@ -579,12 +768,22 @@ export default class McpServerHost implements vscode.Disposable {
 
 	}
 
+	private buildScopeResource(uri: string, name: string, description: string): Resource {
+		return {
+			uri,
+			name,
+			description,
+			mimeType: "application/json",
+		};
+	}
+
 	private buildFileResources(prefix: string): Resource[] {
 		try {
 			const files = this.todoService.listFiles();
+			const separator = prefix.includes("?") ? "&" : "?";
 			return files.map((entry) => {
 				const encoded = encodeURIComponent(entry.filePath);
-				const uri = `${prefix}?path=${encoded}`;
+				const uri = `${prefix}${separator}path=${encoded}`;
 				return {
 					uri,
 					name: path.basename(entry.filePath),
@@ -595,6 +794,35 @@ export default class McpServerHost implements vscode.Disposable {
 		} catch (error) {
 			return [];
 		}
+	}
+
+	private getFirstValue(value: string | string[] | null | undefined): string | undefined {
+		if (!value) {
+			return undefined;
+		}
+		return Array.isArray(value) ? value[0] : value;
+	}
+
+	private parseScopeParam(rawScope: string | null | undefined): TodoScope | null {
+		if (!rawScope) {
+			return null;
+		}
+		const normalized = rawScope.trim().toLowerCase();
+		switch (normalized) {
+			case "user":
+				return TodoScope.user;
+			case "workspace":
+				return TodoScope.workspace;
+			case "file":
+			case "currentfile":
+				return TodoScope.currentFile;
+			default:
+				return null;
+		}
+	}
+
+	private formatScope(scope: TodoScope): "user" | "workspace" | "file" {
+		return scope === TodoScope.currentFile ? "file" : scope;
 	}
 
 	private toResourceResult(uri: string, data: unknown) {

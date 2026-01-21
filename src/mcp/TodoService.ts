@@ -61,7 +61,13 @@ export type ScopedTodo = Todo & {
 	filePath?: string;
 };
 
+export type PlanHeader = ScopedTodo & {
+	slug: string;
+	title: string;
+};
+
 const INSTRUCTION_PREFIX = "@instr";
+const PLAN_ITEM_PREFIX = "@plan:";
 
 export default class TodoService {
 	private readOnly = true;
@@ -182,6 +188,77 @@ export default class TodoService {
 		}
 
 		return notes;
+	}
+
+	public getInstructionNotesForScope(
+		scope: TodoScope,
+		filePath?: string
+	): ScopedTodo[] {
+		this.assertScopeAllowed(scope);
+		this.assertWorkspaceAvailable(scope);
+
+		const { todos, filePath: resolvedPath } = this.getTodosForScope(scope, filePath);
+		const filtered = this.filterInstructionNotes(todos);
+		const mappedScope = this.mapScopeToAllowed(scope);
+
+		return filtered.map((todo) => ({
+			...todo,
+			scope: mappedScope,
+			filePath: scope === TodoScope.currentFile ? resolvedPath : undefined,
+		}));
+	}
+
+	public getPlanHeadersForScope(scope: TodoScope, filePath?: string): PlanHeader[] {
+		this.assertScopeAllowed(scope);
+		this.assertWorkspaceAvailable(scope);
+
+		const { todos, filePath: resolvedPath } = this.getTodosForScope(scope, filePath);
+		const mappedScope = this.mapScopeToAllowed(scope);
+		const headers: PlanHeader[] = [];
+
+		for (const todo of todos) {
+			if (!todo.isNote) {
+				continue;
+			}
+			const parsed = this.parsePlanHeader(todo.text);
+			if (!parsed) {
+				continue;
+			}
+			headers.push({
+				...todo,
+				scope: mappedScope,
+				filePath: scope === TodoScope.currentFile ? resolvedPath : undefined,
+				slug: parsed.slug,
+				title: parsed.title,
+			});
+		}
+
+		return headers;
+	}
+
+	public getPlanItemsForScope(
+		scope: TodoScope,
+		slug: string,
+		filePath?: string
+	): ScopedTodo[] {
+		this.assertScopeAllowed(scope);
+		this.assertWorkspaceAvailable(scope);
+
+		const normalizedSlug = this.normalizePlanSlug(slug);
+		if (!normalizedSlug) {
+			throw new Error("Missing plan slug.");
+		}
+
+		const { todos, filePath: resolvedPath } = this.getTodosForScope(scope, filePath);
+		const prefix = `${PLAN_ITEM_PREFIX}${normalizedSlug}`;
+		const items = todos.filter((todo) => this.matchesPrefix(todo.text, prefix));
+		const mappedScope = this.mapScopeToAllowed(scope);
+
+		return items.map((todo) => ({
+			...todo,
+			scope: mappedScope,
+			filePath: scope === TodoScope.currentFile ? resolvedPath : undefined,
+		}));
 	}
 
 	public async addTodo(
@@ -590,6 +667,25 @@ export default class TodoService {
 		}
 		const nextChar = lower.charAt(INSTRUCTION_PREFIX.length);
 		return nextChar === ":" || /\s/.test(nextChar);
+	}
+
+	private normalizePlanSlug(slug: string): string {
+		return slug.trim().toLowerCase();
+	}
+
+	private parsePlanHeader(text: string): { slug: string; title: string } | null {
+		const trimmed = text.trimStart();
+		const firstLine = trimmed.split(/\r?\n/, 1)[0] ?? "";
+		const match = firstLine.match(/^@plan\s+([^\s]+)(?:\s+(.*))?$/i);
+		if (!match) {
+			return null;
+		}
+		const slug = this.normalizePlanSlug(match[1] ?? "");
+		if (!slug) {
+			return null;
+		}
+		const title = (match[2] ?? "").trim();
+		return { slug, title };
 	}
 
 	private matchesPrefix(text: string, prefix: string): boolean {
