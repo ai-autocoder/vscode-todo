@@ -161,8 +161,7 @@ export default class McpServerHost implements vscode.Disposable {
 				this.server?.listen(config.port, this.host, () => resolve());
 			});
 		} catch (error) {
-			McpLogChannel.log(`[MCP] Failed to start server: ${String(error)}`);
-			vscode.window.showErrorMessage("Failed to start MCP server. See output for details.");
+			this.notifyServerStartFailed(error);
 			this.server = null;
 			return;
 		}
@@ -170,7 +169,7 @@ export default class McpServerHost implements vscode.Disposable {
 		const address = this.server.address();
 		const port = typeof address === "object" && address ? address.port : config.port;
 		this.config = config;
-		McpLogChannel.log(`[MCP] Server started at http://${this.host}:${port}/mcp`);
+		this.notifyServerStarted(port);
 	}
 
 	private async stopServer(): Promise<void> {
@@ -191,7 +190,7 @@ export default class McpServerHost implements vscode.Disposable {
 			this.server?.close(() => resolve());
 		});
 		this.server = null;
-		McpLogChannel.log("[MCP] Server stopped.");
+		this.notifyServerStopped();
 	}
 
 	private async handleRequest(
@@ -989,6 +988,58 @@ export default class McpServerHost implements vscode.Disposable {
 			return undefined;
 		}
 		return JSON.parse(raw);
+	}
+
+	private notifyServerStarted(port: number): void {
+		const message = `MCP server started at http://${this.host}:${port}/mcp`;
+		McpLogChannel.log(`[MCP] ${message}`);
+		void vscode.window.showInformationMessage(message);
+	}
+
+	private notifyServerStopped(): void {
+		const message = "MCP server stopped.";
+		McpLogChannel.log(`[MCP] ${message}`);
+		void vscode.window.showInformationMessage(message);
+	}
+
+	private notifyServerStartFailed(error: unknown): void {
+		const details = this.formatErrorDetails(error);
+		const message = `Failed to start MCP server: ${details}. See output for more details.`;
+		McpLogChannel.log(`[MCP] Failed to start server: ${details}`);
+		if (error instanceof Error && error.stack) {
+			McpLogChannel.log(error.stack);
+		}
+		const viewOutput = "View Output";
+		void vscode.window.showErrorMessage(message, viewOutput).then((selection) => {
+			if (selection === viewOutput) {
+				McpLogChannel.getChannel().show(true);
+			}
+		});
+	}
+
+	private formatErrorDetails(error: unknown): string {
+		if (error instanceof Error) {
+			const message = error.message?.trim();
+			if (message) {
+				const errnoError = error as NodeJS.ErrnoException;
+				if (errnoError.code && !message.includes(errnoError.code)) {
+					return `${message} (${errnoError.code})`;
+				}
+				return message;
+			}
+		}
+		if (typeof error === "string") {
+			return error;
+		}
+		if (typeof error === "object" && error) {
+			try {
+				return JSON.stringify(error);
+			} catch {
+				// fall through to best-effort string conversion
+			}
+		}
+		const fallback = String(error);
+		return fallback && fallback !== "[object Object]" ? fallback : "Unknown error";
 	}
 
 	private isNodeVersionSupported(): boolean {
