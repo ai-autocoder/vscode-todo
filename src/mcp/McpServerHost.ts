@@ -674,6 +674,79 @@ export default class McpServerHost implements vscode.Disposable {
 		);
 
 		server.registerTool(
+			"todo.addInstruction",
+			{
+				description: "Add an instruction note with the @instr prefix.",
+				inputSchema: {
+					scope: scopeSchema,
+					text: z.string(),
+					isMarkdown: z.boolean().optional(),
+					filePath: z.string().optional(),
+				},
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const { scope, text, ...options } = args;
+					const result = await this.todoService.addInstruction(scope as TodoScope, text, options);
+					return this.toolResult(result);
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo.addPlanHeader",
+			{
+				description: "Add a plan header note using @plan <slug> <title>.",
+				inputSchema: {
+					scope: scopeSchema,
+					slug: z.string(),
+					title: z.string().optional(),
+					isMarkdown: z.boolean().optional(),
+					filePath: z.string().optional(),
+				},
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const { scope, slug, title, ...options } = args;
+					const result = await this.todoService.addPlanHeader(
+						scope as TodoScope,
+						slug,
+						title,
+						options
+					);
+					return this.toolResult(result);
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo.addPlanItem",
+			{
+				description: "Add a plan item using the @plan:<slug> prefix.",
+				inputSchema: {
+					scope: scopeSchema,
+					slug: z.string(),
+					text: z.string(),
+					isNote: z.boolean().optional(),
+					isMarkdown: z.boolean().optional(),
+					filePath: z.string().optional(),
+				},
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const { scope, slug, text, ...options } = args;
+					const result = await this.todoService.addPlanItem(
+						scope as TodoScope,
+						slug,
+						text,
+						options
+					);
+					return this.toolResult(result);
+				});
+			}
+		);
+
+		server.registerTool(
 			"todo.update",
 			{
 				description: "Update a todo or note by id.",

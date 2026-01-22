@@ -261,6 +261,35 @@ export default class TodoService {
 		}));
 	}
 
+	public async addInstruction(
+		scope: TodoScope,
+		text: string,
+		options: { isMarkdown?: boolean; filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo } | null> {
+		const content = this.formatInstructionText(text);
+		return this.addTodo(scope, content, { ...options, isNote: true });
+	}
+
+	public async addPlanHeader(
+		scope: TodoScope,
+		slug: string,
+		title?: string,
+		options: { isMarkdown?: boolean; filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo } | null> {
+		const content = this.formatPlanHeader(slug, title);
+		return this.addTodo(scope, content, { ...options, isNote: true });
+	}
+
+	public async addPlanItem(
+		scope: TodoScope,
+		slug: string,
+		text: string,
+		options: { isNote?: boolean; isMarkdown?: boolean; filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo } | null> {
+		const content = this.formatPlanItem(slug, text);
+		return this.addTodo(scope, content, options);
+	}
+
 	public async addTodo(
 		scope: TodoScope,
 		text: string,
@@ -671,6 +700,45 @@ export default class TodoService {
 
 	private normalizePlanSlug(slug: string): string {
 		return slug.trim().toLowerCase();
+	}
+
+	private formatInstructionText(text: string): string {
+		const trimmed = text.trimStart();
+		if (!trimmed) {
+			throw new Error("Instruction text is required.");
+		}
+		if (this.matchesInstructionPrefix(trimmed)) {
+			return trimmed;
+		}
+		return `${INSTRUCTION_PREFIX} ${trimmed}`;
+	}
+
+	private formatPlanHeader(slug: string, title?: string): string {
+		const normalizedSlug = this.normalizePlanSlug(slug);
+		if (!normalizedSlug) {
+			throw new Error("Plan slug is required.");
+		}
+		const trimmedTitle = (title ?? "").trim();
+		if (trimmedTitle) {
+			return `@plan ${normalizedSlug} ${trimmedTitle}`;
+		}
+		return `@plan ${normalizedSlug}`;
+	}
+
+	private formatPlanItem(slug: string, text: string): string {
+		const normalizedSlug = this.normalizePlanSlug(slug);
+		if (!normalizedSlug) {
+			throw new Error("Plan slug is required.");
+		}
+		const trimmed = text.trimStart();
+		if (!trimmed) {
+			throw new Error("Plan item text is required.");
+		}
+		const prefix = `${PLAN_ITEM_PREFIX}${normalizedSlug}`;
+		if (this.matchesPrefix(trimmed, prefix)) {
+			return trimmed;
+		}
+		return `${prefix} ${trimmed}`;
 	}
 
 	private parsePlanHeader(text: string): { slug: string; title: string } | null {
