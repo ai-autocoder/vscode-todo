@@ -4,6 +4,7 @@ import {
 	Message,
 	MessageActionsToWebview,
 	GitHubSyncInfo,
+	McpStatus,
 	messagesFromWebview,
 	UserSyncMode,
 	WorkspaceSyncMode,
@@ -83,6 +84,14 @@ export class TodoService {
 
 	private _isSyncingSource = new BehaviorSubject<boolean>(false);
 	private _nowSource = new BehaviorSubject<number>(Date.now());
+	private _mcpStatusSource = new BehaviorSubject<McpStatus>({
+		enabled: false,
+		running: false,
+		trusted: true,
+		readOnly: true,
+		transport: "streamableHttp",
+		port: null,
+	});
 
 	private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
 		[TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
@@ -114,6 +123,7 @@ export class TodoService {
 	gitHubSyncInfo = this._gitHubSyncInfoSource.asObservable();
 	isSyncing = this._isSyncingSource.asObservable();
 	now = this._nowSource.asObservable();
+	mcpStatus = this._mcpStatusSource.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
 	workspaceLastAction = new BehaviorSubject<string>("");
 	currentFileLastAction = new BehaviorSubject<string>("");
@@ -203,6 +213,9 @@ export class TodoService {
 			case MessageActionsToWebview.updateSyncStatus:
 				this.handleUpdateSyncStatus(data.payload);
 				break;
+			case MessageActionsToWebview.updateMcpStatus:
+				this.handleUpdateMcpStatus(data.payload);
+				break;
 			default:
 				console.warn("Unhandled message type:", data.type);
 		}
@@ -278,6 +291,10 @@ export class TodoService {
 
 	private handleUpdateSyncStatus(payload: { isSyncing: boolean }) {
 		this._isSyncingSource.next(payload.isSyncing);
+	}
+
+	private handleUpdateMcpStatus(payload: McpStatus) {
+		this._mcpStatusSource.next(payload);
 	}
 
 	get userTodos(): Todo[] {
@@ -450,5 +467,13 @@ export class TodoService {
 
 	syncNow() {
 		vscode.postMessage(messagesFromWebview.syncNow());
+	}
+
+	startMcpServer() {
+		vscode.postMessage(messagesFromWebview.startMcpServer());
+	}
+
+	stopMcpServer() {
+		vscode.postMessage(messagesFromWebview.stopMcpServer());
 	}
 }

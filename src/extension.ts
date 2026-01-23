@@ -88,6 +88,12 @@ export async function activate(context: ExtensionContext) {
 	});
 	context.subscriptions.push(syncStatusListener);
 
+	const mcpStatusListener = mcpServerHost.onDidChangeStatus((status) => {
+		TodoViewProvider.currentProvider?.updateMcpStatus(status);
+		HelloWorldPanel.currentPanel?.updateMcpStatus(status);
+	});
+	context.subscriptions.push(mcpStatusListener);
+
 	// Listen for data downloads and reload store
 	const dataDownloadListener = syncManager.onDataDownloaded(async (event) => {
 		await reloadScopeData(event.scope, store, storageSyncManager, context);
@@ -160,7 +166,7 @@ export async function activate(context: ExtensionContext) {
 
 	const commands = [
 		vscode.commands.registerCommand("vsc-todo.openTodo", () =>
-			HelloWorldPanel.render(context, store, visibilityCoordinator)
+			HelloWorldPanel.render(context, store, visibilityCoordinator, mcpServerHost)
 		),
 		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () =>
 			exportCommand(context, ExportFormats.JSON, store)
@@ -275,7 +281,13 @@ export async function activate(context: ExtensionContext) {
 		}
 	});
 
-	const provider = new TodoViewProvider(context.extensionUri, store, context, visibilityCoordinator);
+	const provider = new TodoViewProvider(
+		context.extensionUri,
+		store,
+		context,
+		visibilityCoordinator,
+		mcpServerHost
+	);
 
 	context.subscriptions.push(
 		...commands,

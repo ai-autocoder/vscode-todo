@@ -13,6 +13,7 @@ import { SyncManager } from "../sync/SyncManager";
 import { EnhancedStore } from "@reduxjs/toolkit";
 import { StoreState } from "../todo/todoTypes";
 import * as path from "node:path";
+import { McpStatus } from "./mcpStatus";
 
 type McpConfig = {
 	enabled: boolean;
@@ -43,6 +44,11 @@ export default class McpServerHost implements vscode.Disposable {
 	private sdk: McpSdk | null = null;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly todoService: TodoService;
+	private readonly statusEmitter = new vscode.EventEmitter<McpStatus>();
+	private status: McpStatus;
+	private lastPort: number | null = null;
+
+	public readonly onDidChangeStatus = this.statusEmitter.event;
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -51,6 +57,7 @@ export default class McpServerHost implements vscode.Disposable {
 		syncManager: SyncManager
 	) {
 		this.todoService = new TodoService(context, store, storageSyncManager, syncManager);
+		this.status = this.buildStatus(this.readConfig(), false, null);
 	}
 
 	public initialize(): void {
@@ -75,11 +82,17 @@ export default class McpServerHost implements vscode.Disposable {
 		await this.stopServer();
 	}
 
+	public getStatus(): McpStatus {
+		this.refreshStatus();
+		return this.status;
+	}
+
 	public dispose(): void {
 		void this.stopServer();
 		while (this.disposables.length > 0) {
 			this.disposables.pop()?.dispose();
 		}
+		this.statusEmitter.dispose();
 	}
 
 	private async applyConfig(): Promise<void> {
@@ -90,12 +103,14 @@ export default class McpServerHost implements vscode.Disposable {
 		if (!config.enabled || !vscode.workspace.isTrusted) {
 			this.config = config;
 			await this.stopServer();
+			this.refreshStatus();
 			return;
 		}
 
 		if (!this.server) {
 			this.config = config;
 			await this.startWithConfig(config);
+			this.refreshStatus();
 			return;
 		}
 
@@ -108,10 +123,12 @@ export default class McpServerHost implements vscode.Disposable {
 			this.config = config;
 			await this.stopServer();
 			await this.startWithConfig(config);
+			this.refreshStatus();
 			return;
 		}
 
 		this.config = config;
+		this.refreshStatus();
 	}
 
 	private readConfig(): McpConfig {
@@ -138,6 +155,7 @@ export default class McpServerHost implements vscode.Disposable {
 		if (this.server) {
 			return;
 		}
+		this.lastPort = null;
 
 		if (!this.isNodeVersionSupported()) {
 			vscode.window.showWarningMessage("MCP server requires Node.js 18+.");
@@ -168,6 +186,7 @@ export default class McpServerHost implements vscode.Disposable {
 
 		const address = this.server.address();
 		const port = typeof address === "object" && address ? address.port : config.port;
+		this.lastPort = typeof port === "number" ? port : null;
 		this.config = config;
 		this.notifyServerStarted(port);
 	}
@@ -190,7 +209,9 @@ export default class McpServerHost implements vscode.Disposable {
 			this.server?.close(() => resolve());
 		});
 		this.server = null;
+		this.lastPort = null;
 		this.notifyServerStopped();
+		this.refreshStatus();
 	}
 
 	private async handleRequest(
@@ -1121,5 +1142,38 @@ export default class McpServerHost implements vscode.Disposable {
 	private isNodeVersionSupported(): boolean {
 		const [major] = process.versions.node.split(".");
 		return Number(major) >= 18;
+	}
+
+	private buildStatus(config: McpConfig, running: boolean, port: number | null): McpStatus {
+		return {
+			enabled: config.enabled,
+			running,
+			trusted: vscode.workspace.isTrusted,
+			readOnly: config.readOnly,
+			transport: config.transport,
+			port,
+		};
+	}
+
+	private refreshStatus(): void {
+		const config = this.readConfig();
+		const running = Boolean(this.server);
+		const port = running ? this.lastPort ?? config.port : null;
+		const next = this.buildStatus(config, running, port);
+		if (!this.isStatusEqual(this.status, next)) {
+			this.status = next;
+			this.statusEmitter.fire(this.status);
+		}
+	}
+
+	private isStatusEqual(left: McpStatus, right: McpStatus): boolean {
+		return (
+			left.enabled === right.enabled &&
+			left.running === right.running &&
+			left.trusted === right.trusted &&
+			left.readOnly === right.readOnly &&
+			left.transport === right.transport &&
+			left.port === right.port
+		);
 	}
 }

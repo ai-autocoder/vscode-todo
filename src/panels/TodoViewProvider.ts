@@ -7,11 +7,13 @@ import { getUri } from "../utilities/getUri";
 import { getConfig } from "../utilities/config";
 import { getGistId } from "../utilities/syncConfig";
 import { messagesToWebview, GitHubSyncInfo } from "./message";
+import type { McpStatus } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
 import { deleteCompletedTodos } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 import { getGitHubSyncInfo } from "../utilities/syncInfo";
+import McpServerHost from "../mcp/McpServerHost";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
@@ -23,7 +25,8 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		private readonly _extensionUri: vscode.Uri,
 		private readonly _store: EnhancedStore,
 		private readonly _context: vscode.ExtensionContext,
-		visibilityCoordinator?: WebviewVisibilityCoordinator
+		visibilityCoordinator?: WebviewVisibilityCoordinator,
+		private readonly _mcpServerHost?: McpServerHost
 	) {
 		TodoViewProvider.currentProvider = this;
 		this._visibilityCoordinator = visibilityCoordinator;
@@ -89,6 +92,7 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 			this._view.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
 			await this.postGitHubStatus();
 			this.postGitHubSyncInfo();
+			this.postMcpStatus();
 		}
 	}
 
@@ -120,6 +124,12 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public updateSyncStatus(isSyncing: boolean) {
 		if (this._view) {
 			this._view.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
+		}
+	}
+
+	public updateMcpStatus(status: McpStatus) {
+		if (this._view) {
+			this._view.webview.postMessage(messagesToWebview.updateMcpStatus(status));
 		}
 	}
 
@@ -193,5 +203,13 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 
 		const info = getGitHubSyncInfo(this._context);
 		this._view.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
+	}
+
+	private postMcpStatus(): void {
+		if (!this._view || !this._mcpServerHost) {
+			return;
+		}
+
+		this.updateMcpStatus(this._mcpServerHost.getStatus());
 	}
 }

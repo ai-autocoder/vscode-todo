@@ -27,6 +27,7 @@ import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { getGistId } from "../utilities/syncConfig";
 import { Message, MessageActionsFromWebview, messagesToWebview, GitHubSyncInfo } from "./message";
+import type { McpStatus } from "./message";
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
@@ -34,6 +35,7 @@ import { deleteCompletedTodos, ensureFilesDataPaths, getWorkspacePath, resolveFi
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 import { getGitHubSyncInfo } from "../utilities/syncInfo";
+import McpServerHost from "../mcp/McpServerHost";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -52,18 +54,21 @@ export class HelloWorldPanel {
 	private _store: EnhancedStore;
 	private _context: ExtensionContext;
 	private _visibilityCoordinator: WebviewVisibilityCoordinator | undefined;
+	private _mcpServerHost: McpServerHost | undefined;
 	private _isVisible: boolean = false;
 
 	private constructor(
 		panel: WebviewPanel,
 		context: ExtensionContext,
 		store: EnhancedStore,
-		visibilityCoordinator?: WebviewVisibilityCoordinator
+		visibilityCoordinator?: WebviewVisibilityCoordinator,
+		mcpServerHost?: McpServerHost
 	) {
 		this._panel = panel;
 		this._store = store;
 		this._context = context;
 		this._visibilityCoordinator = visibilityCoordinator;
+		this._mcpServerHost = mcpServerHost;
 		const extensionUri = context.extensionUri;
 
 		// Track initial visibility
@@ -123,7 +128,8 @@ export class HelloWorldPanel {
 	public static render(
 		context: ExtensionContext,
 		store: EnhancedStore,
-		visibilityCoordinator?: WebviewVisibilityCoordinator
+		visibilityCoordinator?: WebviewVisibilityCoordinator,
+		mcpServerHost?: McpServerHost
 	) {
 		const extensionUri = context.extensionUri;
 		if (HelloWorldPanel.currentPanel) {
@@ -159,7 +165,13 @@ export class HelloWorldPanel {
 				}
 			);
 			deleteCompletedTodos(store);
-			HelloWorldPanel.currentPanel = new HelloWorldPanel(panel, context, store, visibilityCoordinator);
+			HelloWorldPanel.currentPanel = new HelloWorldPanel(
+				panel,
+				context,
+				store,
+				visibilityCoordinator,
+				mcpServerHost
+			);
 		}
 	}
 
@@ -172,6 +184,7 @@ export class HelloWorldPanel {
 		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
 		await this.postGitHubStatus();
 		this.postGitHubSyncInfo();
+		this.postMcpStatus();
 	}
 
 	/**
@@ -202,6 +215,10 @@ export class HelloWorldPanel {
 
 	public updateSyncStatus(isSyncing: boolean) {
 		this._panel.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
+	}
+
+	public updateMcpStatus(status: McpStatus) {
+		this._panel.webview.postMessage(messagesToWebview.updateMcpStatus(status));
 	}
 
 	public dispose() {
@@ -295,6 +312,14 @@ export class HelloWorldPanel {
 	private postGitHubSyncInfo(): void {
 		const info = getGitHubSyncInfo(this._context);
 		this._panel.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
+	}
+
+	private postMcpStatus(): void {
+		if (!this._mcpServerHost) {
+			return;
+		}
+
+		this.updateMcpStatus(this._mcpServerHost.getStatus());
 	}
 
 	public static setupWebviewMessageHandler(
@@ -502,6 +527,14 @@ export class HelloWorldPanel {
 					}
 					case MessageActionsFromWebview.syncNow: {
 						commands.executeCommand("vsc-todo.syncNow");
+						break;
+					}
+					case MessageActionsFromWebview.startMcpServer: {
+						commands.executeCommand("vsc-todo.startMcpServer");
+						break;
+					}
+					case MessageActionsFromWebview.stopMcpServer: {
+						commands.executeCommand("vsc-todo.stopMcpServer");
 						break;
 					}
 					default:
