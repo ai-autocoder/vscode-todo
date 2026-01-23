@@ -327,6 +327,7 @@ export default class McpServerHost implements vscode.Disposable {
 
 		this.registerResources(server, sdk);
 		this.registerTools(server);
+		this.registerPrompts(server);
 
 		return server;
 	}
@@ -653,6 +654,41 @@ export default class McpServerHost implements vscode.Disposable {
 		);
 
 		server.registerTool(
+			"todo.listPlans",
+			{
+				description:
+					"List plan headers (and optionally items). Call this before implementing a plan.",
+				inputSchema: {
+					scopes: z.array(scopeSchema).optional(),
+					scope: scopeSchema.optional(),
+					filePath: z.string().optional(),
+					slug: z.string().optional(),
+					includeItems: z.boolean().optional(),
+				},
+				annotations: {
+					readOnlyHint: true,
+				},
+			},
+			async (args) => {
+				return this.safeToolCall(() => {
+					const scopes =
+						args.scopes && args.scopes.length > 0
+							? args.scopes
+							: args.scope
+								? [args.scope]
+								: undefined;
+					const data = this.todoService.listPlans({
+						scopes: scopes as TodoScope[] | undefined,
+						filePath: args.filePath,
+						slug: args.slug,
+						includeItems: args.includeItems,
+					});
+					return this.toolResult(data);
+				});
+			}
+		);
+
+		server.registerTool(
 			"todo.add",
 			{
 				description: "Add a todo or note to a scope.",
@@ -838,6 +874,46 @@ export default class McpServerHost implements vscode.Disposable {
 			}
 		);
 
+	}
+
+	private registerPrompts(server: McpServer): void {
+		server.registerPrompt(
+			"implement_plan",
+			{
+				title: "Implement Plan",
+				description:
+					"Guide for implementing a plan with the VS Code Todo MCP tools.",
+				argsSchema: {
+					planName: z.string().optional(),
+				},
+			},
+			(args) => {
+				const planName = (args.planName ?? "").trim();
+				const planHint = planName
+					? `Plan name provided: "${planName}".`
+					: "No plan name was provided.";
+				const text = [
+					"You are implementing a plan using the VS Code Todo MCP server.",
+					planHint,
+					"Call todo.listPlans first to locate the plan header and items before making code changes.",
+					"If a plan name is provided, pass it as slug first; if no match, list all and match by title.",
+					"If multiple plans match, ask for clarification before proceeding.",
+					"After completing steps, update the items using todo.update or todo.complete.",
+				].join(" ");
+
+				return {
+					messages: [
+						{
+							role: "user",
+							content: {
+								type: "text",
+								text,
+							},
+						},
+					],
+				};
+			}
+		);
 	}
 
 	private buildScopeResource(uri: string, name: string, description: string): Resource {

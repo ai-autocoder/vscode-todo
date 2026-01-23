@@ -66,6 +66,14 @@ export type PlanHeader = ScopedTodo & {
 	title: string;
 };
 
+export type PlanEntry = {
+	slug: string;
+	scope: "user" | "workspace" | "file";
+	filePath?: string;
+	headers: PlanHeader[];
+	items?: ScopedTodo[];
+};
+
 const INSTRUCTION_PREFIX = "@instr";
 const PLAN_ITEM_PREFIX = "@plan:";
 
@@ -259,6 +267,39 @@ export default class TodoService {
 			scope: mappedScope,
 			filePath: scope === TodoScope.currentFile ? resolvedPath : undefined,
 		}));
+	}
+
+	public listPlans(options: {
+		scopes?: TodoScope[];
+		filePath?: string;
+		slug?: string;
+		includeItems?: boolean;
+	} = {}): { plans: PlanEntry[] } {
+		const hasExplicitScopes = (options.scopes?.length ?? 0) > 0;
+		const requestedScopes =
+			options.scopes && options.scopes.length > 0
+				? options.scopes
+				: [TodoScope.user, TodoScope.workspace, TodoScope.currentFile];
+		const normalizedSlug =
+			options.slug !== undefined ? this.normalizePlanSlug(options.slug) : undefined;
+
+		if (options.slug !== undefined && !normalizedSlug) {
+			throw new Error("Plan slug is required.");
+		}
+
+		const plans: PlanEntry[] = [];
+		for (const scope of requestedScopes) {
+			plans.push(
+				...this.listPlansForScope(scope, {
+					filePath: options.filePath,
+					normalizedSlug,
+					includeItems: options.includeItems ?? false,
+					allowMissingContext: !hasExplicitScopes,
+				})
+			);
+		}
+
+		return { plans };
 	}
 
 	public async addInstruction(
@@ -679,6 +720,93 @@ export default class TodoService {
 		}
 
 		return filtered;
+	}
+
+	private listPlansForScope(
+		scope: TodoScope,
+		options: {
+			filePath?: string;
+			normalizedSlug?: string;
+			includeItems: boolean;
+			allowMissingContext: boolean;
+		}
+	): PlanEntry[] {
+		if (!this.isScopeAllowed(scope)) {
+			if (options.allowMissingContext) {
+				return [];
+			}
+			this.assertScopeAllowed(scope);
+		}
+
+		if (scope !== TodoScope.user && !getWorkspacePath()) {
+			if (options.allowMissingContext) {
+				return [];
+			}
+			this.assertWorkspaceAvailable(scope);
+		}
+
+		let resolvedPath: string | undefined;
+		if (scope === TodoScope.currentFile) {
+			if (options.allowMissingContext) {
+				try {
+					resolvedPath = this.resolveFilePath(options.filePath);
+				} catch {
+					return [];
+				}
+			} else {
+				resolvedPath = this.resolveFilePath(options.filePath);
+			}
+		}
+
+		const headers = this.getPlanHeadersForScope(scope, resolvedPath);
+		const filteredHeaders = options.normalizedSlug
+			? headers.filter((header) => header.slug === options.normalizedSlug)
+			: headers;
+		const grouped = this.groupPlanHeadersBySlug(filteredHeaders);
+		const entries: PlanEntry[] = [];
+		const mappedScope = this.mapScopeToAllowed(scope);
+		const filePath = scope === TodoScope.currentFile ? resolvedPath : undefined;
+
+		for (const [slug, slugHeaders] of grouped.entries()) {
+			const entry: PlanEntry = {
+				slug,
+				scope: mappedScope,
+				filePath,
+				headers: slugHeaders,
+			};
+			if (options.includeItems) {
+				entry.items = this.getPlanItemsForScope(scope, slug, resolvedPath);
+			}
+			entries.push(entry);
+		}
+
+		if (options.includeItems && options.normalizedSlug && grouped.size === 0) {
+			const items = this.getPlanItemsForScope(scope, options.normalizedSlug, resolvedPath);
+			if (items.length > 0) {
+				entries.push({
+					slug: options.normalizedSlug,
+					scope: mappedScope,
+					filePath,
+					headers: [],
+					items,
+				});
+			}
+		}
+
+		return entries;
+	}
+
+	private groupPlanHeadersBySlug(headers: PlanHeader[]): Map<string, PlanHeader[]> {
+		const grouped = new Map<string, PlanHeader[]>();
+		for (const header of headers) {
+			const existing = grouped.get(header.slug);
+			if (existing) {
+				existing.push(header);
+			} else {
+				grouped.set(header.slug, [header]);
+			}
+		}
+		return grouped;
 	}
 
 	private filterInstructionNotes(todos: Todo[]): Todo[] {
