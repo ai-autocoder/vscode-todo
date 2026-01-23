@@ -245,7 +245,7 @@ export default class McpServerHost implements vscode.Disposable {
 			return;
 		}
 
-		const sessionId = this.getSessionId(req);
+		const sessionId = this.getSessionId(req, url);
 		try {
 			if (req.method === "POST") {
 				let body: unknown;
@@ -261,13 +261,16 @@ export default class McpServerHost implements vscode.Disposable {
 					return;
 				}
 
-				if (!sessionId && sdk.isInitializeRequest(body)) {
+				if (!sessionId && (sdk.isInitializeRequest(body) || this.isInitializeLikeRequest(body))) {
+					if (!sdk.isInitializeRequest(body)) {
+						McpLogChannel.log("[MCP] Received non-standard initialize request; attempting to continue.");
+					}
 					await this.handleInitialize(req, res, body, sdk);
 					return;
 				}
 
 				res.statusCode = 400;
-				res.end("Invalid MCP request");
+				res.end("Invalid MCP request: missing session ID or initialize payload.");
 				return;
 			}
 
@@ -1064,12 +1067,33 @@ export default class McpServerHost implements vscode.Disposable {
 		return match[1].trim() === config.token.trim();
 	}
 
-	private getSessionId(req: http.IncomingMessage): string | undefined {
+	private getSessionId(req: http.IncomingMessage, url?: URL): string | undefined {
+		const querySessionId =
+			url?.searchParams.get("mcp-session-id") ??
+			url?.searchParams.get("mcpSessionId") ??
+			url?.searchParams.get("sessionId");
+		if (querySessionId) {
+			return querySessionId;
+		}
 		const header = req.headers["mcp-session-id"];
 		if (Array.isArray(header)) {
 			return header[0];
 		}
 		return header;
+	}
+
+	private isInitializeLikeRequest(body: unknown): boolean {
+		if (!body) {
+			return false;
+		}
+		if (Array.isArray(body)) {
+			return body.some((entry) => this.isInitializeLikeRequest(entry));
+		}
+		if (typeof body !== "object") {
+			return false;
+		}
+		const method = (body as { method?: unknown }).method;
+		return typeof method === "string" && method.toLowerCase() === "initialize";
 	}
 
 	private async readBody(req: http.IncomingMessage): Promise<unknown> {
