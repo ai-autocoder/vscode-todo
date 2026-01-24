@@ -45,6 +45,7 @@ import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands, SyncStat
 import { messagesToWebview } from "./panels/message";
 import { WebviewVisibilityCoordinator } from "./sync/WebviewVisibilityCoordinator";
 import McpServerHost from "./mcp/McpServerHost";
+import McpLogChannel from "./mcp/McpLogChannel";
 
 const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
 
@@ -181,6 +182,16 @@ export async function activate(context: ExtensionContext) {
 			importCommand(context, ImportFormats.MARKDOWN, store)
 		),
 		vscode.commands.registerCommand("vsc-todo.startMcpServer", async () => {
+			const status = mcpServerHost.getStatus();
+			if (status.running) {
+				const url = status.port ? `http://127.0.0.1:${status.port}/mcp` : null;
+				const message = url
+					? `MCP server is already running at ${url}`
+					: "MCP server is already running.";
+				McpLogChannel.log(`[MCP] ${message}`);
+				void vscode.window.showInformationMessage(message);
+				return;
+			}
 			const config = vscode.workspace.getConfiguration("vscodeTodo.mcp");
 			const target = vscode.workspace.workspaceFolders
 				? vscode.ConfigurationTarget.Workspace
@@ -189,6 +200,15 @@ export async function activate(context: ExtensionContext) {
 			await mcpServerHost.start();
 		}),
 		vscode.commands.registerCommand("vsc-todo.stopMcpServer", async () => {
+			const status = mcpServerHost.getStatus();
+			if (!status.running) {
+				const message = "MCP server is already stopped.";
+				McpLogChannel.log(`[MCP] ${message}`);
+				void vscode.window.showInformationMessage(message);
+				if (!status.enabled) {
+					return;
+				}
+			}
 			const config = vscode.workspace.getConfiguration("vscodeTodo.mcp");
 			const target = vscode.workspace.workspaceFolders
 				? vscode.ConfigurationTarget.Workspace
