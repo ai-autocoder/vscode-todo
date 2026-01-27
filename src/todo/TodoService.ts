@@ -594,7 +594,7 @@ export default class TodoService {
 			filePath,
 			isPinned: false,
 			todos,
-			lastActionType: "mcp/update",
+			lastActionType: "todo/update",
 			numberOfTodos: todos.filter((todo) => !todo.completed && !todo.isNote).length,
 			numberOfNotes: todos.filter((todo) => todo.isNote).length,
 			scope: TodoScope.currentFile,

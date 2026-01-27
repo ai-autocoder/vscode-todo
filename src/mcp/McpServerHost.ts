@@ -6,7 +6,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Resource } from "@modelcontextprotocol/sdk/types.js";
 import { TodoScope } from "../todo/todoTypes";
-import TodoService, { TodoUpdateFields } from "./TodoService";
+import PlanArchiveService from "../todo/PlanArchiveService";
+import TodoService, { TodoUpdateFields } from "../todo/TodoService";
 import McpLogChannel from "./McpLogChannel";
 import StorageSyncManager from "../storage/StorageSyncManager";
 import { SyncManager } from "../sync/SyncManager";
@@ -44,6 +45,7 @@ export default class McpServerHost implements vscode.Disposable {
 	private sdk: McpSdk | null = null;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly todoService: TodoService;
+	private readonly planArchiveService: PlanArchiveService;
 	private readonly statusEmitter = new vscode.EventEmitter<McpStatus>();
 	private status: McpStatus;
 	private lastPort: number | null = null;
@@ -57,6 +59,7 @@ export default class McpServerHost implements vscode.Disposable {
 		syncManager: SyncManager
 	) {
 		this.todoService = new TodoService(context, store, storageSyncManager, syncManager);
+		this.planArchiveService = new PlanArchiveService(this.todoService);
 		this.status = this.buildStatus(this.readConfig(), false, null);
 	}
 
@@ -806,6 +809,32 @@ export default class McpServerHost implements vscode.Disposable {
 		);
 
 		server.registerTool(
+			"todo.archivePlan",
+			{
+				description:
+					"Archive a plan header by slug. Defaults to completing the header only; use includeItems to cascade to plan items.",
+				inputSchema: {
+					scope: scopeSchema,
+					slug: z.string(),
+					action: z.enum(["complete", "delete"]).optional(),
+					includeItems: z.boolean().optional(),
+					filePath: z.string().optional(),
+				},
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const { scope, slug, action, includeItems, filePath } = args;
+					const result = await this.planArchiveService.archivePlan(scope as TodoScope, slug, {
+						action,
+						includeItems,
+						filePath,
+					});
+					return this.toolResult(result);
+				});
+			}
+		);
+
+		server.registerTool(
 			"todo.update",
 			{
 				description: "Update a todo or note by id.",
@@ -923,6 +952,7 @@ export default class McpServerHost implements vscode.Disposable {
 					"If a plan name is provided, pass it as slug first; if no match, list all and match by title.",
 					"If multiple plans match, ask for clarification before proceeding.",
 					"After completing steps, update the items using todo.update or todo.complete.",
+					"After the plan is implemented, archive it with todo.archivePlan (default action=complete). Use action=delete to remove the plan entirely. Set includeItems=true to cascade the same action to plan items.",
 				].join(" ");
 
 				return {
