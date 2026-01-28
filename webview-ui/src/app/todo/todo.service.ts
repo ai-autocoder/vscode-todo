@@ -361,6 +361,10 @@ export class TodoService {
 		vscode.postMessage(messagesFromWebview.toggleCollapsed(...args));
 	}
 
+	archivePlan(...args: Parameters<typeof messagesFromWebview.archivePlan>) {
+		vscode.postMessage(messagesFromWebview.archivePlan(...args));
+	}
+
 	setAllCollapsed(...args: Parameters<typeof messagesFromWebview.setAllCollapsed>) {
 		vscode.postMessage(messagesFromWebview.setAllCollapsed(...args));
 	}

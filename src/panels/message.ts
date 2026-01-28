@@ -59,6 +59,13 @@ type MessagePayload<T, L> = T extends
 				itemPosition: number;
 				currentFilePath?: string | null;
 			}
+		: T extends MessageActionsFromWebview.archivePlan
+			? {
+					slug: string;
+					action?: "complete" | "delete";
+					includeItems?: boolean;
+					filePath?: string;
+				}
 		: T extends MessageActionsFromWebview.requestData
 			? L extends TodoScope.currentFile
 				? { filePath: string }
@@ -159,6 +166,7 @@ export const enum MessageActionsFromWebview {
 	toggleMarkdown = "toggleMarkdown",
 	toggleTodoNote = "toggleTodoNote",
 	toggleCollapsed = "toggleCollapsed",
+	archivePlan = "archivePlan",
 	setAllCollapsed = "setAllCollapsed",
 	requestData = "requestData",
 	pinFile = "pinFile",
@@ -281,6 +289,19 @@ export const messagesFromWebview = {
 			: Parameters<typeof workspaceActions.toggleCollapsed>[0]
 	): Message<MessageActionsFromWebview.toggleCollapsed, TodoScope> => ({
 		type: MessageActionsFromWebview.toggleCollapsed,
+		scope,
+		payload,
+	}),
+	archivePlan: <L extends TodoScope>(
+		scope: L,
+		payload: {
+			slug: string;
+			action?: "complete" | "delete";
+			includeItems?: boolean;
+			filePath?: string;
+		}
+	): Message<MessageActionsFromWebview.archivePlan, TodoScope> => ({
+		type: MessageActionsFromWebview.archivePlan,
 		scope,
 		payload,
 	}),

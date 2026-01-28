@@ -17,6 +17,7 @@ import {
 import { MatSnackBar, MatSnackBarRef } from "@angular/material/snack-bar";
 import { firstValueFrom, Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
+import { parsePlanHeader, parsePlanItem } from "../../../../../src/todo/todoTokens";
 import { SelectionCommand, TodoService } from "../todo.service";
 
 @Component({
@@ -679,6 +680,79 @@ export class TodoList implements OnInit, AfterViewInit {
 				currentFilePath,
 			});
 		});
+	}
+
+	async handlePlanDelete(slug: string): Promise<void> {
+		if (!slug) {
+			return;
+		}
+		const snapshot = this.allTodos
+			.map((todo, position) => ({ todo: { ...todo }, position }))
+			.filter(({ todo }) => this.todoBelongsToPlan(todo, slug));
+
+		if (!snapshot.length) {
+			return;
+		}
+
+		let currentFilePath: string | null = null;
+		if (this.scope === TodoScope.currentFile) {
+			currentFilePath = await firstValueFrom(this.todoService.currentFilePath);
+		}
+
+		snapshot.forEach(({ todo }) => {
+			this.todoService.deleteTodo(this.scope, { id: todo.id });
+		});
+
+		const snackBarRef = this.snackBar.open("Plan deleted", "UNDO", {
+			duration: 7000,
+		});
+		this.decorateSnackBarOverlay(snackBarRef);
+		snackBarRef.onAction().subscribe(() => {
+			const queue = [...snapshot].sort((a, b) => a.position - b.position);
+			const restoreNext = () => {
+				const entry = queue.shift();
+				if (!entry) {
+					return;
+				}
+
+				const payload = {
+					id: entry.todo.id,
+					text: entry.todo.text,
+					completed: entry.todo.completed,
+					creationDate: entry.todo.creationDate,
+					isMarkdown: entry.todo.isMarkdown,
+					isNote: entry.todo.isNote,
+					collapsed: entry.todo.collapsed,
+					itemPosition: entry.position,
+				};
+
+				if (this.scope === TodoScope.currentFile) {
+					this.todoService.undoDelete(this.scope, { ...payload, currentFilePath });
+				} else {
+					this.todoService.undoDelete(this.scope, payload);
+				}
+
+				if (queue.length) {
+					requestAnimationFrame(restoreNext);
+				}
+			};
+
+			restoreNext();
+		});
+	}
+
+	private todoBelongsToPlan(todo: Todo, slug: string): boolean {
+		const planItem = parsePlanItem(todo.text);
+		if (planItem && planItem.slug === slug) {
+			return true;
+		}
+		if (todo.isNote) {
+			const header = parsePlanHeader(todo.text);
+			if (header && header.slug === slug) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private decorateSnackBarOverlay(snackBarRef: MatSnackBarRef<unknown>): void {

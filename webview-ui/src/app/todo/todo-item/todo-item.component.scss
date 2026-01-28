@@ -84,6 +84,10 @@
 			cursor: pointer;
 		}
 
+		.todo-text-content {
+			white-space: inherit;
+		}
+
 		div.todo-text.collapsed {
 			overflow: hidden;
 			display: flex;
@@ -105,6 +109,9 @@
 
 		div.markdown-container {
 			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 4px;
 			width: 100%;
 			cursor: pointer;
 		}
@@ -114,7 +121,8 @@
 			font-family: var(--app-font-family);
 		}
 
-		.todo-text.complete {
+		.todo-text.complete,
+		.todo-text-content.complete {
 			text-decoration: line-through;
 			color: var(--vscode-input-placeholderForeground);
 		}
@@ -122,6 +130,54 @@
 		span.collapsed-text.complete {
 			text-decoration: line-through;
 			color: var(--vscode-input-placeholderForeground);
+		}
+
+		.token-badges {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			margin-right: 6px;
+			flex: 0 0 auto;
+			flex-wrap: wrap;
+		}
+
+		.token-badge {
+			display: inline-flex;
+			align-items: center;
+			padding: 1px 6px;
+			border-radius: 999px;
+			font-size: calc(var(--vscode-font-size) * 0.85);
+			font-weight: 600;
+			letter-spacing: 0.02em;
+			line-height: 1.2;
+			white-space: nowrap;
+			text-decoration: none;
+			border: none;
+			background: transparent;
+			font-family: var(--vscode-font-family);
+		}
+
+		.token-badge--plan {
+			background-color: var(--plan-badge-bg);
+			color: var(--plan-badge-fg);
+		}
+
+		.token-badge--instr {
+			background-color: var(--instr-badge-bg);
+			color: var(--instr-badge-fg);
+		}
+
+		.token-badge--clickable {
+			cursor: pointer;
+		}
+
+		.token-badge--clickable:hover {
+			background-color: var(--plan-badge-hover-bg);
+		}
+
+		.token-badge--clickable:focus-visible {
+			outline: 1px solid var(--vscode-focusBorder);
+			outline-offset: 2px;
 		}
 
 		autosize-text-area {

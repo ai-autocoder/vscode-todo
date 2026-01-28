@@ -14,6 +14,7 @@ import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 import { getGitHubSyncInfo } from "../utilities/syncInfo";
 import McpServerHost from "../mcp/McpServerHost";
+import PlanArchiveService from "../todo/PlanArchiveService";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
@@ -26,7 +27,8 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		private readonly _store: EnhancedStore,
 		private readonly _context: vscode.ExtensionContext,
 		visibilityCoordinator?: WebviewVisibilityCoordinator,
-		private readonly _mcpServerHost?: McpServerHost
+		private readonly _mcpServerHost?: McpServerHost,
+		private readonly _planArchiveService?: PlanArchiveService
 	) {
 		TodoViewProvider.currentProvider = this;
 		this._visibilityCoordinator = visibilityCoordinator;
@@ -67,7 +69,12 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-		HelloWorldPanel.setupWebviewMessageHandler(webviewView.webview, this._context, this._store);
+		HelloWorldPanel.setupWebviewMessageHandler(
+			webviewView.webview,
+			this._context,
+			this._store,
+			this._planArchiveService
+		);
 
 		// Refresh webview when typography settings change
 		this._context.subscriptions.push(

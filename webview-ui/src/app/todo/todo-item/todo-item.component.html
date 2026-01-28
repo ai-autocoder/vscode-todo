@@ -52,11 +52,32 @@
 						<span><app-icon name="chevron-right"></app-icon></span>
 					</vscode-button>
 				}
+				@if (tokenInfo.badges.length) {
+					<span class="token-badges">
+						@for (badge of tokenInfo.badges; track badge.label) {
+							@if (badge.kind === "plan" && tokenInfo.planSlug) {
+								<button
+									type="button"
+									class="token-badge token-badge--plan token-badge--clickable"
+									[matMenuTriggerFor]="planMenu"
+									aria-label="Plan options"
+									title="Plan options"
+									(click)="$event.stopPropagation()"
+									(mousedown)="$event.stopPropagation()"
+								>
+									{{ badge.label }}
+								</button>
+							} @else {
+								<span class="token-badge token-badge--{{ badge.kind }}">{{ badge.label }}</span>
+							}
+						}
+					</span>
+				}
 				<span
 					class="collapsed-text"
 					[class.complete]="todo.completed && !todo.isNote"
 					[ngStyle]="{ '-webkit-line-clamp': collapsedPreviewLines }"
-				>{{ getPreviewText(todo.text) }}</span>
+				>{{ getPreviewText(tokenInfo.displayText) }}</span>
 			</div>
 		}
 		<!-- prettier-ignore -->
@@ -64,17 +85,60 @@
       <div
         (click)="edit($event)"
         class="todo-text"
-        [class.complete]="todo.completed && !todo.isNote"
-      >{{ todo.text }}</div>
+      >
+				@if (tokenInfo.badges.length) {
+					<span class="token-badges">
+						@for (badge of tokenInfo.badges; track badge.label) {
+							@if (badge.kind === "plan" && tokenInfo.planSlug) {
+								<button
+									type="button"
+									class="token-badge token-badge--plan token-badge--clickable"
+									[matMenuTriggerFor]="planMenu"
+									aria-label="Plan options"
+									title="Plan options"
+									(click)="$event.stopPropagation()"
+									(mousedown)="$event.stopPropagation()"
+								>
+									{{ badge.label }}
+								</button>
+							} @else {
+								<span class="token-badge token-badge--{{ badge.kind }}">{{ badge.label }}</span>
+							}
+						}
+					</span>
+				}
+				<span class="todo-text-content" [class.complete]="todo.completed && !todo.isNote">{{ tokenInfo.displayText }}</span>
+			</div>
     }
 		@if (!isEditable && !todo.collapsed && todo.isMarkdown) {
 			<div class="markdown-container" (click)="edit($event)" #markdownContainer>
+				@if (tokenInfo.badges.length) {
+					<span class="token-badges">
+						@for (badge of tokenInfo.badges; track badge.label) {
+							@if (badge.kind === "plan" && tokenInfo.planSlug) {
+								<button
+									type="button"
+									class="token-badge token-badge--plan token-badge--clickable"
+									[matMenuTriggerFor]="planMenu"
+									aria-label="Plan options"
+									title="Plan options"
+									(click)="$event.stopPropagation()"
+									(mousedown)="$event.stopPropagation()"
+								>
+									{{ badge.label }}
+								</button>
+							} @else {
+								<span class="token-badge token-badge--{{ badge.kind }}">{{ badge.label }}</span>
+							}
+						}
+					</span>
+				}
 				<markdown
 					clipboard
 					class="todo-text"
 					[lineNumbers]="enableLineNumbers"
 					[class.complete]="todo.completed && !todo.isNote"
-					[data]="todo.text"
+					[data]="tokenInfo.displayText"
 					[mermaid]="enableMarkdownDiagrams"
 					[katex]="enableMarkdownKatex"
 					(ready)="onMarkdownReady()"
@@ -223,6 +287,51 @@
 					<span class="menu-right"></span>
 				</div>
 			</button>
+		</mat-menu>
+		<mat-menu #planMenu="matMenu" yPosition="below" xPosition="before">
+			@if (tokenInfo.planSlug) {
+				<button mat-menu-item (click)="archivePlan('complete')" aria-label="Complete plan">
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="check"></app-icon></span>
+						<span class="menu-label">Complete Plan</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+				<button
+					mat-menu-item
+					class="danger"
+					(click)="requestPlanDelete()"
+					aria-label="Delete plan"
+				>
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="trash"></app-icon></span>
+						<span class="menu-label">Delete Plan</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+				<mat-divider></mat-divider>
+				<button mat-menu-item (click)="copyPlanReference()" aria-label="Copy plan">
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="copy"></app-icon></span>
+						<span class="menu-label">Copy Plan</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+				<button mat-menu-item (click)="copyPlanContent()" aria-label="Copy plan content">
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="copy"></app-icon></span>
+						<span class="menu-label">Copy Plan Content</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+				<button mat-menu-item (click)="filterByPlan()" aria-label="Filter by plan">
+					<div class="menu-row">
+						<span class="menu-left"></span>
+						<span class="menu-label">Filter by Plan</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+			}
 		</mat-menu>
 	</div>
 </div>

@@ -36,6 +36,7 @@ import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 import { getGitHubSyncInfo } from "../utilities/syncInfo";
 import McpServerHost from "../mcp/McpServerHost";
+import PlanArchiveService from "../todo/PlanArchiveService";
 
 /**
  * This class manages the state and behavior of HelloWorld webview panels.
@@ -62,7 +63,8 @@ export class HelloWorldPanel {
 		context: ExtensionContext,
 		store: EnhancedStore,
 		visibilityCoordinator?: WebviewVisibilityCoordinator,
-		mcpServerHost?: McpServerHost
+		mcpServerHost?: McpServerHost,
+		planArchiveService?: PlanArchiveService
 	) {
 		this._panel = panel;
 		this._store = store;
@@ -102,7 +104,12 @@ export class HelloWorldPanel {
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 		this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
 
-		HelloWorldPanel.setupWebviewMessageHandler(this._panel.webview, context, store);
+		HelloWorldPanel.setupWebviewMessageHandler(
+			this._panel.webview,
+			context,
+			store,
+			planArchiveService
+		);
 
 		// Refresh webview when typography settings change
 		context.subscriptions.push(
@@ -129,7 +136,8 @@ export class HelloWorldPanel {
 		context: ExtensionContext,
 		store: EnhancedStore,
 		visibilityCoordinator?: WebviewVisibilityCoordinator,
-		mcpServerHost?: McpServerHost
+		mcpServerHost?: McpServerHost,
+		planArchiveService?: PlanArchiveService
 	) {
 		const extensionUri = context.extensionUri;
 		if (HelloWorldPanel.currentPanel) {
@@ -170,7 +178,8 @@ export class HelloWorldPanel {
 				context,
 				store,
 				visibilityCoordinator,
-				mcpServerHost
+				mcpServerHost,
+				planArchiveService
 			);
 		}
 	}
@@ -325,7 +334,8 @@ export class HelloWorldPanel {
 	public static setupWebviewMessageHandler(
 		webview: Webview,
 		context: ExtensionContext,
-		store: EnhancedStore
+		store: EnhancedStore,
+		planArchiveService?: PlanArchiveService
 	) {
 		webview.onDidReceiveMessage(
 			async (message: Message<MessageActionsFromWebview, TodoScope> | { type: "webview-ready" }) => {
@@ -421,6 +431,23 @@ export class HelloWorldPanel {
 					case MessageActionsFromWebview.toggleCollapsed: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleCollapsed, TodoScope>;
 						store.dispatch(storeActions!.toggleCollapsed(payload));
+						break;
+					}
+					case MessageActionsFromWebview.archivePlan: {
+						const { payload } = message as Message<MessageActionsFromWebview.archivePlan, TodoScope>;
+						if (!planArchiveService) {
+							window.showErrorMessage("Plan actions are not available.");
+							break;
+						}
+						try {
+							await planArchiveService.archivePlan(message.scope, payload.slug, {
+								action: payload.action,
+								includeItems: payload.includeItems,
+								filePath: payload.filePath,
+							});
+						} catch (error) {
+							window.showErrorMessage(`Failed to archive plan: ${String(error)}`);
+						}
 						break;
 					}
 					case MessageActionsFromWebview.setAllCollapsed: {

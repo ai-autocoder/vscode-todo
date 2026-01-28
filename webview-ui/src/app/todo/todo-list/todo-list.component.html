@@ -33,6 +33,7 @@
               [selectionMode]="hasSelection"
               [selectionCount]="selectedCount"
               (delete)="handleDelete($event)"
+              (planDelete)="handlePlanDelete($event)"
               [class.note]="todo.isNote"
             >
             </todo-item>

@@ -14,7 +14,24 @@ import {
 } from "@angular/core";
 import { Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
+import {
+	matchesInstructionPrefix,
+	parsePlanHeader,
+	parsePlanItem,
+	stripInstructionPrefix,
+} from "../../../../../src/todo/todoTokens";
 import { TodoService } from "../todo.service";
+
+type TokenBadge = {
+	kind: "plan" | "instr";
+	label: string;
+};
+
+type TokenInfo = {
+	badges: TokenBadge[];
+	displayText: string;
+	planSlug?: string;
+};
 
 @Component({
     selector: "todo-item",
@@ -41,7 +58,9 @@ export class TodoItemComponent implements OnInit, OnChanges {
 	collapsedPreviewLines: number = 1;
 	diagramZoomOpen = false;
 	zoomSvgSource?: SVGSVGElement;
+	tokenInfo: TokenInfo = { badges: [], displayText: "" };
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
+	@Output() planDelete: EventEmitter<string> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
 	private mermaidListeners: Array<() => void> = [];
 	private mermaidObserver?: MutationObserver;
@@ -59,6 +78,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		this.enableMarkdownDiagrams = this.todoService.config.enableMarkdownDiagrams;
 		this.enableMarkdownKatex = this.todoService.config.enableMarkdownKatex;
 		this.collapsedPreviewLines = this.todoService.config.collapsedPreviewLines ?? 1;
+		this.updateTokenInfo();
 		this.activeEditorSubscription = this.todoService.activeEditor(this.scope).subscribe((activeId) => {
 			if (activeId !== this.todo.id && this.isEditable) {
 				this.saveEdit();
@@ -68,6 +88,9 @@ export class TodoItemComponent implements OnInit, OnChanges {
 
 	ngOnChanges(changes: SimpleChanges) {
 		const todoChange = changes["todo"];
+		if (todoChange) {
+			this.updateTokenInfo();
+		}
 		if (todoChange && !todoChange.currentValue?.isMarkdown) {
 			this.clearMermaidListeners();
 		}
@@ -101,6 +124,53 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		return lines.slice(0, Math.max(1, this.collapsedPreviewLines)).join("\n");
 	}
 
+	private updateTokenInfo(): void {
+		this.tokenInfo = this.buildTokenInfo(this.todo);
+	}
+
+	private buildTokenInfo(todo: Todo | undefined): TokenInfo {
+		if (!todo) {
+			return { badges: [], displayText: "" };
+		}
+
+		let displayText = todo.text ?? "";
+		let shouldTrimStart = false;
+		const badges: TokenBadge[] = [];
+		let planSlug: string | undefined;
+
+		const planItem = parsePlanItem(displayText);
+		if (planItem) {
+			planSlug = planItem.slug;
+			badges.push({ kind: "plan", label: `@plan:${planItem.slug}` });
+			displayText = planItem.text;
+			shouldTrimStart = true;
+		} else if (todo.isNote) {
+			const header = parsePlanHeader(displayText);
+			if (header) {
+				planSlug = header.slug;
+				badges.push({ kind: "plan", label: `@plan:${header.slug}` });
+				const trimmed = displayText.trimStart();
+				const lines = trimmed.split(/\r?\n/);
+				const restLines = lines.slice(1).join("\n");
+				const headerText = header.title || header.slug;
+				displayText = [headerText, restLines].filter(Boolean).join("\n");
+				shouldTrimStart = true;
+			}
+		}
+
+		if (todo.isNote && matchesInstructionPrefix(displayText)) {
+			badges.push({ kind: "instr", label: "@instr" });
+			displayText = stripInstructionPrefix(displayText);
+			shouldTrimStart = true;
+		}
+
+		return {
+			badges,
+			displayText: shouldTrimStart ? displayText.trimStart() : displayText,
+			planSlug,
+		};
+	}
+
 	onActionMenuOpened() {
 		this.isActionMenuOpen = true;
 	}
@@ -126,6 +196,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 			return;
 		}
 		this.todoService.editTodo(this.scope, { id: this.todo.id, newText });
+		this.updateTokenInfo();
 		this.isEditable = false;
 		this.todoService.clearActiveEditor(this.scope, this.todo.id);
 		this.removeGlobalClickListener();
@@ -133,6 +204,7 @@ export class TodoItemComponent implements OnInit, OnChanges {
 
 	cancelEdit() {
 		this.todo.text = this.previousText;
+		this.updateTokenInfo();
 		this.isEditable = false;
 		this.todoService.clearActiveEditor(this.scope, this.todo.id);
 		this.removeGlobalClickListener();
@@ -202,6 +274,59 @@ export class TodoItemComponent implements OnInit, OnChanges {
 
 	onDelete(todo: Todo): void {
 		this.delete.emit(todo);
+	}
+
+	archivePlan(action: "complete" | "delete"): void {
+		const slug = this.tokenInfo.planSlug;
+		if (!slug) {
+			return;
+		}
+		this.todoService.archivePlan(this.scope, {
+			slug,
+			action,
+			includeItems: true,
+		});
+	}
+
+	requestPlanDelete(): void {
+		const slug = this.tokenInfo.planSlug;
+		if (!slug) {
+			return;
+		}
+		this.planDelete.emit(slug);
+	}
+
+	copyPlanReference(): void {
+		const query = this.getPlanQuery();
+		if (!query) {
+			return;
+		}
+		void this.copyToClipboard(query);
+	}
+
+	copyPlanContent(): void {
+		const slug = this.tokenInfo.planSlug;
+		if (!slug) {
+			return;
+		}
+		const todos = this.getTodosForScope(this.scope);
+		const lines = todos
+			.filter((todo) => this.todoBelongsToPlan(todo, slug))
+			.map((todo) => this.formatPlanTodoForCopy(todo, slug))
+			.filter((text): text is string => Boolean(text))
+			.filter((text) => text.length > 0);
+		if (lines.length === 0) {
+			return;
+		}
+		void this.copyToClipboard(lines.join("\n"));
+	}
+
+	filterByPlan(): void {
+		const query = this.getPlanQuery();
+		if (!query) {
+			return;
+		}
+		this.todoService.setSearchQuery(query);
 	}
 
 	closeDiagramZoom(): void {
@@ -321,6 +446,102 @@ export class TodoItemComponent implements OnInit, OnChanges {
 	private removeGlobalClickListener(): void {
 		if (this.globalClickUnlistener) {
 			this.globalClickUnlistener();
+		}
+	}
+
+	private getPlanQuery(): string | null {
+		const slug = this.tokenInfo.planSlug;
+		if (!slug) {
+			return null;
+		}
+		return `@plan:${slug}`;
+	}
+
+	private getTodosForScope(scope: TodoScope): Todo[] {
+		switch (scope) {
+			case TodoScope.user:
+				return this.todoService.userTodos;
+			case TodoScope.workspace:
+				return this.todoService.workspaceTodos;
+			case TodoScope.currentFile:
+				return this.todoService.currentFileTodos;
+			default:
+				return [];
+		}
+	}
+
+	private todoBelongsToPlan(todo: Todo, slug: string): boolean {
+		const planItem = parsePlanItem(todo.text);
+		if (planItem && planItem.slug === slug) {
+			return true;
+		}
+		if (todo.isNote) {
+			const header = parsePlanHeader(todo.text);
+			if (header && header.slug === slug) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private formatPlanTodoForCopy(todo: Todo, slug: string): string | null {
+		const content = this.getPlanCopyText(todo, slug);
+		if (!content) {
+			return null;
+		}
+		if (todo.isNote) {
+			return content.trimEnd();
+		}
+		const lines = content.split(/\r?\n/);
+		const first = lines[0] ?? "";
+		const rest = lines.slice(1);
+		const prefix = `- [${todo.completed ? "x" : " "}] `;
+		let result = `${prefix}${first}`;
+		if (rest.length > 0) {
+			result += "\n" + rest.map((line) => `  ${line}`).join("\n");
+		}
+		return result.trimEnd();
+	}
+
+	private getPlanCopyText(todo: Todo, slug: string): string | null {
+		const planItem = parsePlanItem(todo.text);
+		if (planItem && planItem.slug === slug) {
+			return planItem.text.trimEnd();
+		}
+		if (todo.isNote) {
+			const header = parsePlanHeader(todo.text);
+			if (header && header.slug === slug) {
+				const trimmed = todo.text.trimStart();
+				const lines = trimmed.split(/\r?\n/);
+				const restLines = lines.slice(1).join("\n");
+				const headerText = header.title || header.slug;
+				return [headerText, restLines].filter(Boolean).join("\n").trimEnd();
+			}
+		}
+		return null;
+	}
+
+	private async copyToClipboard(text: string): Promise<void> {
+		try {
+			if (navigator?.clipboard?.writeText) {
+				await navigator.clipboard.writeText(text);
+				return;
+			}
+		} catch {
+			// fall through to legacy approach
+		}
+
+		const textarea = document.createElement("textarea");
+		textarea.value = text;
+		textarea.style.position = "fixed";
+		textarea.style.opacity = "0";
+		document.body.appendChild(textarea);
+		textarea.focus();
+		textarea.select();
+		try {
+			(document as any).execCommand("copy");
+		} finally {
+			document.body.removeChild(textarea);
 		}
 	}
 

@@ -6,10 +6,20 @@
 body.light {
 	--note-accent-color: hsl(50, 56%, 85%);
 	--note-background-color: hsl(50, 56%, 85%);
+	--plan-badge-bg: hsl(210, 85%, 92%);
+	--plan-badge-fg: hsl(218, 55%, 30%);
+	--plan-badge-hover-bg: hsl(210, 85%, 88%);
+	--instr-badge-bg: hsl(145, 45%, 90%);
+	--instr-badge-fg: hsl(150, 35%, 25%);
 }
 body.dark {
 	--note-accent-color: hsl(48, 83%, 50%);
 	--note-background-color: var(--vscode-menu-background);
+	--plan-badge-bg: hsl(213, 55%, 35%);
+	--plan-badge-fg: hsl(210, 100%, 96%);
+	--plan-badge-hover-bg: hsl(213, 60%, 40%);
+	--instr-badge-bg: hsl(148, 35%, 28%);
+	--instr-badge-fg: hsl(150, 70%, 90%);
 }
 
 * {

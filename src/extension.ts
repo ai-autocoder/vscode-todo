@@ -9,6 +9,8 @@ import { exportCommand } from "./todo/exporter";
 import { ExportFormats } from "./todo/todoTypes";
 import { importCommand } from "./todo/importer";
 import { ImportFormats } from "./todo/todoTypes";
+import TodoService from "./todo/TodoService";
+import PlanArchiveService from "./todo/PlanArchiveService";
 import { TodoViewProvider } from "./panels/TodoViewProvider";
 import { getConfig } from "./utilities/config";
 import { notifyGitHubSyncInfo, reloadScopeData } from "./utilities/syncUtils";
@@ -58,6 +60,9 @@ export async function activate(context: ExtensionContext) {
 	const authManager = GitHubAuthManager.getInstance(context);
 	const apiClient = new GitHubApiClient(context);
 	const syncManager = new SyncManager(context);
+	const uiTodoService = new TodoService(context, store, storageSyncManager, syncManager);
+	uiTodoService.updateAccess(false, ["user", "workspace", "file"]);
+	const planArchiveService = new PlanArchiveService(uiTodoService);
 	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager, store, storageSyncManager);
 	const mcpServerHost = new McpServerHost(context, store, storageSyncManager, syncManager);
 	mcpServerHost.initialize();
@@ -167,7 +172,7 @@ export async function activate(context: ExtensionContext) {
 
 	const commands = [
 		vscode.commands.registerCommand("vsc-todo.openTodo", () =>
-			HelloWorldPanel.render(context, store, visibilityCoordinator, mcpServerHost)
+			HelloWorldPanel.render(context, store, visibilityCoordinator, mcpServerHost, planArchiveService)
 		),
 		vscode.commands.registerCommand("vsc-todo.exportDataToJSON", () =>
 			exportCommand(context, ExportFormats.JSON, store)
@@ -306,7 +311,8 @@ export async function activate(context: ExtensionContext) {
 		store,
 		context,
 		visibilityCoordinator,
-		mcpServerHost
+		mcpServerHost,
+		planArchiveService
 	);
 
 	context.subscriptions.push(

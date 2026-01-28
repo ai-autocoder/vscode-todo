@@ -28,6 +28,13 @@ import {
 	resolveFilesDataKey,
 	sortTodosWithNotes,
 } from "../todo/todoUtils";
+import {
+	INSTRUCTION_PREFIX,
+	PLAN_ITEM_PREFIX,
+	matchesInstructionPrefix,
+	normalizePlanSlug,
+	parsePlanHeader,
+} from "./todoTokens";
 
 type AllowedScope = "user" | "workspace" | "file";
 type TodoActionCreator<Payload> = (payload: Payload) => { type: string; payload: Payload };
@@ -73,9 +80,6 @@ export type PlanEntry = {
 	headers: PlanHeader[];
 	items?: ScopedTodo[];
 };
-
-const INSTRUCTION_PREFIX = "@instr";
-const PLAN_ITEM_PREFIX = "@plan:";
 
 export default class TodoService {
 	private readOnly = true;
@@ -228,7 +232,7 @@ export default class TodoService {
 			if (!todo.isNote) {
 				continue;
 			}
-			const parsed = this.parsePlanHeader(todo.text);
+			const parsed = parsePlanHeader(todo.text);
 			if (!parsed) {
 				continue;
 			}
@@ -252,7 +256,7 @@ export default class TodoService {
 		this.assertScopeAllowed(scope);
 		this.assertWorkspaceAvailable(scope);
 
-		const normalizedSlug = this.normalizePlanSlug(slug);
+		const normalizedSlug = normalizePlanSlug(slug);
 		if (!normalizedSlug) {
 			throw new Error("Missing plan slug.");
 		}
@@ -281,7 +285,7 @@ export default class TodoService {
 				? options.scopes
 				: [TodoScope.user, TodoScope.workspace, TodoScope.currentFile];
 		const normalizedSlug =
-			options.slug !== undefined ? this.normalizePlanSlug(options.slug) : undefined;
+			options.slug !== undefined ? normalizePlanSlug(options.slug) : undefined;
 
 		if (options.slug !== undefined && !normalizedSlug) {
 			throw new Error("Plan slug is required.");
@@ -810,24 +814,7 @@ export default class TodoService {
 	}
 
 	private filterInstructionNotes(todos: Todo[]): Todo[] {
-		return todos.filter((todo) => todo.isNote && this.matchesInstructionPrefix(todo.text));
-	}
-
-	private matchesInstructionPrefix(text: string): boolean {
-		const trimmed = text.trimStart();
-		const lower = trimmed.toLowerCase();
-		if (!lower.startsWith(INSTRUCTION_PREFIX)) {
-			return false;
-		}
-		if (lower.length === INSTRUCTION_PREFIX.length) {
-			return true;
-		}
-		const nextChar = lower.charAt(INSTRUCTION_PREFIX.length);
-		return nextChar === ":" || /\s/.test(nextChar);
-	}
-
-	private normalizePlanSlug(slug: string): string {
-		return slug.trim().toLowerCase();
+		return todos.filter((todo) => todo.isNote && matchesInstructionPrefix(todo.text));
 	}
 
 	private formatInstructionText(text: string): string {
@@ -835,14 +822,14 @@ export default class TodoService {
 		if (!trimmed) {
 			throw new Error("Instruction text is required.");
 		}
-		if (this.matchesInstructionPrefix(trimmed)) {
+		if (matchesInstructionPrefix(trimmed)) {
 			return trimmed;
 		}
 		return `${INSTRUCTION_PREFIX} ${trimmed}`;
 	}
 
 	private formatPlanHeader(slug: string, title?: string): string {
-		const normalizedSlug = this.normalizePlanSlug(slug);
+		const normalizedSlug = normalizePlanSlug(slug);
 		if (!normalizedSlug) {
 			throw new Error("Plan slug is required.");
 		}
@@ -854,7 +841,7 @@ export default class TodoService {
 	}
 
 	private formatPlanItem(slug: string, text: string): string {
-		const normalizedSlug = this.normalizePlanSlug(slug);
+		const normalizedSlug = normalizePlanSlug(slug);
 		if (!normalizedSlug) {
 			throw new Error("Plan slug is required.");
 		}
@@ -867,21 +854,6 @@ export default class TodoService {
 			return trimmed;
 		}
 		return `${prefix} ${trimmed}`;
-	}
-
-	private parsePlanHeader(text: string): { slug: string; title: string } | null {
-		const trimmed = text.trimStart();
-		const firstLine = trimmed.split(/\r?\n/, 1)[0] ?? "";
-		const match = firstLine.match(/^@plan\s+([^\s]+)(?:\s+(.*))?$/i);
-		if (!match) {
-			return null;
-		}
-		const slug = this.normalizePlanSlug(match[1] ?? "");
-		if (!slug) {
-			return null;
-		}
-		const title = (match[2] ?? "").trim();
-		return { slug, title };
 	}
 
 	private matchesPrefix(text: string, prefix: string): boolean {
