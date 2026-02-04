@@ -59,7 +59,7 @@ export async function activate(context: ExtensionContext) {
 	const apiClient = new GitHubApiClient(context);
 	const syncManager = new SyncManager(context);
 	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager, store, storageSyncManager);
-	const mcpServerHost = new McpServerHost(context, store, storageSyncManager, syncManager);
+	const mcpServerHost = new McpServerHost(context, store, storageSyncManager);
 	mcpServerHost.initialize();
 
 	// Start GitHub sync polling if enabled

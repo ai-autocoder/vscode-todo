@@ -1,7 +1,6 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import StorageSyncManager from "../storage/StorageSyncManager";
-import { SyncManager } from "../sync/SyncManager";
 import {
 	currentFileActions,
 	editorFocusAndRecordsActions,
@@ -37,45 +36,64 @@ type TodoActions = {
 	toggleTodo: TodoActionCreator<{ id: number }>;
 	toggleMarkdown: TodoActionCreator<{ id: number }>;
 	toggleTodoNote: TodoActionCreator<{ id: number }>;
-	toggleCollapsed: TodoActionCreator<{ id: number }>;
-	deleteTodo: TodoActionCreator<{ id: number }>;
 	deleteTodos: TodoActionCreator<{ ids: number[] }>;
 };
 
 export type TodoListFilters = {
 	noteOnly?: boolean;
-	instructionOnly?: boolean;
 	textPrefix?: string;
 };
 
-export type TodoUpdateFields = {
-	text?: string;
-	completed?: boolean;
-	isMarkdown?: boolean;
-	isNote?: boolean;
-	collapsed?: boolean;
+export type PaginationOptions = {
+	limit?: number;
+	offset?: number;
 };
 
-export type ScopedTodo = Todo & {
-	scope: "user" | "workspace" | "file";
-	filePath?: string;
+export type PaginatedResult<T> = {
+	items: T[];
+	total: number;
+	count: number;
+	hasMore: boolean;
+	nextOffset?: number;
 };
 
-export type PlanHeader = ScopedTodo & {
-	slug: string;
-	title: string;
-};
+const DEFAULT_PAGE_LIMIT = 50;
+const MAX_PAGE_LIMIT = 500;
 
-export type PlanEntry = {
-	slug: string;
-	scope: "user" | "workspace" | "file";
-	filePath?: string;
-	headers: PlanHeader[];
-	items?: ScopedTodo[];
-};
+function paginate<T>(items: T[], options: PaginationOptions = {}): PaginatedResult<T> {
+	const total = items.length;
+	const limit = normalizeLimit(options.limit);
+	const offset = normalizeOffset(options.offset);
+	const page = items.slice(offset, offset + limit);
+	const consumed = offset + page.length;
+	const hasMore = consumed < total;
+	return {
+		items: page,
+		total,
+		count: page.length,
+		hasMore,
+		nextOffset: hasMore ? consumed : undefined,
+	};
+}
 
-const INSTRUCTION_PREFIX = "@instr";
-const PLAN_ITEM_PREFIX = "@plan:";
+function normalizeLimit(limit?: number): number {
+	if (typeof limit !== "number" || !Number.isFinite(limit)) {
+		return DEFAULT_PAGE_LIMIT;
+	}
+	const rounded = Math.floor(limit);
+	if (rounded <= 0) {
+		return DEFAULT_PAGE_LIMIT;
+	}
+	return Math.min(rounded, MAX_PAGE_LIMIT);
+}
+
+function normalizeOffset(offset?: number): number {
+	if (typeof offset !== "number" || !Number.isFinite(offset)) {
+		return 0;
+	}
+	const rounded = Math.floor(offset);
+	return rounded > 0 ? rounded : 0;
+}
 
 export default class TodoService {
 	private readOnly = true;
@@ -84,8 +102,7 @@ export default class TodoService {
 	constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly store: EnhancedStore<StoreState>,
-		private readonly storageSyncManager: StorageSyncManager,
-		private readonly syncManager: SyncManager
+		private readonly storageSyncManager: StorageSyncManager
 	) {}
 
 	public updateAccess(readOnly: boolean, allowedScopes: AllowedScope[]): void {
@@ -143,6 +160,12 @@ export default class TodoService {
 		return getWorkspaceFilesWithRecords(filesData);
 	}
 
+	public listFilesPaginated(
+		pagination: PaginationOptions = {}
+	): PaginatedResult<{ filePath: string; todoNumber: number }> {
+		return paginate(this.listFiles(), pagination);
+	}
+
 	public listTodos(
 		scope: TodoScope,
 		filters: TodoListFilters & { filePath?: string } = {}
@@ -160,175 +183,18 @@ export default class TodoService {
 		};
 	}
 
-	public getInstructionNotesForFile(filePath: string): ScopedTodo[] {
-		this.assertScopeAllowed(TodoScope.currentFile);
-		this.assertWorkspaceAvailable(TodoScope.currentFile);
-
-		const resolvedPath = this.resolveFilePath(filePath);
-		const notes: ScopedTodo[] = [];
-
-		if (this.isScopeAllowed(TodoScope.currentFile)) {
-			notes.push(
-				...this.filterInstructionNotes(this.getFileTodos(resolvedPath)).map((todo) => ({
-					...todo,
-					scope: "file" as const,
-					filePath: resolvedPath,
-				}))
-			);
-		}
-
-		if (this.isScopeAllowed(TodoScope.workspace)) {
-			notes.push(
-				...this.filterInstructionNotes(this.store.getState().workspace.todos).map((todo) => ({
-					...todo,
-					scope: "workspace" as const,
-				}))
-			);
-		}
-
-		if (this.isScopeAllowed(TodoScope.user)) {
-			notes.push(
-				...this.filterInstructionNotes(this.store.getState().user.todos).map((todo) => ({
-					...todo,
-					scope: "user" as const,
-				}))
-			);
-		}
-
-		return notes;
-	}
-
-	public getInstructionNotesForScope(
+	public listTodosPaginated(
 		scope: TodoScope,
-		filePath?: string
-	): ScopedTodo[] {
-		this.assertScopeAllowed(scope);
-		this.assertWorkspaceAvailable(scope);
-
-		const { todos, filePath: resolvedPath } = this.getTodosForScope(scope, filePath);
-		const filtered = this.filterInstructionNotes(todos);
-		const mappedScope = this.mapScopeToAllowed(scope);
-
-		return filtered.map((todo) => ({
-			...todo,
-			scope: mappedScope,
-			filePath: scope === TodoScope.currentFile ? resolvedPath : undefined,
-		}));
-	}
-
-	public getPlanHeadersForScope(scope: TodoScope, filePath?: string): PlanHeader[] {
-		this.assertScopeAllowed(scope);
-		this.assertWorkspaceAvailable(scope);
-
-		const { todos, filePath: resolvedPath } = this.getTodosForScope(scope, filePath);
-		const mappedScope = this.mapScopeToAllowed(scope);
-		const headers: PlanHeader[] = [];
-
-		for (const todo of todos) {
-			if (!todo.isNote) {
-				continue;
-			}
-			const parsed = this.parsePlanHeader(todo.text);
-			if (!parsed) {
-				continue;
-			}
-			headers.push({
-				...todo,
-				scope: mappedScope,
-				filePath: scope === TodoScope.currentFile ? resolvedPath : undefined,
-				slug: parsed.slug,
-				title: parsed.title,
-			});
-		}
-
-		return headers;
-	}
-
-	public getPlanItemsForScope(
-		scope: TodoScope,
-		slug: string,
-		filePath?: string
-	): ScopedTodo[] {
-		this.assertScopeAllowed(scope);
-		this.assertWorkspaceAvailable(scope);
-
-		const normalizedSlug = this.normalizePlanSlug(slug);
-		if (!normalizedSlug) {
-			throw new Error("Missing plan slug.");
-		}
-
-		const { todos, filePath: resolvedPath } = this.getTodosForScope(scope, filePath);
-		const prefix = `${PLAN_ITEM_PREFIX}${normalizedSlug}`;
-		const items = todos.filter((todo) => this.matchesPrefix(todo.text, prefix));
-		const mappedScope = this.mapScopeToAllowed(scope);
-
-		return items.map((todo) => ({
-			...todo,
-			scope: mappedScope,
-			filePath: scope === TodoScope.currentFile ? resolvedPath : undefined,
-		}));
-	}
-
-	public listPlans(options: {
-		scopes?: TodoScope[];
-		filePath?: string;
-		slug?: string;
-		includeItems?: boolean;
-	} = {}): { plans: PlanEntry[] } {
-		const hasExplicitScopes = (options.scopes?.length ?? 0) > 0;
-		const requestedScopes =
-			options.scopes && options.scopes.length > 0
-				? options.scopes
-				: [TodoScope.user, TodoScope.workspace, TodoScope.currentFile];
-		const normalizedSlug =
-			options.slug !== undefined ? this.normalizePlanSlug(options.slug) : undefined;
-
-		if (options.slug !== undefined && !normalizedSlug) {
-			throw new Error("Plan slug is required.");
-		}
-
-		const plans: PlanEntry[] = [];
-		for (const scope of requestedScopes) {
-			plans.push(
-				...this.listPlansForScope(scope, {
-					filePath: options.filePath,
-					normalizedSlug,
-					includeItems: options.includeItems ?? false,
-					allowMissingContext: !hasExplicitScopes,
-				})
-			);
-		}
-
-		return { plans };
-	}
-
-	public async addInstruction(
-		scope: TodoScope,
-		text: string,
-		options: { isMarkdown?: boolean; filePath?: string } = {}
-	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo } | null> {
-		const content = this.formatInstructionText(text);
-		return this.addTodo(scope, content, { ...options, isNote: true });
-	}
-
-	public async addPlanHeader(
-		scope: TodoScope,
-		slug: string,
-		title?: string,
-		options: { isMarkdown?: boolean; filePath?: string } = {}
-	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo } | null> {
-		const content = this.formatPlanHeader(slug, title);
-		return this.addTodo(scope, content, { ...options, isNote: true });
-	}
-
-	public async addPlanItem(
-		scope: TodoScope,
-		slug: string,
-		text: string,
-		options: { isNote?: boolean; isMarkdown?: boolean; filePath?: string } = {}
-	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo } | null> {
-		const content = this.formatPlanItem(slug, text);
-		return this.addTodo(scope, content, options);
+		filters: TodoListFilters & { filePath?: string } = {},
+		pagination: PaginationOptions = {}
+	): { scope: TodoScope; filePath?: string } & PaginatedResult<Todo> {
+		const { filePath, todos } = this.listTodos(scope, filters);
+		const page = paginate(todos, pagination);
+		return {
+			scope,
+			filePath,
+			...page,
+		};
 	}
 
 	public async addTodo(
@@ -357,63 +223,185 @@ export default class TodoService {
 		);
 	}
 
-	public async updateTodo(
+	public async updateTodoText(
 		scope: TodoScope,
 		id: number,
-		fields: TodoUpdateFields,
-		filePath?: string
-	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo | null }> {
-		this.assertScopeAllowed(scope);
-		this.assertWorkspaceAvailable(scope);
-		this.assertWritable();
+		newText: string,
+		options: { filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
+		return this.mutateTodo(scope, id, options.filePath, {
+			dispatch: (actions) => actions.editTodo({ id, newText }),
+			mutateFile: (todo) => {
+				todo.text = newText;
+			},
+		});
+	}
 
-		if (scope === TodoScope.currentFile) {
-			const resolvedPath = this.resolveFilePath(filePath);
-			const currentFilePath = this.store.getState().currentFile.filePath;
-			if (this.isSameFilePath(currentFilePath, resolvedPath)) {
-				const todo = this.updateTodoViaStore(currentFileActions, scope, id, fields);
-				return { scope, filePath: resolvedPath, todo };
-			}
-			const todo = await this.updateTodoForNonCurrentFile(resolvedPath, id, fields);
-			return { scope, filePath: resolvedPath, todo };
-		}
+	public async setCompleted(
+		scope: TodoScope,
+		id: number,
+		completed: boolean,
+		options: { filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
+		return this.mutateTodo(scope, id, options.filePath, {
+			// toggleTodo flips, so only dispatch when the value actually changes (idempotent).
+			dispatch: (actions, current) =>
+				current.completed === completed ? undefined : actions.toggleTodo({ id }),
+			mutateFile: (todo) => {
+				todo.completed = completed;
+				todo.completionDate = completed ? new Date().toISOString() : undefined;
+			},
+		});
+	}
 
-		const todo = this.updateTodoViaStore(
-			scope === TodoScope.user ? userActions : workspaceActions,
-			scope,
-			id,
-			fields
-		);
-		return { scope, todo };
+	public async setNote(
+		scope: TodoScope,
+		id: number,
+		isNote: boolean,
+		options: { filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
+		return this.mutateTodo(scope, id, options.filePath, {
+			dispatch: (actions, current) =>
+				current.isNote === isNote ? undefined : actions.toggleTodoNote({ id }),
+			mutateFile: (todo) => {
+				todo.isNote = isNote;
+			},
+		});
+	}
+
+	public async setMarkdown(
+		scope: TodoScope,
+		id: number,
+		isMarkdown: boolean,
+		options: { filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
+		return this.mutateTodo(scope, id, options.filePath, {
+			dispatch: (actions, current) =>
+				current.isMarkdown === isMarkdown ? undefined : actions.toggleMarkdown({ id }),
+			mutateFile: (todo) => {
+				todo.isMarkdown = isMarkdown;
+			},
+		});
 	}
 
 	public async deleteTodos(
 		scope: TodoScope,
 		ids: number[],
-		filePath?: string
-	): Promise<{ scope: TodoScope; filePath?: string; deletedIds: number[]; remainingCount: number }> {
+		options: { filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; deleted: Todo[]; count: number }> {
+		this.assertScopeAllowed(scope);
+		this.assertWorkspaceAvailable(scope);
+		this.assertWritable();
+
+		const idSet = new Set(ids);
+
+		if (scope === TodoScope.currentFile) {
+			const filePath = this.resolveFilePath(options.filePath);
+			if (!this.isActiveFile(filePath)) {
+				let deleted: Todo[] = [];
+				await this.mutateFileTodos(filePath, (todos) => {
+					deleted = todos.filter((todo) => idSet.has(todo.id));
+					return todos.filter((todo) => !idSet.has(todo.id));
+				});
+				return { scope, filePath, deleted, count: deleted.length };
+			}
+			const deleted = this.store
+				.getState()
+				.currentFile.todos.filter((todo) => idSet.has(todo.id));
+			this.store.dispatch(currentFileActions.deleteTodos({ ids }));
+			return { scope, filePath, deleted, count: deleted.length };
+		}
+
+		const deleted = this.getScopeState(scope).todos.filter((todo) => idSet.has(todo.id));
+		this.store.dispatch(this.actionsForScope(scope).deleteTodos({ ids }));
+		return { scope, filePath: undefined, deleted, count: deleted.length };
+	}
+
+	private async mutateTodo(
+		scope: TodoScope,
+		id: number,
+		filePath: string | undefined,
+		handlers: {
+			dispatch: (
+				actions: TodoActions,
+				current: Todo
+			) => { type: string } | undefined;
+			mutateFile: (todo: Todo) => void;
+		}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
 		this.assertScopeAllowed(scope);
 		this.assertWorkspaceAvailable(scope);
 		this.assertWritable();
 
 		if (scope === TodoScope.currentFile) {
 			const resolvedPath = this.resolveFilePath(filePath);
-			const currentFilePath = this.store.getState().currentFile.filePath;
-			if (this.isSameFilePath(currentFilePath, resolvedPath)) {
-				const remainingCount = this.deleteTodosViaStore(currentFileActions, scope, ids);
-				return { scope, filePath: resolvedPath, deletedIds: ids, remainingCount };
+			if (!this.isActiveFile(resolvedPath)) {
+				let updated: Todo | undefined;
+				await this.mutateFileTodos(resolvedPath, (todos) => {
+					const target = todos.find((todo) => todo.id === id);
+					if (!target) {
+						throw this.notFoundError(id, scope);
+					}
+					handlers.mutateFile(target);
+					updated = target;
+					return todos;
+				});
+				return { scope, filePath: resolvedPath, todo: updated as Todo };
 			}
-			const remainingCount = await this.deleteTodosForNonCurrentFile(resolvedPath, ids);
-			return { scope, filePath: resolvedPath, deletedIds: ids, remainingCount };
+			const updated = this.applyStoreMutation(scope, currentFileActions, id, handlers.dispatch);
+			return { scope, filePath: resolvedPath, todo: updated };
 		}
 
-		const remainingCount = this.deleteTodosViaStore(
-			scope === TodoScope.user ? userActions : workspaceActions,
-			scope,
-			ids
-		);
+		const updated = this.applyStoreMutation(scope, this.actionsForScope(scope), id, handlers.dispatch);
+		return { scope, filePath: undefined, todo: updated };
+	}
 
-		return { scope, deletedIds: ids, remainingCount };
+	private applyStoreMutation(
+		scope: TodoScope,
+		actions: TodoActions,
+		id: number,
+		dispatch: (actions: TodoActions, current: Todo) => { type: string } | undefined
+	): Todo {
+		const current = this.getScopeState(scope).todos.find((todo) => todo.id === id);
+		if (!current) {
+			throw this.notFoundError(id, scope);
+		}
+		const action = dispatch(actions, current);
+		if (action) {
+			this.store.dispatch(action);
+		}
+		const updated = this.getScopeState(scope).todos.find((todo) => todo.id === id);
+		return updated ?? current;
+	}
+
+	private async mutateFileTodos(
+		filePath: string,
+		mutator: (todos: Todo[]) => Todo[]
+	): Promise<Todo[]> {
+		const current = this.getFileTodos(filePath).map((todo) => ({ ...todo }));
+		const updated = mutator(current);
+		await this.persistFileTodos(filePath, updated);
+		return updated;
+	}
+
+	private actionsForScope(scope: TodoScope): TodoActions {
+		switch (scope) {
+			case TodoScope.user:
+				return userActions;
+			case TodoScope.workspace:
+				return workspaceActions;
+			case TodoScope.currentFile:
+				return currentFileActions;
+		}
+	}
+
+	private isActiveFile(filePath: string): boolean {
+		const currentFilePath = this.store.getState().currentFile.filePath;
+		return this.isSameFilePath(currentFilePath, filePath);
+	}
+
+	private notFoundError(id: number, scope: TodoScope): Error {
+		return new Error(`No todo with id ${id} was found in scope "${scope}".`);
 	}
 
 	private addTodoViaStore(
@@ -447,67 +435,15 @@ export default class TodoService {
 			return null;
 		}
 
-		const updates: TodoUpdateFields = {};
-		if (options.isNote !== undefined) {
-			updates.isNote = options.isNote;
+		if (options.isNote !== undefined && options.isNote !== result.todo.isNote) {
+			this.store.dispatch(actions.toggleTodoNote({ id: result.todo.id }));
 		}
-		if (options.isMarkdown !== undefined) {
-			updates.isMarkdown = options.isMarkdown;
-		}
-
-		if (Object.keys(updates).length > 0) {
-			const updated = this.updateTodoViaStore(actions, scope, result.todo.id, updates);
-			if (updated) {
-				return { ...result, todo: updated };
-			}
+		if (options.isMarkdown !== undefined && options.isMarkdown !== result.todo.isMarkdown) {
+			this.store.dispatch(actions.toggleMarkdown({ id: result.todo.id }));
 		}
 
-		return result;
-	}
-
-	private updateTodoViaStore(
-		actions: TodoActions,
-		scope: TodoScope,
-		id: number,
-		fields: TodoUpdateFields
-	): Todo | null {
-		const current = this.getScopeState(scope).todos.find((todo) => todo.id === id);
-		if (!current) {
-			return null;
-		}
-
-		if (fields.text !== undefined && fields.text !== current.text) {
-			this.store.dispatch(actions.editTodo({ id, newText: fields.text }));
-		}
-		if (fields.completed !== undefined && fields.completed !== current.completed) {
-			this.store.dispatch(actions.toggleTodo({ id }));
-		}
-		if (fields.isMarkdown !== undefined && fields.isMarkdown !== current.isMarkdown) {
-			this.store.dispatch(actions.toggleMarkdown({ id }));
-		}
-		if (fields.isNote !== undefined && fields.isNote !== current.isNote) {
-			this.store.dispatch(actions.toggleTodoNote({ id }));
-		}
-		if (fields.collapsed !== undefined && fields.collapsed !== (current.collapsed ?? false)) {
-			this.store.dispatch(actions.toggleCollapsed({ id }));
-		}
-
-		const updated = this.getScopeState(scope).todos.find((todo) => todo.id === id) ?? null;
-		return updated;
-	}
-
-	private deleteTodosViaStore(
-		actions: TodoActions,
-		scope: TodoScope,
-		ids: number[]
-	): number {
-		const uniqueIds = Array.from(new Set(ids));
-		if (uniqueIds.length === 1) {
-			this.store.dispatch(actions.deleteTodo({ id: uniqueIds[0] }));
-		} else if (uniqueIds.length > 1) {
-			this.store.dispatch(actions.deleteTodos({ ids: uniqueIds }));
-		}
-		return this.getScopeState(scope).todos.length;
+		const updated = this.getScopeState(scope).todos.find((todo) => todo.id === result.todo.id);
+		return updated ? { ...result, todo: updated } : result;
 	}
 
 	private async addTodoForNonCurrentFile(
@@ -538,57 +474,6 @@ export default class TodoService {
 		return { scope: TodoScope.currentFile, filePath, todo: newTodo };
 	}
 
-	private async updateTodoForNonCurrentFile(
-		filePath: string,
-		id: number,
-		fields: TodoUpdateFields
-	): Promise<Todo | null> {
-		const existing = this.getFileTodos(filePath);
-		const index = existing.findIndex((todo) => todo.id === id);
-		if (index < 0) {
-			return null;
-		}
-
-		const current = existing[index];
-		const updated: Todo = { ...current };
-
-		if (fields.text !== undefined) {
-			updated.text = fields.text;
-		}
-		if (fields.completed !== undefined) {
-			updated.completed = fields.completed;
-			updated.completionDate = fields.completed ? new Date().toISOString() : undefined;
-		}
-		if (fields.isMarkdown !== undefined) {
-			updated.isMarkdown = fields.isMarkdown;
-		}
-		if (fields.isNote !== undefined) {
-			updated.isNote = fields.isNote;
-		}
-		if (fields.collapsed !== undefined) {
-			updated.collapsed = fields.collapsed;
-		}
-
-		const nextTodos = [...existing];
-		nextTodos[index] = updated;
-
-		const shouldResort =
-			(fields.completed !== undefined && fields.completed !== current.completed) ||
-			(fields.isNote !== undefined && fields.isNote !== current.isNote);
-		const finalTodos = shouldResort ? sortTodosWithNotes(nextTodos) : nextTodos;
-
-		await this.persistFileTodos(filePath, finalTodos);
-		return finalTodos.find((todo) => todo.id === id) ?? null;
-	}
-
-	private async deleteTodosForNonCurrentFile(filePath: string, ids: number[]): Promise<number> {
-		const existing = this.getFileTodos(filePath);
-		const deleteIds = new Set(ids);
-		const updated = existing.filter((todo) => !deleteIds.has(todo.id));
-		await this.persistFileTodos(filePath, updated);
-		return updated.length;
-	}
-
 	private async persistFileTodos(filePath: string, todos: Todo[]): Promise<void> {
 		const slice: CurrentFileSlice = {
 			filePath,
@@ -602,11 +487,6 @@ export default class TodoService {
 
 		await this.storageSyncManager.persistSlice(slice);
 		this.refreshWorkspaceFileList();
-
-		const workspaceMode = this.context.workspaceState.get<string>("syncMode", "local");
-		if (workspaceMode === "github") {
-			this.syncManager.triggerDebounceSync("workspace");
-		}
 	}
 
 	private refreshWorkspaceFileList(): void {
@@ -707,9 +587,7 @@ export default class TodoService {
 	private applyFilters(todos: Todo[], filters: TodoListFilters): Todo[] {
 		let filtered = [...todos];
 
-		if (filters.instructionOnly) {
-			filtered = this.filterInstructionNotes(filtered);
-		} else if (filters.noteOnly) {
+		if (filters.noteOnly) {
 			filtered = filtered.filter((todo) => todo.isNote);
 		}
 
@@ -720,168 +598,6 @@ export default class TodoService {
 		}
 
 		return filtered;
-	}
-
-	private listPlansForScope(
-		scope: TodoScope,
-		options: {
-			filePath?: string;
-			normalizedSlug?: string;
-			includeItems: boolean;
-			allowMissingContext: boolean;
-		}
-	): PlanEntry[] {
-		if (!this.isScopeAllowed(scope)) {
-			if (options.allowMissingContext) {
-				return [];
-			}
-			this.assertScopeAllowed(scope);
-		}
-
-		if (scope !== TodoScope.user && !getWorkspacePath()) {
-			if (options.allowMissingContext) {
-				return [];
-			}
-			this.assertWorkspaceAvailable(scope);
-		}
-
-		let resolvedPath: string | undefined;
-		if (scope === TodoScope.currentFile) {
-			if (options.allowMissingContext) {
-				try {
-					resolvedPath = this.resolveFilePath(options.filePath);
-				} catch {
-					return [];
-				}
-			} else {
-				resolvedPath = this.resolveFilePath(options.filePath);
-			}
-		}
-
-		const headers = this.getPlanHeadersForScope(scope, resolvedPath);
-		const filteredHeaders = options.normalizedSlug
-			? headers.filter((header) => header.slug === options.normalizedSlug)
-			: headers;
-		const grouped = this.groupPlanHeadersBySlug(filteredHeaders);
-		const entries: PlanEntry[] = [];
-		const mappedScope = this.mapScopeToAllowed(scope);
-		const filePath = scope === TodoScope.currentFile ? resolvedPath : undefined;
-
-		for (const [slug, slugHeaders] of grouped.entries()) {
-			const entry: PlanEntry = {
-				slug,
-				scope: mappedScope,
-				filePath,
-				headers: slugHeaders,
-			};
-			if (options.includeItems) {
-				entry.items = this.getPlanItemsForScope(scope, slug, resolvedPath);
-			}
-			entries.push(entry);
-		}
-
-		if (options.includeItems && options.normalizedSlug && grouped.size === 0) {
-			const items = this.getPlanItemsForScope(scope, options.normalizedSlug, resolvedPath);
-			if (items.length > 0) {
-				entries.push({
-					slug: options.normalizedSlug,
-					scope: mappedScope,
-					filePath,
-					headers: [],
-					items,
-				});
-			}
-		}
-
-		return entries;
-	}
-
-	private groupPlanHeadersBySlug(headers: PlanHeader[]): Map<string, PlanHeader[]> {
-		const grouped = new Map<string, PlanHeader[]>();
-		for (const header of headers) {
-			const existing = grouped.get(header.slug);
-			if (existing) {
-				existing.push(header);
-			} else {
-				grouped.set(header.slug, [header]);
-			}
-		}
-		return grouped;
-	}
-
-	private filterInstructionNotes(todos: Todo[]): Todo[] {
-		return todos.filter((todo) => todo.isNote && this.matchesInstructionPrefix(todo.text));
-	}
-
-	private matchesInstructionPrefix(text: string): boolean {
-		const trimmed = text.trimStart();
-		const lower = trimmed.toLowerCase();
-		if (!lower.startsWith(INSTRUCTION_PREFIX)) {
-			return false;
-		}
-		if (lower.length === INSTRUCTION_PREFIX.length) {
-			return true;
-		}
-		const nextChar = lower.charAt(INSTRUCTION_PREFIX.length);
-		return nextChar === ":" || /\s/.test(nextChar);
-	}
-
-	private normalizePlanSlug(slug: string): string {
-		return slug.trim().toLowerCase();
-	}
-
-	private formatInstructionText(text: string): string {
-		const trimmed = text.trimStart();
-		if (!trimmed) {
-			throw new Error("Instruction text is required.");
-		}
-		if (this.matchesInstructionPrefix(trimmed)) {
-			return trimmed;
-		}
-		return `${INSTRUCTION_PREFIX} ${trimmed}`;
-	}
-
-	private formatPlanHeader(slug: string, title?: string): string {
-		const normalizedSlug = this.normalizePlanSlug(slug);
-		if (!normalizedSlug) {
-			throw new Error("Plan slug is required.");
-		}
-		const trimmedTitle = (title ?? "").trim();
-		if (trimmedTitle) {
-			return `@plan ${normalizedSlug} ${trimmedTitle}`;
-		}
-		return `@plan ${normalizedSlug}`;
-	}
-
-	private formatPlanItem(slug: string, text: string): string {
-		const normalizedSlug = this.normalizePlanSlug(slug);
-		if (!normalizedSlug) {
-			throw new Error("Plan slug is required.");
-		}
-		const trimmed = text.trimStart();
-		if (!trimmed) {
-			throw new Error("Plan item text is required.");
-		}
-		const prefix = `${PLAN_ITEM_PREFIX}${normalizedSlug}`;
-		if (this.matchesPrefix(trimmed, prefix)) {
-			return trimmed;
-		}
-		return `${prefix} ${trimmed}`;
-	}
-
-	private parsePlanHeader(text: string): { slug: string; title: string } | null {
-		const trimmed = text.trimStart();
-		const firstLine = trimmed.split(/\r?\n/, 1)[0] ?? "";
-		const match = firstLine.match(/^@plan\s+([^\s]+)(?:\s+(.*))?$/i);
-		if (!match) {
-			return null;
-		}
-		const slug = this.normalizePlanSlug(match[1] ?? "");
-		if (!slug) {
-			return null;
-		}
-		const title = (match[2] ?? "").trim();
-		return { slug, title };
 	}
 
 	private matchesPrefix(text: string, prefix: string): boolean {

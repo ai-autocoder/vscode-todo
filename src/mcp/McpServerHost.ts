@@ -6,11 +6,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Resource } from "@modelcontextprotocol/sdk/types.js";
 import { TodoScope } from "../todo/todoTypes";
-import PlanArchiveService from "../todo/PlanArchiveService";
-import TodoService, { TodoUpdateFields } from "../todo/TodoService";
+import TodoService, { PaginatedResult } from "../todo/TodoService";
 import McpLogChannel from "./McpLogChannel";
 import StorageSyncManager from "../storage/StorageSyncManager";
-import { SyncManager } from "../sync/SyncManager";
 import { EnhancedStore } from "@reduxjs/toolkit";
 import { StoreState } from "../todo/todoTypes";
 import * as path from "node:path";
@@ -45,7 +43,6 @@ export default class McpServerHost implements vscode.Disposable {
 	private sdk: McpSdk | null = null;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly todoService: TodoService;
-	private readonly planArchiveService: PlanArchiveService;
 	private readonly statusEmitter = new vscode.EventEmitter<McpStatus>();
 	private status: McpStatus;
 	private lastPort: number | null = null;
@@ -55,11 +52,9 @@ export default class McpServerHost implements vscode.Disposable {
 	constructor(
 		private readonly context: vscode.ExtensionContext,
 		store: EnhancedStore<StoreState>,
-		storageSyncManager: StorageSyncManager,
-		syncManager: SyncManager
+		storageSyncManager: StorageSyncManager
 	) {
-		this.todoService = new TodoService(context, store, storageSyncManager, syncManager);
-		this.planArchiveService = new PlanArchiveService(this.todoService);
+		this.todoService = new TodoService(context, store, storageSyncManager);
 		this.status = this.buildStatus(this.readConfig(), false, null);
 	}
 
@@ -235,6 +230,15 @@ export default class McpServerHost implements vscode.Disposable {
 			return;
 		}
 
+		if (!this.isOriginAllowed(req, config)) {
+			McpLogChannel.log(
+				`[MCP] Rejected request with disallowed Origin: ${String(req.headers.origin)}`
+			);
+			res.statusCode = 403;
+			res.end("Forbidden: disallowed Origin");
+			return;
+		}
+
 		const url = new URL(req.url, `http://${this.host}`);
 		if (url.pathname !== "/mcp") {
 			res.statusCode = 404;
@@ -348,13 +352,19 @@ export default class McpServerHost implements vscode.Disposable {
 			{
 				capabilities: { resources: {}, tools: {} },
 				instructions:
-					"Use the todo.* tools to read and update VS Code Todo items. Use resources for snapshots.",
+					"Use the todo_* tools to read, create, update, and delete VS Code Todo items and notes " +
+					"across the user, workspace, and currentFile scopes. todo_list_items reads todos/notes for " +
+					"a scope and todo_list_files lists files that have todos. todo_add_item creates an item; " +
+					"todo_update_text, todo_set_completed, todo_set_note, and todo_set_markdown change an " +
+					"existing item by id; todo_delete_items removes items by id. All write tools are blocked " +
+					"when the server is in read-only mode. For the currentFile scope, pass filePath to target " +
+					"a specific file (it need not be open in the editor). The todo:// resources expose " +
+					"read-only snapshots of the same data.",
 			}
 		);
 
 		this.registerResources(server, sdk);
 		this.registerTools(server);
-		this.registerPrompts(server);
 
 		return server;
 	}
@@ -437,545 +447,457 @@ export default class McpServerHost implements vscode.Disposable {
 				return this.toResourceResult(uri.toString(), data.todos);
 			}
 		);
-
-		const instructionsScopeTemplate = new sdk.resourceTemplate("todo://instructions?scope={scope}", {
-			list: async () => {
-				return {
-					resources: [
-						this.buildScopeResource(
-							"todo://instructions?scope=user",
-							"User Instructions",
-							"User-scope instruction notes"
-						),
-						this.buildScopeResource(
-							"todo://instructions?scope=workspace",
-							"Workspace Instructions",
-							"Workspace-scope instruction notes"
-						),
-					],
-				};
-			},
-		});
-		server.registerResource(
-			"instruction-notes-scope",
-			instructionsScopeTemplate,
-			{
-				title: "Instruction Notes (Scope)",
-				description: "Instruction notes for user/workspace scopes",
-				mimeType: "application/json",
-			},
-			async (uri, variables) => {
-				const rawScope = this.getFirstValue(uri.searchParams.get("scope") ?? variables.scope);
-				const scope = this.parseScopeParam(rawScope);
-				if (!scope) {
-					throw new Error("Missing or invalid scope.");
-				}
-				if (scope === TodoScope.currentFile) {
-					throw new Error("File scope requires a path. Use todo://instructions?path=...");
-				}
-				const data = this.todoService.getInstructionNotesForScope(scope);
-				return this.toResourceResult(uri.toString(), data);
-			}
-		);
-
-		const instructionsFileTemplate = new sdk.resourceTemplate("todo://instructions?path={path}", {
-			list: async () => {
-				return { resources: this.buildFileResources("todo://instructions") };
-			},
-		});
-		server.registerResource(
-			"instruction-notes",
-			instructionsFileTemplate,
-			{
-				title: "Instruction Notes (File)",
-				description: "Instruction notes for a file with scope precedence",
-				mimeType: "application/json",
-			},
-			async (uri, variables) => {
-				const rawPath = uri.searchParams.get("path") ?? variables.path;
-				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
-				if (!filePath) {
-					throw new Error("Missing file path.");
-				}
-				const data = this.todoService.getInstructionNotesForFile(filePath);
-				return this.toResourceResult(uri.toString(), data);
-			}
-		);
-
-		const plansScopeTemplate = new sdk.resourceTemplate("todo://plans?scope={scope}", {
-			list: async () => {
-				return {
-					resources: [
-						this.buildScopeResource(
-							"todo://plans?scope=user",
-							"User Plans",
-							"Plan headers in user scope"
-						),
-						this.buildScopeResource(
-							"todo://plans?scope=workspace",
-							"Workspace Plans",
-							"Plan headers in workspace scope"
-						),
-					],
-				};
-			},
-		});
-		server.registerResource(
-			"plan-headers",
-			plansScopeTemplate,
-			{
-				title: "Plan Headers (Scope)",
-				description: "Plan headers declared with @plan <slug> <title>",
-				mimeType: "application/json",
-			},
-			async (uri, variables) => {
-				const rawScope = this.getFirstValue(uri.searchParams.get("scope") ?? variables.scope);
-				const scope = this.parseScopeParam(rawScope);
-				if (!scope) {
-					throw new Error("Missing or invalid scope.");
-				}
-				if (scope === TodoScope.currentFile) {
-					throw new Error("File scope requires a path. Use todo://plans?path=...");
-				}
-				const data = this.todoService.getPlanHeadersForScope(scope);
-				return this.toResourceResult(uri.toString(), data);
-			}
-		);
-
-		const plansFileTemplate = new sdk.resourceTemplate("todo://plans?path={path}", {
-			list: async () => {
-				return { resources: this.buildFileResources("todo://plans") };
-			},
-		});
-		server.registerResource(
-			"plan-headers-file",
-			plansFileTemplate,
-			{
-				title: "Plan Headers (File)",
-				description: "Plan headers in file scope",
-				mimeType: "application/json",
-			},
-			async (uri, variables) => {
-				const rawPath = uri.searchParams.get("path") ?? variables.path;
-				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
-				if (!filePath) {
-					throw new Error("Missing file path.");
-				}
-				const data = this.todoService.getPlanHeadersForScope(TodoScope.currentFile, filePath);
-				return this.toResourceResult(uri.toString(), data);
-			}
-		);
-
-		const planItemsScopeTemplate = new sdk.resourceTemplate(
-			"todo://plan?scope={scope}&slug={slug}",
-			{
-				list: undefined,
-			}
-		);
-		server.registerResource(
-			"plan-items",
-			planItemsScopeTemplate,
-			{
-				title: "Plan Items (Scope)",
-				description: "Plan items grouped by @plan:<slug> prefix",
-				mimeType: "application/json",
-			},
-			async (uri, variables) => {
-				const slugRaw = uri.searchParams.get("slug") ?? variables.slug;
-				const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw;
-				if (!slug) {
-					throw new Error("Missing plan slug.");
-				}
-				const rawScope = this.getFirstValue(uri.searchParams.get("scope") ?? variables.scope);
-				const scope = this.parseScopeParam(rawScope);
-				if (!scope) {
-					throw new Error("Missing or invalid scope.");
-				}
-				if (scope === TodoScope.currentFile) {
-					throw new Error("File scope requires a path. Use todo://plan?path=...&slug=...");
-				}
-				const normalizedSlug = slug.trim().toLowerCase();
-
-				const headers = this.todoService
-					.getPlanHeadersForScope(scope)
-					.filter((header) => header.slug === normalizedSlug);
-				const items = this.todoService.getPlanItemsForScope(scope, slug);
-				return this.toResourceResult(uri.toString(), {
-					slug: normalizedSlug,
-					scope: this.formatScope(scope),
-					headers,
-					items,
-				});
-			}
-		);
-
-		const planItemsFileTemplate = new sdk.resourceTemplate("todo://plan?path={path}&slug={slug}", {
-			list: undefined,
-		});
-		server.registerResource(
-			"plan-items-file",
-			planItemsFileTemplate,
-			{
-				title: "Plan Items (File)",
-				description: "Plan items grouped by @plan:<slug> prefix for a file",
-				mimeType: "application/json",
-			},
-			async (uri, variables) => {
-				const slugRaw = uri.searchParams.get("slug") ?? variables.slug;
-				const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw;
-				if (!slug) {
-					throw new Error("Missing plan slug.");
-				}
-				const rawPath = uri.searchParams.get("path") ?? variables.path;
-				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
-				if (!filePath) {
-					throw new Error("Missing file path.");
-				}
-				const normalizedSlug = slug.trim().toLowerCase();
-
-				const headers = this.todoService
-					.getPlanHeadersForScope(TodoScope.currentFile, filePath)
-					.filter((header) => header.slug === normalizedSlug);
-				const items = this.todoService.getPlanItemsForScope(
-					TodoScope.currentFile,
-					slug,
-					filePath
-				);
-				return this.toResourceResult(uri.toString(), {
-					slug: normalizedSlug,
-					scope: "file",
-					filePath,
-					headers,
-					items,
-				});
-			}
-		);
 	}
 
 	private registerTools(server: McpServer): void {
-		const scopeSchema = z.enum(["user", "workspace", "currentFile"]);
+		const scopeSchema = z
+			.enum(["user", "workspace", "currentFile"])
+			.describe(
+				"Which todo list to target: 'user' (global, shared across all projects), " +
+					"'workspace' (the current project/folder), or 'currentFile' (a specific file — " +
+					"requires filePath)."
+			);
+
+		const limitSchema = z
+			.number()
+			.int()
+			.positive()
+			.optional()
+			.describe("Maximum number of items to return. Defaults to 50, capped at 500.");
+		const offsetSchema = z
+			.number()
+			.int()
+			.nonnegative()
+			.optional()
+			.describe(
+				"Number of items to skip from the start, for paging. Defaults to 0. Use the " +
+					"next_offset from a previous response to fetch the next page."
+			);
+
+		const todoShape = {
+			id: z.number().describe("Stable numeric identifier of the item within its scope."),
+			text: z.string().describe("The todo or note text."),
+			completed: z.boolean().describe("Whether the item is marked done. Always false for notes."),
+			creationDate: z.string().describe("ISO 8601 timestamp of when the item was created."),
+			completionDate: z
+				.string()
+				.optional()
+				.describe("ISO 8601 timestamp of when the item was completed, if completed."),
+			isMarkdown: z.boolean().describe("Whether the text is rendered as Markdown in the UI."),
+			isNote: z
+				.boolean()
+				.describe("True for a free-text note, false for a checkable task."),
+			collapsed: z
+				.boolean()
+				.optional()
+				.describe("Whether the item is collapsed in the UI."),
+		};
+		const todoSchema = z.object(todoShape);
+
+		const listItemsOutputSchema = {
+			scope: scopeSchema,
+			filePath: z
+				.string()
+				.optional()
+				.describe("Resolved file path when scope is 'currentFile'."),
+			todos: z.array(todoSchema).describe("The page of todos/notes for this scope."),
+			total: z.number().describe("Total number of items matching the query across all pages."),
+			count: z.number().describe("Number of items returned in this page."),
+			has_more: z.boolean().describe("True when more items remain beyond this page."),
+			next_offset: z
+				.number()
+				.optional()
+				.describe("Offset to pass on the next call to fetch the following page, when has_more is true."),
+		};
+
+		const fileEntrySchema = z.object({
+			filePath: z.string().describe("Path of a file that has todos."),
+			todoNumber: z.number().describe("Number of todos recorded against that file."),
+		});
+		const listFilesOutputSchema = {
+			files: z.array(fileEntrySchema).describe("The page of files that have todos."),
+			total: z.number().describe("Total number of files with todos across all pages."),
+			count: z.number().describe("Number of files returned in this page."),
+			has_more: z.boolean().describe("True when more files remain beyond this page."),
+			next_offset: z
+				.number()
+				.optional()
+				.describe("Offset to pass on the next call to fetch the following page, when has_more is true."),
+		};
+
+		const addItemOutputSchema = {
+			scope: scopeSchema,
+			filePath: z
+				.string()
+				.optional()
+				.describe("Resolved file path when the item was added to a 'currentFile' scope."),
+			todo: todoSchema.describe("The newly created todo or note."),
+		};
+
+		const idSchema = z
+			.number()
+			.int()
+			.describe("Numeric id of the target item (from a previous todo_list_items result).");
+		const mutateFilePathSchema = z
+			.string()
+			.optional()
+			.describe(
+				"Absolute or workspace-relative path; required when scope is 'currentFile', otherwise ignored."
+			);
+
+		// Shared by the four single-item mutators (update text, set completed/note/markdown).
+		const itemOutputSchema = {
+			scope: scopeSchema,
+			filePath: z
+				.string()
+				.optional()
+				.describe("Resolved file path when scope is 'currentFile'."),
+			todo: todoSchema.describe("The item after the change."),
+		};
+
+		const deleteOutputSchema = {
+			scope: scopeSchema,
+			filePath: z
+				.string()
+				.optional()
+				.describe("Resolved file path when scope is 'currentFile'."),
+			deleted: z.array(todoSchema).describe("The items that were deleted."),
+			count: z.number().describe("Number of items deleted (0 if no id matched)."),
+		};
+
+		const mutateAnnotations = {
+			readOnlyHint: false,
+			destructiveHint: false,
+			idempotentHint: true,
+			openWorldHint: false,
+		};
 
 		server.registerTool(
-			"todo.list",
+			"todo_list_items",
 			{
-				description: "List todos and notes for a scope.",
+				title: "List Todos",
+				description:
+					"List todos and notes for a scope. 'scope' is one of 'user' (global), " +
+					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
+					"'filePath'). Optionally filter to notes only with 'noteOnly', or to items whose " +
+					"text starts with 'textPrefix'. Results are paginated: pass 'limit' (default 50, " +
+					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result.",
 				inputSchema: {
 					scope: scopeSchema,
-					filePath: z.string().optional(),
-					noteOnly: z.boolean().optional(),
-					instructionOnly: z.boolean().optional(),
-					textPrefix: z.string().optional(),
+					filePath: z
+						.string()
+						.optional()
+						.describe(
+							"Absolute or workspace-relative path; required when scope is 'currentFile', " +
+								"otherwise ignored."
+						),
+					noteOnly: z
+						.boolean()
+						.optional()
+						.describe("When true, return only notes (isNote === true), excluding tasks."),
+					textPrefix: z
+						.string()
+						.optional()
+						.describe("When set, return only items whose text begins with this prefix (case-insensitive)."),
+					limit: limitSchema,
+					offset: offsetSchema,
 				},
+				outputSchema: listItemsOutputSchema,
+				annotations: { title: "List Todos", readOnlyHint: true, openWorldHint: false },
 			},
 			async (args) => {
 				return this.safeToolCall(() => {
-					const { scope, ...filters } = args;
-					const data = this.todoService.listTodos(scope as TodoScope, filters);
+					const { scope, limit, offset, ...filters } = args;
+					const data = this.todoService.listTodosPaginated(
+						scope as TodoScope,
+						filters,
+						{ limit, offset }
+					);
 					return this.toolResult({
 						scope,
-						filePath: data.filePath,
-						todos: data.todos,
+						...(data.filePath !== undefined ? { filePath: data.filePath } : {}),
+						todos: data.items,
+						...this.paginationFields(data),
 					});
 				});
 			}
 		);
 
 		server.registerTool(
-			"todo.listPlans",
+			"todo_add_item",
 			{
+				title: "Add Todo",
 				description:
-					"List plan headers (and optionally items). Call this before implementing a plan.",
-				inputSchema: {
-					scopes: z.array(scopeSchema).optional(),
-					scope: scopeSchema.optional(),
-					filePath: z.string().optional(),
-					slug: z.string().optional(),
-					includeItems: z.boolean().optional(),
-				},
-				annotations: {
-					readOnlyHint: true,
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(() => {
-					const scopes =
-						args.scopes && args.scopes.length > 0
-							? args.scopes
-							: args.scope
-								? [args.scope]
-								: undefined;
-					const data = this.todoService.listPlans({
-						scopes: scopes as TodoScope[] | undefined,
-						filePath: args.filePath,
-						slug: args.slug,
-						includeItems: args.includeItems,
-					});
-					return this.toolResult(data);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.add",
-			{
-				description: "Add a todo or note to a scope.",
+					"Create a new todo or note in the given scope. 'scope' is one of 'user' (global), " +
+					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
+					"'filePath'). Set 'isNote: true' for a free-text note instead of a checkable task. " +
+					"Set 'isMarkdown: true' to render the text as Markdown. Returns the created item. " +
+					"Rejected when the server is in read-only mode.",
 				inputSchema: {
 					scope: scopeSchema,
-					text: z.string(),
-					isNote: z.boolean().optional(),
-					isMarkdown: z.boolean().optional(),
-					filePath: z.string().optional(),
+					text: z.string().describe("The text of the todo or note to create."),
+					isNote: z
+						.boolean()
+						.optional()
+						.describe("When true, create a free-text note instead of a checkable task. Defaults to false."),
+					isMarkdown: z
+						.boolean()
+						.optional()
+						.describe(
+							"When true, the text is rendered as Markdown in the UI. Defaults to the " +
+								"extension's createMarkdownByDefault setting."
+						),
+					filePath: z
+						.string()
+						.optional()
+						.describe(
+							"Absolute or workspace-relative path; required when scope is 'currentFile', " +
+								"otherwise ignored."
+						),
+				},
+				outputSchema: addItemOutputSchema,
+				annotations: {
+					title: "Add Todo",
+					readOnlyHint: false,
+					destructiveHint: false,
+					idempotentHint: false,
+					openWorldHint: false,
 				},
 			},
 			async (args) => {
 				return this.safeToolCall(async () => {
 					const result = await this.todoService.addTodo(args.scope as TodoScope, args.text, args);
-					return this.toolResult(result);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.addInstruction",
-			{
-				description: "Add an instruction note with the @instr prefix.",
-				inputSchema: {
-					scope: scopeSchema,
-					text: z.string(),
-					isMarkdown: z.boolean().optional(),
-					filePath: z.string().optional(),
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
-					const { scope, text, ...options } = args;
-					const result = await this.todoService.addInstruction(scope as TodoScope, text, options);
-					return this.toolResult(result);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.addPlanHeader",
-			{
-				description: "Add a plan header note using @plan <slug> <title>.",
-				inputSchema: {
-					scope: scopeSchema,
-					slug: z.string(),
-					title: z.string().optional(),
-					isMarkdown: z.boolean().optional(),
-					filePath: z.string().optional(),
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
-					const { scope, slug, title, ...options } = args;
-					const result = await this.todoService.addPlanHeader(
-						scope as TodoScope,
-						slug,
-						title,
-						options
-					);
-					return this.toolResult(result);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.addPlanItem",
-			{
-				description: "Add a plan item using the @plan:<slug> prefix.",
-				inputSchema: {
-					scope: scopeSchema,
-					slug: z.string(),
-					text: z.string(),
-					isNote: z.boolean().optional(),
-					isMarkdown: z.boolean().optional(),
-					filePath: z.string().optional(),
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
-					const { scope, slug, text, ...options } = args;
-					const result = await this.todoService.addPlanItem(
-						scope as TodoScope,
-						slug,
-						text,
-						options
-					);
-					return this.toolResult(result);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.archivePlan",
-			{
-				description:
-					"Archive a plan header by slug. Defaults to completing the header only; use includeItems to cascade to plan items.",
-				inputSchema: {
-					scope: scopeSchema,
-					slug: z.string(),
-					action: z.enum(["complete", "delete"]).optional(),
-					includeItems: z.boolean().optional(),
-					filePath: z.string().optional(),
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
-					const { scope, slug, action, includeItems, filePath } = args;
-					const result = await this.planArchiveService.archivePlan(scope as TodoScope, slug, {
-						action,
-						includeItems,
-						filePath,
+					if (!result) {
+						throw new Error("Failed to create the todo: it was not added to the store.");
+					}
+					return this.toolResult({
+						scope: result.scope,
+						...(result.filePath !== undefined ? { filePath: result.filePath } : {}),
+						todo: result.todo,
 					});
-					return this.toolResult(result);
 				});
 			}
 		);
 
 		server.registerTool(
-			"todo.update",
+			"todo_list_files",
 			{
-				description: "Update a todo or note by id.",
-				inputSchema: {
-					scope: scopeSchema,
-					id: z.number(),
-					text: z.string().optional(),
-					completed: z.boolean().optional(),
-					isMarkdown: z.boolean().optional(),
-					isNote: z.boolean().optional(),
-					collapsed: z.boolean().optional(),
-					filePath: z.string().optional(),
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
-					const updateFields: TodoUpdateFields = {
-						text: args.text,
-						completed: args.completed,
-						isMarkdown: args.isMarkdown,
-						isNote: args.isNote,
-						collapsed: args.collapsed,
-					};
-					const result = await this.todoService.updateTodo(
-						args.scope as TodoScope,
-						args.id,
-						updateFields,
-						args.filePath
-					);
-					return this.toolResult(result);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.complete",
-			{
-				description: "Mark a todo complete or incomplete.",
-				inputSchema: {
-					scope: scopeSchema,
-					id: z.number(),
-					completed: z.boolean(),
-					filePath: z.string().optional(),
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
-					const result = await this.todoService.updateTodo(
-						args.scope as TodoScope,
-						args.id,
-						{ completed: args.completed },
-						args.filePath
-					);
-					return this.toolResult(result);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.delete",
-			{
-				description: "Delete todos by id.",
-				inputSchema: {
-					scope: scopeSchema,
-					ids: z.array(z.number()),
-					filePath: z.string().optional(),
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
-					const result = await this.todoService.deleteTodos(
-						args.scope as TodoScope,
-						args.ids,
-						args.filePath
-					);
-					return this.toolResult(result);
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo.listFiles",
-			{
-				description: "List files that have todos.",
-			},
-			async () => {
-				return this.safeToolCall(() => {
-					return this.toolResult({ files: this.todoService.listFiles() });
-				});
-			}
-		);
-
-	}
-
-	private registerPrompts(server: McpServer): void {
-		server.registerPrompt(
-			"implement_plan",
-			{
-				title: "Implement Plan",
+				title: "List Files with Todos",
 				description:
-					"Guide for implementing a plan with the VS Code Todo MCP tools.",
-				argsSchema: {
-					planName: z.string().optional(),
+					"List files in the current workspace that have file-scoped todos, with the count " +
+					"of todos per file. Results are paginated: pass 'limit' (default 50, max 500) and " +
+					"'offset', and read 'total' / 'has_more' / 'next_offset' from the result. Requires " +
+					"an open workspace folder.",
+				inputSchema: {
+					limit: limitSchema,
+					offset: offsetSchema,
+				},
+				outputSchema: listFilesOutputSchema,
+				annotations: { title: "List Files with Todos", readOnlyHint: true, openWorldHint: false },
+			},
+			async (args) => {
+				return this.safeToolCall(() => {
+					const data = this.todoService.listFilesPaginated({
+						limit: args?.limit,
+						offset: args?.offset,
+					});
+					return this.toolResult({
+						files: data.items,
+						...this.paginationFields(data),
+					});
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo_update_text",
+			{
+				title: "Update Todo Text",
+				description:
+					"Change the text of an existing todo or note. Identify the item by 'scope' and " +
+					"numeric 'id' (use todo_list_items to find ids); for 'currentFile' scope also pass " +
+					"'filePath'. Returns the updated item. Rejected when the server is in read-only mode.",
+				inputSchema: {
+					scope: scopeSchema,
+					id: idSchema,
+					newText: z.string().describe("The new text for the item."),
+					filePath: mutateFilePathSchema,
+				},
+				outputSchema: itemOutputSchema,
+				annotations: { title: "Update Todo Text", ...mutateAnnotations },
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const result = await this.todoService.updateTodoText(
+						args.scope as TodoScope,
+						args.id,
+						args.newText,
+						{ filePath: args.filePath }
+					);
+					return this.toolResult(this.itemResult(result));
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo_set_completed",
+			{
+				title: "Set Todo Completed",
+				description:
+					"Mark a todo as completed or not completed. Identify the item by 'scope' and numeric " +
+					"'id'; for 'currentFile' scope also pass 'filePath'. Set 'completed: true' to complete " +
+					"(records a completion date) or 'false' to reopen it. Idempotent — setting the value it " +
+					"already has is a no-op. Notes have no completion state. Returns the updated item. " +
+					"Rejected when the server is in read-only mode.",
+				inputSchema: {
+					scope: scopeSchema,
+					id: idSchema,
+					completed: z.boolean().describe("Target completion state: true to complete, false to reopen."),
+					filePath: mutateFilePathSchema,
+				},
+				outputSchema: itemOutputSchema,
+				annotations: { title: "Set Todo Completed", ...mutateAnnotations },
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const result = await this.todoService.setCompleted(
+						args.scope as TodoScope,
+						args.id,
+						args.completed,
+						{ filePath: args.filePath }
+					);
+					return this.toolResult(this.itemResult(result));
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo_set_note",
+			{
+				title: "Set Todo Note Flag",
+				description:
+					"Convert an item between a checkable task and a free-text note. Identify the item by " +
+					"'scope' and numeric 'id'; for 'currentFile' scope also pass 'filePath'. Set " +
+					"'isNote: true' to make it a note, 'false' to make it a task. Idempotent. Returns the " +
+					"updated item. Rejected when the server is in read-only mode.",
+				inputSchema: {
+					scope: scopeSchema,
+					id: idSchema,
+					isNote: z.boolean().describe("True to make the item a note, false to make it a task."),
+					filePath: mutateFilePathSchema,
+				},
+				outputSchema: itemOutputSchema,
+				annotations: { title: "Set Todo Note Flag", ...mutateAnnotations },
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const result = await this.todoService.setNote(
+						args.scope as TodoScope,
+						args.id,
+						args.isNote,
+						{ filePath: args.filePath }
+					);
+					return this.toolResult(this.itemResult(result));
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo_set_markdown",
+			{
+				title: "Set Todo Markdown Flag",
+				description:
+					"Toggle whether an item's text is rendered as Markdown in the UI. Identify the item by " +
+					"'scope' and numeric 'id'; for 'currentFile' scope also pass 'filePath'. Set " +
+					"'isMarkdown: true' to enable Markdown rendering, 'false' to show plain text. Idempotent. " +
+					"Returns the updated item. Rejected when the server is in read-only mode.",
+				inputSchema: {
+					scope: scopeSchema,
+					id: idSchema,
+					isMarkdown: z.boolean().describe("True to render as Markdown, false for plain text."),
+					filePath: mutateFilePathSchema,
+				},
+				outputSchema: itemOutputSchema,
+				annotations: { title: "Set Todo Markdown Flag", ...mutateAnnotations },
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const result = await this.todoService.setMarkdown(
+						args.scope as TodoScope,
+						args.id,
+						args.isMarkdown,
+						{ filePath: args.filePath }
+					);
+					return this.toolResult(this.itemResult(result));
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo_delete_items",
+			{
+				title: "Delete Todos",
+				description:
+					"Delete one or more todos or notes from a scope. Identify items by 'scope' and an array " +
+					"of numeric 'ids' (use todo_list_items to find them); for 'currentFile' scope also pass " +
+					"'filePath'. Ids that do not match any item are ignored. Returns the deleted items and a " +
+					"'count'. This permanently removes the items. Rejected when the server is in read-only mode.",
+				inputSchema: {
+					scope: scopeSchema,
+					ids: z
+						.array(z.number().int())
+						.min(1)
+						.describe("Numeric ids of the items to delete. Must contain at least one id."),
+					filePath: mutateFilePathSchema,
+				},
+				outputSchema: deleteOutputSchema,
+				annotations: {
+					title: "Delete Todos",
+					readOnlyHint: false,
+					destructiveHint: true,
+					idempotentHint: true,
+					openWorldHint: false,
 				},
 			},
-			(args) => {
-				const planName = (args.planName ?? "").trim();
-				const planHint = planName
-					? `Plan name provided: "${planName}".`
-					: "No plan name was provided.";
-				const text = [
-					"You are implementing a plan using the VS Code Todo MCP server.",
-					planHint,
-					"Call todo.listPlans first to locate the plan header and items before making code changes.",
-					"If a plan name is provided, pass it as slug first; if no match, list all and match by title.",
-					"If multiple plans match, ask for clarification before proceeding.",
-					"After completing steps, update the items using todo.update or todo.complete.",
-					"After the plan is implemented, archive it with todo.archivePlan (default action=complete). Use action=delete to remove the plan entirely. Set includeItems=true to cascade the same action to plan items.",
-				].join(" ");
-
-				return {
-					messages: [
-						{
-							role: "user",
-							content: {
-								type: "text",
-								text,
-							},
-						},
-					],
-				};
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const result = await this.todoService.deleteTodos(args.scope as TodoScope, args.ids, {
+						filePath: args.filePath,
+					});
+					return this.toolResult({
+						scope: result.scope,
+						...(result.filePath !== undefined ? { filePath: result.filePath } : {}),
+						deleted: result.deleted,
+						count: result.count,
+					});
+				});
 			}
 		);
 	}
 
-	private buildScopeResource(uri: string, name: string, description: string): Resource {
+	private itemResult(result: { scope: TodoScope; filePath?: string; todo: unknown }): {
+		scope: TodoScope;
+		filePath?: string;
+		todo: unknown;
+	} {
 		return {
-			uri,
-			name,
-			description,
-			mimeType: "application/json",
+			scope: result.scope,
+			...(result.filePath !== undefined ? { filePath: result.filePath } : {}),
+			todo: result.todo,
+		};
+	}
+
+	private paginationFields(result: PaginatedResult<unknown>): {
+		total: number;
+		count: number;
+		has_more: boolean;
+		next_offset?: number;
+	} {
+		return {
+			total: result.total,
+			count: result.count,
+			has_more: result.hasMore,
+			...(result.nextOffset !== undefined ? { next_offset: result.nextOffset } : {}),
 		};
 	}
 
@@ -998,35 +920,6 @@ export default class McpServerHost implements vscode.Disposable {
 		}
 	}
 
-	private getFirstValue(value: string | string[] | null | undefined): string | undefined {
-		if (!value) {
-			return undefined;
-		}
-		return Array.isArray(value) ? value[0] : value;
-	}
-
-	private parseScopeParam(rawScope: string | null | undefined): TodoScope | null {
-		if (!rawScope) {
-			return null;
-		}
-		const normalized = rawScope.trim().toLowerCase();
-		switch (normalized) {
-			case "user":
-				return TodoScope.user;
-			case "workspace":
-				return TodoScope.workspace;
-			case "file":
-			case "currentfile":
-				return TodoScope.currentFile;
-			default:
-				return null;
-		}
-	}
-
-	private formatScope(scope: TodoScope): "user" | "workspace" | "file" {
-		return scope === TodoScope.currentFile ? "file" : scope;
-	}
-
 	private toResourceResult(uri: string, data: unknown) {
 		return {
 			contents: [
@@ -1040,7 +933,10 @@ export default class McpServerHost implements vscode.Disposable {
 	}
 
 	private toolResult(data: unknown) {
-		return {
+		const result: {
+			content: Array<{ type: "text"; text: string }>;
+			structuredContent?: Record<string, unknown>;
+		} = {
 			content: [
 				{
 					type: "text",
@@ -1048,6 +944,12 @@ export default class McpServerHost implements vscode.Disposable {
 				},
 			],
 		};
+		// Mirror the payload as structuredContent so clients with the declared
+		// outputSchema can parse results without re-parsing the text block.
+		if (data && typeof data === "object" && !Array.isArray(data)) {
+			result.structuredContent = data as Record<string, unknown>;
+		}
+		return result;
 	}
 
 	private async safeToolCall(handler: () => Promise<any> | any) {
@@ -1082,6 +984,39 @@ export default class McpServerHost implements vscode.Disposable {
 			isInitializeRequest: typesModule.isInitializeRequest,
 		};
 		return this.sdk;
+	}
+
+	private isOriginAllowed(req: http.IncomingMessage, config: McpConfig): boolean {
+		const originValue = req.headers.origin;
+		const origin = Array.isArray(originValue) ? originValue[0] : originValue;
+
+		// Non-browser MCP clients (CLI agents, the SDK) typically send no Origin
+		// header. Only browser contexts set it, so absence is treated as trusted.
+		if (!origin) {
+			return true;
+		}
+
+		let parsed: URL;
+		try {
+			parsed = new URL(origin);
+		} catch {
+			return false;
+		}
+
+		// Guard against DNS-rebinding: only loopback origins may reach the server.
+		const hostname = parsed.hostname.toLowerCase();
+		const isLoopbackHost =
+			hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+		if (!isLoopbackHost) {
+			return false;
+		}
+
+		// When bound to a fixed port, require the origin to target it (or be portless).
+		if (config.port && parsed.port) {
+			return parsed.port === String(config.port) || parsed.port === String(this.lastPort ?? config.port);
+		}
+
+		return true;
 	}
 
 	private isAuthorized(req: http.IncomingMessage, config: McpConfig): boolean {
