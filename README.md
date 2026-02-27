@@ -282,29 +282,118 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 
 ### MCP Server (AI Agent Integration)
 
-VS Code Todo can expose a local Model Context Protocol (MCP) server so any MCP-capable AI client can read or update your todos.
+VS Code Todo can run a local [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server so AI agents — Claude Code, Claude Desktop, Cursor, or any MCP-capable client — can read and manage your todos and notes directly, without you copy-pasting them into chat.
 
-Enable it (User or Workspace settings):
+Once connected, you can ask an agent to:
 
-```json
-{
-  "vscodeTodo.mcp.enabled": true,
-  "vscodeTodo.mcp.readOnly": true,
-  "vscodeTodo.mcp.allowedScopes": ["user", "workspace", "file"],
-  "vscodeTodo.mcp.port": 7337,
-  "vscodeTodo.mcp.token": ""
-}
+- **Capture work as you go**: _"Add a todo to refactor the auth module."_ or _"Save these release steps as a note in the workspace list."_
+- **Plan from your lists**: _"What's still open in my workspace todos? Suggest an order to tackle them."_
+- **Keep lists tidy**: _"Mark the 'update changelog' todo as done."_ or _"Delete the completed items in this file's list."_
+- **Turn code findings into tasks**: _"Review this file and add a todo for each TODO comment you find."_
+
+The server is **read-only by default** and binds only to loopback (`127.0.0.1`), so nothing is exposed to the network and agents can't change anything until you opt in to writes.
+
+#### Quick start
+
+1. **Enable the server** (User or Workspace settings):
+
+   ```json
+   {
+     "vscodeTodo.mcp.enabled": true,
+     // Set false to let agents add/edit/delete (default: true = read-only).
+     "vscodeTodo.mcp.readOnly": true,
+     // Listen port. Use 0 for a random free port.
+     "vscodeTodo.mcp.port": 7337,
+     // Optional shared-secret token. Leave empty to disable auth.
+     "vscodeTodo.mcp.token": ""
+   }
+   ```
+
+   Or run **VS Code Todo: Start MCP Server** from the Command Palette (and **Stop MCP Server** to turn it off). The **workspace must be trusted**.
+
+2. **Connect your agent.** The server speaks streamable HTTP at `http://127.0.0.1:<port>/mcp`. Send `Authorization: Bearer <token>` if you set a token.
+
+   For **Claude Code**:
+
+   ```bash
+   claude mcp add --transport http vscode-todo http://127.0.0.1:7337/mcp
+   # With a token:
+   claude mcp add --transport http vscode-todo http://127.0.0.1:7337/mcp \
+     --header "Authorization: Bearer YOUR_TOKEN"
+   ```
+
+   For clients that use a JSON config (Claude Desktop, Cursor, `.mcp.json`):
+
+   ```json
+   {
+     "mcpServers": {
+       "vscode-todo": {
+         "type": "http",
+         "url": "http://127.0.0.1:7337/mcp",
+         "headers": { "Authorization": "Bearer YOUR_TOKEN" }
+       }
+     }
+   }
+   ```
+
+3. **Ask away** using the example prompts above. The agent discovers the available actions automatically.
+
+#### Capabilities
+
+The agent works with three lists (scopes), matching the extension's tabs:
+
+- **user** — your global list, shared across all projects
+- **workspace** — the current project's list
+- **currentFile** — todos attached to a specific file (the agent passes the file path)
+
+It can **list** todos and notes (with filtering and paging), **add** todos/notes, **edit** text, **complete/reopen** todos, **convert** between task and note, **toggle Markdown** rendering, and **delete** items. All edits are rejected while `readOnly` is `true`.
+
+You can also narrow what's reachable with `vscodeTodo.mcp.allowedScopes` (default `["user", "workspace", "file"]`) — e.g. drop `"file"` so agents can't touch per-file lists.
+
+#### Tips for `CLAUDE.md` / agent instructions
+
+Add a note to your project's `CLAUDE.md` (or equivalent) so the agent uses the lists consistently:
+
+```markdown
+## Task tracking
+
+This project has the VS Code Todo MCP server connected. Use it to track work:
+
+- Before starting, check open items with the workspace todo list.
+- When you discover follow-up work, add a todo to the **workspace** list
+  (use the **user** list only for things that apply across all my projects).
+- Mark a todo completed as soon as the work is done — don't delete it.
+- Prefer notes (not tasks) for reference material like commands or snippets.
 ```
 
-Connect your MCP client:
+(For read-only setups, drop the "add/mark/complete" lines and keep only the "check open items" guidance.)
 
-- Transport: streamable HTTP
-- URL: `http://127.0.0.1:<port>/mcp`
-- Authorization: `Bearer <token>` if `vscodeTodo.mcp.token` is set
+<details>
+<summary>Full tool &amp; resource reference (click to expand)</summary>
 
-The token is a shared secret (like a password). Use a random 32+ character string and keep it private; leave it empty to disable auth.
+**Tools** — every tool takes a `scope` of `user`, `workspace`, or `currentFile` (for `currentFile`, also pass `filePath`). Write tools are rejected in read-only mode.
 
-Tip: use **VS Code Todo: Start MCP Server** / **Stop MCP Server** and set `readOnly` to `false` only if you want to allow writes. Workspace must be trusted.
+| Tool | What it does |
+| --- | --- |
+| `todo_list_items` | List todos/notes for a scope. Optional `noteOnly` and `textPrefix` filters; paginated (`limit` default 50, max 500; `offset`). |
+| `todo_list_files` | List workspace files that have file-scoped todos, with per-file counts; paginated. |
+| `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). _Write._ |
+| `todo_update_text` | Change an item's text by `id`. _Write._ |
+| `todo_set_completed` | Mark a todo completed/reopened by `id`. _Write._ |
+| `todo_set_note` | Convert an item between task and note by `id`. _Write._ |
+| `todo_set_markdown` | Toggle Markdown rendering for an item by `id`. _Write._ |
+| `todo_delete_items` | Delete one or more items by their `ids`. _Write._ |
+
+**Resources** — read-only JSON snapshots of the same data:
+
+- `todo://user`, `todo://workspace` — todos/notes for each scope
+- `todo://counts` — todo/note counts by scope
+- `todo://files` — files that have todos
+- `todo://file?path=<path>` — todos for a specific file
+
+Both tools and resources honor `allowedScopes`. There is also a `vscodeTodo.mcp.transport` setting, which currently only supports `"streamableHttp"`.
+
+</details>
 
 ### Markdown Support for Todos and Notes
 
