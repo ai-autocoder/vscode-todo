@@ -47,6 +47,13 @@ export type TodoListFilters = {
 export type PaginationOptions = {
 	limit?: number;
 	offset?: number;
+	/**
+	 * Optional secondary cap on the serialized size of a page, in characters. The count
+	 * `limit` is applied first; when `maxChars` is set, the page is then trimmed so its
+	 * serialized payload stays under this budget. Items are never split — a single item
+	 * larger than the budget is still returned alone so paging can always progress.
+	 */
+	maxChars?: number;
 };
 
 export type PaginatedResult<T> = {
@@ -73,6 +80,52 @@ function paginate<T>(items: T[], options: PaginationOptions = {}): PaginatedResu
 		count: page.length,
 		hasMore,
 		nextOffset: hasMore ? consumed : undefined,
+	};
+}
+
+/**
+ * Secondary, size-based trim applied after the count-based {@link paginate}. Walks the
+ * already-sliced page accumulating each item's serialized length and cuts the page off
+ * once `maxChars` would be exceeded, then recomputes `count` / `hasMore` / `nextOffset`
+ * so a follow-up call (using `nextOffset` as its offset) returns the remainder.
+ *
+ * Items are never split or truncated. If the first item alone exceeds the budget it is
+ * still returned (a page is never empty while items remain), so paging always advances.
+ * When `maxChars` is undefined or non-positive, the page passes through unchanged.
+ */
+function applyCharBudget<T>(page: PaginatedResult<T>, maxChars?: number): PaginatedResult<T> {
+	if (typeof maxChars !== "number" || !Number.isFinite(maxChars) || maxChars <= 0) {
+		return page;
+	}
+
+	let used = 0;
+	let kept = 0;
+	for (const item of page.items) {
+		const size = JSON.stringify(item).length;
+		// Always keep the first item even if it alone exceeds the budget, so paging progresses.
+		if (kept > 0 && used + size > maxChars) {
+			break;
+		}
+		used += size;
+		kept += 1;
+	}
+
+	if (kept === page.items.length) {
+		return page;
+	}
+
+	const items = page.items.slice(0, kept);
+	const trimmedCount = page.items.length - kept;
+	// Where this page ended before trimming: nextOffset if more remained, else total
+	// (the page reached the end of the list). Subtract what we trimmed to get the new
+	// boundary, which the caller passes back as `offset` to fetch the remainder.
+	const previousEnd = page.nextOffset !== undefined ? page.nextOffset : page.total;
+	return {
+		items,
+		total: page.total,
+		count: items.length,
+		hasMore: true,
+		nextOffset: previousEnd - trimmedCount,
 	};
 }
 
@@ -189,7 +242,7 @@ export default class TodoService {
 		pagination: PaginationOptions = {}
 	): { scope: TodoScope; filePath?: string } & PaginatedResult<Todo> {
 		const { filePath, todos } = this.listTodos(scope, filters);
-		const page = paginate(todos, pagination);
+		const page = applyCharBudget(paginate(todos, pagination), pagination.maxChars);
 		return {
 			scope,
 			filePath,

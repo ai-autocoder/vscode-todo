@@ -44,6 +44,13 @@ export default class McpServerHost implements vscode.Disposable {
 	// very high so realistic payloads (including long Markdown notes) pass
 	// untouched; it only guards against a pathological scope flooding the client.
 	private static readonly CHARACTER_LIMIT = 2_000_000;
+	// Default per-page character budget for todo_list_items. Keeps a single page
+	// comfortably ingestible by an agent even when items are large; callers can
+	// override via the maxChars parameter. The page is trimmed to whole items, so a
+	// page may return fewer than `limit` items with has_more=true. The budget is
+	// measured on compact per-item JSON, so the pretty-printed, enveloped response is
+	// somewhat larger; CHARACTER_LIMIT remains the final backstop on that payload.
+	private static readonly LIST_ITEMS_MAX_CHARS = 100_000;
 	private readonly host = "127.0.0.1";
 	private server: http.Server | null = null;
 	private sessions = new Map<string, SessionEntry>();
@@ -526,6 +533,17 @@ export default class McpServerHost implements vscode.Disposable {
 				"Number of items to skip from the start, for paging. Defaults to 0. Use the " +
 					"next_offset from a previous response to fetch the next page."
 			);
+		const maxCharsSchema = z
+			.number()
+			.int()
+			.positive()
+			.optional()
+			.describe(
+				"Optional cap on the serialized size of a page, in characters. The page is " +
+					"trimmed to whole items to stay under this budget, so it may return fewer than " +
+					"the requested limit with has_more true. Defaults to a sane limit; item text is " +
+					"never truncated."
+			);
 
 		const todoShape = {
 			id: z.number().describe("Stable numeric identifier of the item within its scope."),
@@ -634,7 +652,10 @@ export default class McpServerHost implements vscode.Disposable {
 					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
 					"'filePath'). Optionally filter to notes only with 'noteOnly', or to items whose " +
 					"text starts with 'textPrefix'. Results are paginated: pass 'limit' (default 50, " +
-					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result.",
+					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result. " +
+					"To stay within an agent's context budget, a page is also trimmed to a character " +
+					"limit, so it may return fewer than 'limit' items with 'has_more' true — follow " +
+					"'next_offset' to fetch the rest. Item text is always returned in full, never truncated.",
 				inputSchema: {
 					scope: scopeSchema,
 					filePath: z
@@ -654,18 +675,19 @@ export default class McpServerHost implements vscode.Disposable {
 						.describe("When set, return only items whose text begins with this prefix (case-insensitive)."),
 					limit: limitSchema,
 					offset: offsetSchema,
+					maxChars: maxCharsSchema,
 				},
 				outputSchema: listItemsOutputSchema,
 				annotations: { title: "List Todos", readOnlyHint: true, openWorldHint: false },
 			},
 			async (args) => {
 				return this.safeToolCall(() => {
-					const { scope, limit, offset, ...filters } = args;
-					const data = this.todoService.listTodosPaginated(
-						scope as TodoScope,
-						filters,
-						{ limit, offset }
-					);
+					const { scope, limit, offset, maxChars, ...filters } = args;
+					const data = this.todoService.listTodosPaginated(scope as TodoScope, filters, {
+						limit,
+						offset,
+						maxChars: maxChars ?? McpServerHost.LIST_ITEMS_MAX_CHARS,
+					});
 					return this.toolResult({
 						scope,
 						...(data.filePath !== undefined ? { filePath: data.filePath } : {}),
