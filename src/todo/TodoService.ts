@@ -39,8 +39,13 @@ type TodoActions = {
 	deleteTodos: TodoActionCreator<{ ids: number[] }>;
 };
 
+export type TodoListItemKind = "task" | "note" | "all";
+
 export type TodoListFilters = {
-	noteOnly?: boolean;
+	/** Restrict by item kind: "task" (checkable), "note" (free-text), or "all" (default). */
+	kind?: TodoListItemKind;
+	/** When set, keep only items whose completion state matches (notes are never completed). */
+	completed?: boolean;
 	textPrefix?: string;
 };
 
@@ -642,19 +647,32 @@ export default class TodoService {
 	}
 
 	private applyFilters(todos: Todo[], filters: TodoListFilters): Todo[] {
-		let filtered = [...todos];
+		// Compose independent predicates so new filters (e.g. a future tag filter) slot in
+		// as one more entry without reworking the chain. An item is kept only if it passes
+		// every active predicate.
+		const predicates: Array<(todo: Todo) => boolean> = [];
 
-		if (filters.noteOnly) {
-			filtered = filtered.filter((todo) => todo.isNote);
+		if (filters.kind === "task") {
+			predicates.push((todo) => !todo.isNote);
+		} else if (filters.kind === "note") {
+			predicates.push((todo) => todo.isNote);
+		}
+
+		if (filters.completed !== undefined) {
+			const completed = filters.completed;
+			predicates.push((todo) => todo.completed === completed);
 		}
 
 		if (filters.textPrefix) {
-			filtered = filtered.filter((todo) =>
-				this.matchesPrefix(todo.text, filters.textPrefix ?? "")
-			);
+			const prefix = filters.textPrefix;
+			predicates.push((todo) => this.matchesPrefix(todo.text, prefix));
 		}
 
-		return filtered;
+		if (predicates.length === 0) {
+			return [...todos];
+		}
+
+		return todos.filter((todo) => predicates.every((predicate) => predicate(todo)));
 	}
 
 	private matchesPrefix(text: string, prefix: string): boolean {

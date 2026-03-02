@@ -650,8 +650,9 @@ export default class McpServerHost implements vscode.Disposable {
 				description:
 					"List todos and notes for a scope. 'scope' is one of 'user' (global), " +
 					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
-					"'filePath'). Optionally filter to notes only with 'noteOnly', or to items whose " +
-					"text starts with 'textPrefix'. Results are paginated: pass 'limit' (default 50, " +
+					"'filePath'). Optionally filter by 'kind' ('task', 'note', or 'all'), by " +
+					"'completed' (true=done, false=open), or to items whose text starts with " +
+					"'textPrefix'. Results are paginated: pass 'limit' (default 50, " +
 					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result. " +
 					"To stay within an agent's context budget, a page is also trimmed to a character " +
 					"limit, so it may return fewer than 'limit' items with 'has_more' true — follow " +
@@ -665,10 +666,20 @@ export default class McpServerHost implements vscode.Disposable {
 							"Absolute or workspace-relative path; required when scope is 'currentFile', " +
 								"otherwise ignored."
 						),
-					noteOnly: z
+					kind: z
+						.enum(["task", "note", "all"])
+						.optional()
+						.describe(
+							"Restrict to 'task' (checkable items), 'note' (free-text notes), or 'all'. " +
+								"Defaults to 'all'."
+						),
+					completed: z
 						.boolean()
 						.optional()
-						.describe("When true, return only notes (isNote === true), excluding tasks."),
+						.describe(
+							"Filter by completion: true for done items, false for open items. Omit to " +
+								"return both. Notes are never completed."
+						),
 					textPrefix: z
 						.string()
 						.optional()

@@ -212,12 +212,12 @@ suite("TodoService CRUD", () => {
 		assert.strictEqual(todos.length, 2);
 	});
 
-	test("read: noteOnly and textPrefix filters", async () => {
+	test("read: kind and textPrefix filters", async () => {
 		await service.addTodo(TodoScope.user, "keep me", { isNote: true });
 		await service.addTodo(TodoScope.user, "task one");
 		await service.addTodo(TodoScope.user, "other");
 
-		const notesOnly = service.listTodos(TodoScope.user, { noteOnly: true });
+		const notesOnly = service.listTodos(TodoScope.user, { kind: "note" });
 		assert.strictEqual(notesOnly.todos.length, 1);
 		assert.strictEqual(notesOnly.todos[0].text, "keep me");
 
