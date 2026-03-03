@@ -431,3 +431,189 @@ suite("TodoService CRUD", () => {
 		assert.throws(() => service.listTodos(TodoScope.workspace), /not permitted/);
 	});
 });
+
+/**
+ * Phase 1 read-path coverage: the kind/completed filters (1b) and the size-aware
+ * pagination char budget (1a). User scope only — it needs no workspace folder stub.
+ *
+ * These tests assume store insertion order is preserved: Phase 1 applies no sorting
+ * on the read path (sort control arrives in Phase 2), so listTodos returns items in
+ * the order they were added.
+ */
+suite("TodoService list filters & size-aware pagination", () => {
+	let store: EnhancedStore<StoreState>;
+	let service: TodoService;
+
+	beforeEach(() => {
+		store = createStore();
+		const mock = createMockContext();
+		const storage = createMockStorage(mock.context);
+		service = new TodoService(mock.context, store as EnhancedStore<StoreState>, storage);
+		service.updateAccess(false, ["user", "workspace", "file"]);
+	});
+
+	// --- kind / completed filters (1b) --------------------------------------
+
+	test("kind: 'task' returns tasks only, 'note' returns notes only, 'all' returns both", async () => {
+		await service.addTodo(TodoScope.user, "a task");
+		await service.addTodo(TodoScope.user, "a note", { isNote: true });
+
+		assert.strictEqual(service.listTodos(TodoScope.user, { kind: "task" }).todos.length, 1);
+		assert.strictEqual(
+			service.listTodos(TodoScope.user, { kind: "task" }).todos[0].text,
+			"a task"
+		);
+		assert.strictEqual(service.listTodos(TodoScope.user, { kind: "note" }).todos.length, 1);
+		assert.strictEqual(service.listTodos(TodoScope.user, { kind: "all" }).todos.length, 2);
+		// Omitting kind behaves like "all".
+		assert.strictEqual(service.listTodos(TodoScope.user, {}).todos.length, 2);
+	});
+
+	test("completed: false returns open items, true returns done items", async () => {
+		const open = await service.addTodo(TodoScope.user, "open task");
+		const done = await service.addTodo(TodoScope.user, "done task");
+		await service.setCompleted(TodoScope.user, done!.todo.id, true);
+
+		const openItems = service.listTodos(TodoScope.user, { completed: false }).todos;
+		assert.strictEqual(openItems.length, 1);
+		assert.strictEqual(openItems[0].id, open!.todo.id);
+
+		const doneItems = service.listTodos(TodoScope.user, { completed: true }).todos;
+		assert.strictEqual(doneItems.length, 1);
+		assert.strictEqual(doneItems[0].id, done!.todo.id);
+
+		// Omitting completed returns both.
+		assert.strictEqual(service.listTodos(TodoScope.user, {}).todos.length, 2);
+	});
+
+	test("kind + completed compose (open tasks only)", async () => {
+		const openTask = await service.addTodo(TodoScope.user, "open task");
+		const doneTask = await service.addTodo(TodoScope.user, "done task");
+		await service.setCompleted(TodoScope.user, doneTask!.todo.id, true);
+		await service.addTodo(TodoScope.user, "a note", { isNote: true });
+
+		const result = service.listTodos(TodoScope.user, { kind: "task", completed: false }).todos;
+		assert.strictEqual(result.length, 1);
+		assert.strictEqual(result[0].id, openTask!.todo.id);
+	});
+
+	test("kind 'note' + completed true is empty (notes are never completed)", async () => {
+		await service.addTodo(TodoScope.user, "a note", { isNote: true });
+		await service.addTodo(TodoScope.user, "a task");
+
+		const result = service.listTodos(TodoScope.user, { kind: "note", completed: true }).todos;
+		assert.strictEqual(result.length, 0);
+	});
+
+	test("no filters returns a copy, not the backing store array", async () => {
+		await service.addTodo(TodoScope.user, "x");
+		const result = service.listTodos(TodoScope.user, {}).todos;
+		assert.notStrictEqual(
+			result,
+			store.getState().user.todos,
+			"mutating the result must not corrupt store state"
+		);
+	});
+
+	// --- size-aware pagination (1a) -----------------------------------------
+
+	test("maxChars: trims a middle page and next_offset resumes at the remainder", async () => {
+		// 10 items; a small budget so only the first few fit, well within the count limit.
+		for (let i = 0; i < 10; i++) {
+			await service.addTodo(TodoScope.user, `item ${i}`);
+		}
+		const all = service.listTodos(TodoScope.user).todos;
+		const perItem = JSON.stringify(all[0]).length;
+
+		// Budget for ~3 items, asked for a count limit of 8 — size cap must bite first.
+		const page = service.listTodosPaginated(
+			TodoScope.user,
+			{},
+			{ limit: 8, offset: 0, maxChars: perItem * 3 }
+		);
+		assert.strictEqual(page.total, 10);
+		assert.ok(page.count < 8, "size budget should trim below the count limit");
+		assert.ok(page.count >= 1, "page is never empty while items remain");
+		assert.strictEqual(page.count, page.items.length);
+		assert.strictEqual(page.hasMore, true);
+		assert.strictEqual(page.nextOffset, page.count);
+
+		// Following next_offset returns the remainder with no gap or duplication.
+		const next = service.listTodosPaginated(
+			TodoScope.user,
+			{},
+			{ limit: 8, offset: page.nextOffset, maxChars: perItem * 3 }
+		);
+		assert.strictEqual(next.items[0].id, all[page.count].id);
+	});
+
+	test("maxChars: with a non-zero offset, next_offset resumes correctly", async () => {
+		for (let i = 0; i < 10; i++) {
+			await service.addTodo(TodoScope.user, `item ${i}`);
+		}
+		const all = service.listTodos(TodoScope.user).todos;
+		const perItem = JSON.stringify(all[0]).length;
+
+		// Start mid-list at offset 4, budget ~2 items.
+		const page = service.listTodosPaginated(
+			TodoScope.user,
+			{},
+			{ limit: 8, offset: 4, maxChars: perItem * 2 }
+		);
+		assert.ok(page.count >= 1 && page.count < 8);
+		assert.strictEqual(page.items[0].id, all[4].id, "page starts at the requested offset");
+		assert.strictEqual(page.hasMore, true);
+		// nextOffset must point at offset + count, i.e. the first un-returned item.
+		assert.strictEqual(page.nextOffset, 4 + page.count);
+
+		const next = service.listTodosPaginated(
+			TodoScope.user,
+			{},
+			{ limit: 8, offset: page.nextOffset, maxChars: perItem * 2 }
+		);
+		assert.strictEqual(next.items[0].id, all[4 + page.count].id, "no gap or duplication");
+	});
+
+	test("maxChars: trimming the last page flips hasMore to true", async () => {
+		for (let i = 0; i < 4; i++) {
+			await service.addTodo(TodoScope.user, `item ${i}`);
+		}
+		const all = service.listTodos(TodoScope.user).todos;
+		const perItem = JSON.stringify(all[0]).length;
+
+		// Count limit covers all 4 (would be the last page), but the budget fits ~2.
+		const page = service.listTodosPaginated(
+			TodoScope.user,
+			{},
+			{ limit: 50, offset: 0, maxChars: perItem * 2 }
+		);
+		assert.ok(page.count < 4, "budget should trim the otherwise-final page");
+		assert.strictEqual(page.hasMore, true, "trimming the last page must flip hasMore to true");
+		assert.strictEqual(page.nextOffset, page.count);
+		assert.ok(page.nextOffset! <= page.total);
+	});
+
+	test("maxChars: a single oversized item is still returned alone", async () => {
+		await service.addTodo(TodoScope.user, "x".repeat(5000));
+		await service.addTodo(TodoScope.user, "small");
+
+		const page = service.listTodosPaginated(
+			TodoScope.user,
+			{},
+			{ limit: 50, offset: 0, maxChars: 100 }
+		);
+		assert.strictEqual(page.count, 1, "first item is returned even though it exceeds the budget");
+		assert.strictEqual(page.hasMore, true);
+		assert.strictEqual(page.nextOffset, 1);
+	});
+
+	test("maxChars: undefined passes the count page through unchanged", async () => {
+		for (let i = 0; i < 3; i++) {
+			await service.addTodo(TodoScope.user, `item ${i}`);
+		}
+		const page = service.listTodosPaginated(TodoScope.user, {}, { limit: 50, offset: 0 });
+		assert.strictEqual(page.count, 3);
+		assert.strictEqual(page.hasMore, false);
+		assert.strictEqual(page.nextOffset, undefined);
+	});
+});
