@@ -375,7 +375,7 @@ This project has the VS Code Todo MCP server connected. Use it to track work:
 
 | Tool | What it does |
 | --- | --- |
-| `todo_list_items` | List todos/notes for a scope. Optional `noteOnly` and `textPrefix` filters; paginated (`limit` default 50, max 500; `offset`). |
+| `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix`. Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set — item text is never truncated. |
 | `todo_list_files` | List workspace files that have file-scoped todos, with per-file counts; paginated. |
 | `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). _Write._ |
 | `todo_update_text` | Change an item's text by `id`. _Write._ |
