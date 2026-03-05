@@ -414,7 +414,8 @@ export default class McpServerHost implements vscode.Disposable {
 				instructions:
 					"Use the todo_* tools to read, create, update, and delete VS Code Todo items and notes " +
 					"across the user, workspace, and currentFile scopes. todo_list_items reads todos/notes for " +
-					"a scope and todo_list_files lists files that have todos. todo_add_item creates an item; " +
+					"a scope, todo_count_items returns per-scope counts for a quick overview, and " +
+					"todo_list_files lists files that have todos. todo_add_item creates an item; " +
 					"todo_update_text, todo_set_completed, todo_set_note, and todo_set_markdown change an " +
 					"existing item by id; todo_delete_items removes items by id. All write tools are blocked " +
 					"when the server is in read-only mode. For the currentFile scope, pass filePath to target " +
@@ -605,6 +606,28 @@ export default class McpServerHost implements vscode.Disposable {
 			todo: todoSchema.describe("The newly created todo or note."),
 		};
 
+		// Per-scope count objects are "loose" (extra keys allowed) so future, more
+		// granular counts (e.g. a per-tag breakdown) can be added without a breaking
+		// schema change. z.looseObject is the Zod 4 idiom for the old .passthrough().
+		const scopeCountsSchema = z.looseObject({
+			todos: z.number().describe("Number of checkable tasks in the scope."),
+			notes: z.number().describe("Number of free-text notes in the scope."),
+		});
+		const fileCountsSchema = z.looseObject({
+			todos: z.number().describe("Number of checkable tasks for the current file."),
+			notes: z.number().describe("Number of free-text notes for the current file."),
+			filePath: z.string().describe("Path of the current file these counts apply to."),
+		});
+		const countItemsOutputSchema = {
+			user: scopeCountsSchema.optional().describe("Counts for the user scope, if allowed."),
+			workspace: scopeCountsSchema
+				.optional()
+				.describe("Counts for the workspace scope, if allowed."),
+			currentFile: fileCountsSchema
+				.optional()
+				.describe("Counts for the current file scope, if allowed."),
+		};
+
 		const idSchema = z
 			.number()
 			.int()
@@ -706,6 +729,25 @@ export default class McpServerHost implements vscode.Disposable {
 						...this.paginationFields(data),
 					});
 				});
+			}
+		);
+
+		server.registerTool(
+			"todo_count_items",
+			{
+				title: "Count Todos",
+				description:
+					"Return todo and note counts per scope (user, workspace, currentFile) without " +
+					"fetching the items themselves. Use this for a cheap overview — 'is there " +
+					"outstanding work, and where?' — before paging through a scope with " +
+					"todo_list_items. A scope is omitted when it is not allowed or unavailable " +
+					"(e.g. currentFile with no file, or a scope excluded by allowedScopes).",
+				inputSchema: {},
+				outputSchema: countItemsOutputSchema,
+				annotations: { title: "Count Todos", readOnlyHint: true, openWorldHint: false },
+			},
+			async () => {
+				return this.safeToolCall(() => this.toolResult(this.todoService.getCounts()));
 			}
 		);
 
