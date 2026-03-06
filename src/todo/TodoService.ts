@@ -17,6 +17,7 @@ import {
 } from "../todo/todoTypes";
 import { getConfig } from "../utilities/config";
 import {
+	assertNever,
 	ensureFilesDataPaths,
 	generateUniqueId,
 	getRelativePathIfInsideWorkspace,
@@ -41,12 +42,19 @@ type TodoActions = {
 
 export type TodoListItemKind = "task" | "note" | "all";
 
+export type TodoListSortBy = "creationDate" | "completionDate" | "completed";
+export type TodoListSortOrder = "asc" | "desc";
+
 export type TodoListFilters = {
 	/** Restrict by item kind: "task" (checkable), "note" (free-text), or "all" (default). */
 	kind?: TodoListItemKind;
 	/** When set, keep only items whose completion state matches (notes are never completed). */
 	completed?: boolean;
 	textPrefix?: string;
+	/** Explicit field to sort by. When omitted, the store's insertion order is preserved. */
+	sortBy?: TodoListSortBy;
+	/** Sort direction; defaults to "asc". Ignored when sortBy is omitted. */
+	order?: TodoListSortOrder;
 };
 
 export type PaginationOptions = {
@@ -233,11 +241,12 @@ export default class TodoService {
 
 		const { todos, filePath } = this.getTodosForScope(scope, filters.filePath);
 		const filtered = this.applyFilters(todos, filters);
+		const sorted = this.applySort(filtered, filters);
 
 		return {
 			scope,
 			filePath,
-			todos: filtered,
+			todos: sorted,
 		};
 	}
 
@@ -673,6 +682,40 @@ export default class TodoService {
 		}
 
 		return todos.filter((todo) => predicates.every((predicate) => predicate(todo)));
+	}
+
+	/**
+	 * Sort by an explicit field requested via the MCP query. Distinct from the UI's
+	 * config-driven sortTodosWithNotes — this honors exactly what the caller asked for.
+	 * When sortBy is omitted, the store's insertion order is preserved. The sort is
+	 * stable (equal keys keep insertion order), and direction defaults to ascending.
+	 */
+	private applySort(todos: Todo[], filters: TodoListFilters): Todo[] {
+		if (!filters.sortBy) {
+			return todos;
+		}
+
+		const direction = filters.order === "desc" ? -1 : 1;
+		const sortBy = filters.sortBy;
+		const compare = (a: Todo, b: Todo): number => {
+			switch (sortBy) {
+				case "completed":
+					// false (open) before true (done) in ascending order.
+					return (Number(a.completed) - Number(b.completed)) * direction;
+				case "creationDate":
+					// ISO 8601 timestamps compare correctly as strings.
+					return a.creationDate.localeCompare(b.creationDate) * direction;
+				case "completionDate":
+					// Open items have no completionDate; treat as empty so they group together.
+					return (a.completionDate ?? "").localeCompare(b.completionDate ?? "") * direction;
+				default:
+					// Exhaustiveness guard: adding a TodoListSortBy member without a case here
+					// becomes a compile error rather than a silent fall-through to no-sort.
+					return assertNever(sortBy);
+			}
+		};
+
+		return todos.slice().sort(compare);
 	}
 
 	private matchesPrefix(text: string, prefix: string): boolean {

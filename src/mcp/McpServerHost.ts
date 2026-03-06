@@ -675,7 +675,9 @@ export default class McpServerHost implements vscode.Disposable {
 					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
 					"'filePath'). Optionally filter by 'kind' ('task', 'note', or 'all'), by " +
 					"'completed' (true=done, false=open), or to items whose text starts with " +
-					"'textPrefix'. Results are paginated: pass 'limit' (default 50, " +
+					"'textPrefix'. Optionally order results with 'sortBy' (creationDate / " +
+					"completionDate / completed) and 'order' (asc / desc). Results are paginated: " +
+					"pass 'limit' (default 50, " +
 					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result. " +
 					"To stay within an agent's context budget, a page is also trimmed to a character " +
 					"limit, so it may return fewer than 'limit' items with 'has_more' true — follow " +
@@ -707,6 +709,18 @@ export default class McpServerHost implements vscode.Disposable {
 						.string()
 						.optional()
 						.describe("When set, return only items whose text begins with this prefix (case-insensitive)."),
+					sortBy: z
+						.enum(["creationDate", "completionDate", "completed"])
+						.optional()
+						.describe(
+							"Sort the results by this field before paging. Omit to keep insertion order. " +
+								"'completionDate' groups still-open items (which have none) together — " +
+								"first in 'asc' order, last in 'desc'."
+						),
+					order: z
+						.enum(["asc", "desc"])
+						.optional()
+						.describe("Sort direction when sortBy is set. Defaults to 'asc'."),
 					limit: limitSchema,
 					offset: offsetSchema,
 					maxChars: maxCharsSchema,
