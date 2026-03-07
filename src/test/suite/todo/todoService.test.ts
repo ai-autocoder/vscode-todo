@@ -4,7 +4,11 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { EnhancedStore } from "@reduxjs/toolkit";
 import { after, before, beforeEach } from "mocha";
-import createStore, { currentFileActions } from "../../../todo/store";
+import createStore, {
+	currentFileActions,
+	userActions,
+	workspaceActions,
+} from "../../../todo/store";
 import TodoService from "../../../todo/TodoService";
 import StorageSyncManager from "../../../storage/StorageSyncManager";
 import {
@@ -615,5 +619,184 @@ suite("TodoService list filters & size-aware pagination", () => {
 		assert.strictEqual(page.count, 3);
 		assert.strictEqual(page.hasMore, false);
 		assert.strictEqual(page.nextOffset, undefined);
+	});
+
+	// --- sort control (2b) --------------------------------------------------
+
+	/**
+	 * Seed three todos with distinct, increasing creationDate values so order is
+	 * deterministic regardless of how fast the test runs.
+	 */
+	const seedDatedTodos = (): void => {
+		store.dispatch(
+			userActions.loadData({
+				data: [
+					makeTodo(1, "oldest", { creationDate: "2026-01-01T00:00:00.000Z" }),
+					makeTodo(2, "middle", { creationDate: "2026-02-01T00:00:00.000Z" }),
+					makeTodo(3, "newest", { creationDate: "2026-03-01T00:00:00.000Z" }),
+				],
+			})
+		);
+	};
+
+	test("sortBy creationDate: asc is chronological, desc is reverse", () => {
+		seedDatedTodos();
+		const asc = service.listTodos(TodoScope.user, { sortBy: "creationDate", order: "asc" }).todos;
+		assert.deepStrictEqual(
+			asc.map((t) => t.text),
+			["oldest", "middle", "newest"]
+		);
+		const desc = service.listTodos(TodoScope.user, {
+			sortBy: "creationDate",
+			order: "desc",
+		}).todos;
+		assert.deepStrictEqual(
+			desc.map((t) => t.text),
+			["newest", "middle", "oldest"]
+		);
+	});
+
+	test("sortBy creationDate: order defaults to asc", () => {
+		seedDatedTodos();
+		const def = service.listTodos(TodoScope.user, { sortBy: "creationDate" }).todos;
+		assert.deepStrictEqual(
+			def.map((t) => t.text),
+			["oldest", "middle", "newest"]
+		);
+	});
+
+	test("sortBy completed: asc puts open first, desc puts done first", () => {
+		// Seed done-before-open via loadData so the comparator must actively reorder
+		// (loadData preserves array order and skips the store's completion re-sort).
+		store.dispatch(
+			userActions.loadData({
+				data: [
+					makeTodo(1, "done", {
+						completed: true,
+						completionDate: "2026-02-01T00:00:00.000Z",
+					}),
+					makeTodo(2, "open"),
+				],
+			})
+		);
+
+		const asc = service.listTodos(TodoScope.user, { sortBy: "completed", order: "asc" }).todos;
+		assert.deepStrictEqual(
+			asc.map((t) => t.text),
+			["open", "done"]
+		);
+
+		const desc = service.listTodos(TodoScope.user, { sortBy: "completed", order: "desc" }).todos;
+		assert.deepStrictEqual(
+			desc.map((t) => t.text),
+			["done", "open"]
+		);
+	});
+
+	test("sortBy completionDate: groups open items (no date) first in asc", () => {
+		store.dispatch(
+			userActions.loadData({
+				data: [
+					makeTodo(1, "done-late", {
+						completed: true,
+						completionDate: "2026-03-01T00:00:00.000Z",
+					}),
+					makeTodo(2, "open"),
+					makeTodo(3, "done-early", {
+						completed: true,
+						completionDate: "2026-01-01T00:00:00.000Z",
+					}),
+				],
+			})
+		);
+
+		const asc = service.listTodos(TodoScope.user, {
+			sortBy: "completionDate",
+			order: "asc",
+		}).todos;
+		// "" (open) sorts first, then the completed items in chronological order.
+		assert.deepStrictEqual(
+			asc.map((t) => t.text),
+			["open", "done-early", "done-late"]
+		);
+
+		const desc = service.listTodos(TodoScope.user, {
+			sortBy: "completionDate",
+			order: "desc",
+		}).todos;
+		assert.deepStrictEqual(
+			desc.map((t) => t.text),
+			["done-late", "done-early", "open"]
+		);
+	});
+
+	test("sort runs before pagination: page 1 of desc creationDate has the newest items", () => {
+		seedDatedTodos();
+		const page = service.listTodosPaginated(
+			TodoScope.user,
+			{ sortBy: "creationDate", order: "desc" },
+			{ limit: 2, offset: 0 }
+		);
+		assert.deepStrictEqual(
+			page.items.map((t) => t.text),
+			["newest", "middle"]
+		);
+		assert.strictEqual(page.hasMore, true);
+		assert.strictEqual(page.nextOffset, 2);
+	});
+
+	test("no sortBy preserves stored order", () => {
+		// loadData preserves array order (unlike addTodo, which honors the createPosition
+		// setting), so this isolates the "no sort = stored order" guarantee.
+		store.dispatch(
+			userActions.loadData({
+				data: [makeTodo(1, "first"), makeTodo(2, "second")],
+			})
+		);
+		const result = service.listTodos(TodoScope.user, {}).todos;
+		assert.deepStrictEqual(
+			result.map((t) => t.text),
+			["first", "second"]
+		);
+	});
+});
+
+/**
+ * Phase 2a coverage: todo_count_items is backed by TodoService.getCounts(), which
+ * reports per-scope counts and is gated by allowedScopes.
+ */
+suite("TodoService getCounts", () => {
+	let store: EnhancedStore<StoreState>;
+	let service: TodoService;
+
+	beforeEach(() => {
+		store = createStore();
+		const mock = createMockContext();
+		const storage = createMockStorage(mock.context);
+		service = new TodoService(mock.context, store as EnhancedStore<StoreState>, storage);
+		service.updateAccess(false, ["user", "workspace", "file"]);
+	});
+
+	test("counts match the store per scope", () => {
+		// Seed the slices directly via loadData: getCounts reads slice state and does not
+		// require an open workspace folder (unlike addTodo), keeping this test self-contained.
+		store.dispatch(
+			userActions.loadData({
+				data: [makeTodo(1, "task"), makeTodo(2, "note", { isNote: true })],
+			})
+		);
+		store.dispatch(workspaceActions.loadData({ data: [makeTodo(3, "ws task")] }));
+
+		const counts = service.getCounts();
+		assert.deepStrictEqual(counts.user, { todos: 1, notes: 1 });
+		assert.deepStrictEqual(counts.workspace, { todos: 1, notes: 0 });
+	});
+
+	test("disallowed scopes are omitted entirely", () => {
+		service.updateAccess(false, ["user"]);
+		const counts = service.getCounts();
+		assert.ok(counts.user, "user scope should be present");
+		assert.strictEqual(counts.workspace, undefined, "workspace omitted when not allowed");
+		assert.strictEqual(counts.currentFile, undefined, "currentFile omitted when not allowed");
 	});
 });
