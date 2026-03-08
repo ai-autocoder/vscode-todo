@@ -371,11 +371,12 @@ This project has the VS Code Todo MCP server connected. Use it to track work:
 <details>
 <summary>Full tool &amp; resource reference (click to expand)</summary>
 
-**Tools** — every tool takes a `scope` of `user`, `workspace`, or `currentFile` (for `currentFile`, also pass `filePath`). Write tools are rejected in read-only mode.
+**Tools** — most tools take a `scope` of `user`, `workspace`, or `currentFile` (for `currentFile`, also pass `filePath`); `todo_count_items` and `todo_list_files` span all scopes and take no `scope`. Write tools are rejected in read-only mode.
 
 | Tool | What it does |
 | --- | --- |
-| `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix`. Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set — item text is never truncated. |
+| `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix`. Optional ordering: `sortBy` (`creationDate`/`completionDate`/`completed`) and `order` (`asc`/`desc`). Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set — item text is never truncated. |
+| `todo_count_items` | Return todo/note counts per scope (no arguments) — a cheap overview of where the open work is before paging a scope. |
 | `todo_list_files` | List workspace files that have file-scoped todos, with per-file counts; paginated. |
 | `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). _Write._ |
 | `todo_update_text` | Change an item's text by `id`. _Write._ |
