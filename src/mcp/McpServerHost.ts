@@ -674,8 +674,8 @@ export default class McpServerHost implements vscode.Disposable {
 					"List todos and notes for a scope. 'scope' is one of 'user' (global), " +
 					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
 					"'filePath'). Optionally filter by 'kind' ('task', 'note', or 'all'), by " +
-					"'completed' (true=done, false=open), or to items whose text starts with " +
-					"'textPrefix'. Optionally order results with 'sortBy' (creationDate / " +
+					"'completed' (true=done, false=open), by text prefix ('textPrefix'), or by a " +
+					"substring anywhere in the text ('search'). Optionally order results with 'sortBy' (creationDate / " +
 					"completionDate / completed) and 'order' (asc / desc). Results are paginated: " +
 					"pass 'limit' (default 50, " +
 					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result. " +
@@ -708,7 +708,18 @@ export default class McpServerHost implements vscode.Disposable {
 					textPrefix: z
 						.string()
 						.optional()
-						.describe("When set, return only items whose text begins with this prefix (case-insensitive)."),
+						.describe(
+							"When set, return only items whose text begins with this prefix " +
+								"(case-insensitive). Use 'search' to match anywhere in the text instead."
+						),
+					search: z
+						.string()
+						.optional()
+						.describe(
+							"When set, return only items whose text contains this substring " +
+								"(case-insensitive). Unlike textPrefix, it matches anywhere in the item " +
+								"text; whitespace is matched literally."
+						),
 					sortBy: z
 						.enum(["creationDate", "completionDate", "completed"])
 						.optional()

@@ -50,7 +50,10 @@ export type TodoListFilters = {
 	kind?: TodoListItemKind;
 	/** When set, keep only items whose completion state matches (notes are never completed). */
 	completed?: boolean;
+	/** When set, keep only items whose text begins with this prefix (case-insensitive). */
 	textPrefix?: string;
+	/** When set, keep only items whose text contains this substring (case-insensitive). */
+	search?: string;
 	/** Explicit field to sort by. When omitted, the store's insertion order is preserved. */
 	sortBy?: TodoListSortBy;
 	/** Sort direction; defaults to "asc". Ignored when sortBy is omitted. */
@@ -675,6 +678,11 @@ export default class TodoService {
 		if (filters.textPrefix) {
 			const prefix = filters.textPrefix;
 			predicates.push((todo) => this.matchesPrefix(todo.text, prefix));
+		}
+
+		if (filters.search) {
+			const needle = filters.search.toLowerCase();
+			predicates.push((todo) => todo.text.toLowerCase().includes(needle));
 		}
 
 		if (predicates.length === 0) {
