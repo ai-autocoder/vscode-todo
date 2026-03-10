@@ -519,6 +519,58 @@ suite("TodoService list filters & size-aware pagination", () => {
 		);
 	});
 
+	// --- search filter (3a) -------------------------------------------------
+
+	test("search: matches a substring anywhere, case-insensitively", async () => {
+		await service.addTodo(TodoScope.user, "Refactor the AUTH module");
+		await service.addTodo(TodoScope.user, "write docs");
+
+		const result = service.listTodos(TodoScope.user, { search: "auth" }).todos;
+		assert.strictEqual(result.length, 1);
+		assert.strictEqual(result[0].text, "Refactor the AUTH module");
+	});
+
+	test("search: matches mid-word where textPrefix would not", async () => {
+		await service.addTodo(TodoScope.user, "fix the parser");
+
+		// "parser" is not a prefix of the text, so textPrefix misses it...
+		assert.strictEqual(
+			service.listTodos(TodoScope.user, { textPrefix: "parser" }).todos.length,
+			0
+		);
+		// ...but search matches the substring anywhere.
+		assert.strictEqual(service.listTodos(TodoScope.user, { search: "parser" }).todos.length, 1);
+	});
+
+	test("search: composes with kind and completed", async () => {
+		const openTask = await service.addTodo(TodoScope.user, "deploy the service");
+		const doneTask = await service.addTodo(TodoScope.user, "deploy the docs");
+		await service.setCompleted(TodoScope.user, doneTask!.todo.id, true);
+		await service.addTodo(TodoScope.user, "deploy notes", { isNote: true });
+
+		const result = service.listTodos(TodoScope.user, {
+			search: "deploy",
+			kind: "task",
+			completed: false,
+		}).todos;
+		assert.strictEqual(result.length, 1);
+		assert.strictEqual(result[0].id, openTask!.todo.id);
+	});
+
+	test("search: empty string is a no-op (returns all)", async () => {
+		await service.addTodo(TodoScope.user, "a");
+		await service.addTodo(TodoScope.user, "b");
+		assert.strictEqual(service.listTodos(TodoScope.user, { search: "" }).todos.length, 2);
+	});
+
+	test("search: matches literally, including spaces (no trimming, unlike textPrefix)", async () => {
+		await service.addTodo(TodoScope.user, "the parser");
+		// A substring spanning the space matches; search is plain includes with no trim.
+		assert.strictEqual(service.listTodos(TodoScope.user, { search: "e par" }).todos.length, 1);
+		// A space that doesn't occur literally does not match.
+		assert.strictEqual(service.listTodos(TodoScope.user, { search: "the  parser" }).todos.length, 0);
+	});
+
 	// --- size-aware pagination (1a) -----------------------------------------
 
 	test("maxChars: trims a middle page and next_offset resumes at the remainder", async () => {
