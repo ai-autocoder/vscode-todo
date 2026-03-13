@@ -15,7 +15,7 @@ import {
 	TodoFilesDataPaths,
 	TodoScope,
 } from "../todo/todoTypes";
-import { getConfig } from "../utilities/config";
+import { CreatePosition, getConfig } from "../utilities/config";
 import {
 	assertNever,
 	ensureFilesDataPaths,
@@ -32,7 +32,8 @@ import {
 type AllowedScope = "user" | "workspace" | "file";
 type TodoActionCreator<Payload> = (payload: Payload) => { type: string; payload: Payload };
 type TodoActions = {
-	addTodo: TodoActionCreator<{ text: string }>;
+	addTodo: TodoActionCreator<{ text: string; position?: CreatePosition }>;
+	addTodos: TodoActionCreator<{ texts: string[]; position?: CreatePosition }>;
 	editTodo: TodoActionCreator<{ id: number; newText: string }>;
 	toggleTodo: TodoActionCreator<{ id: number }>;
 	toggleMarkdown: TodoActionCreator<{ id: number }>;
@@ -270,7 +271,12 @@ export default class TodoService {
 	public async addTodo(
 		scope: TodoScope,
 		text: string,
-		options: { isNote?: boolean; isMarkdown?: boolean; filePath?: string } = {}
+		options: {
+			isNote?: boolean;
+			isMarkdown?: boolean;
+			filePath?: string;
+			position?: CreatePosition;
+		} = {}
 	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo } | null> {
 		this.assertScopeAllowed(scope);
 		this.assertWorkspaceAvailable(scope);
@@ -290,6 +296,39 @@ export default class TodoService {
 			scope,
 			text,
 			options
+		);
+	}
+
+	/**
+	 * Create several todos/notes in one call, preserving the given order. Unlike calling
+	 * addTodo in a loop (which would reverse the block under createPosition "top" and emit
+	 * one change event per item), this inserts the whole block as a single action so the
+	 * resulting list reflects `items` order verbatim. `position` defaults to the store's
+	 * createPosition setting when omitted.
+	 */
+	public async addTodos(
+		scope: TodoScope,
+		items: Array<{ text: string; isNote?: boolean; isMarkdown?: boolean }>,
+		options: { filePath?: string; position?: CreatePosition } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todos: Todo[] }> {
+		this.assertScopeAllowed(scope);
+		this.assertWorkspaceAvailable(scope);
+		this.assertWritable();
+
+		if (scope === TodoScope.currentFile) {
+			const filePath = this.resolveFilePath(options.filePath);
+			const currentFilePath = this.store.getState().currentFile.filePath;
+			if (this.isSameFilePath(currentFilePath, filePath)) {
+				return this.addTodosViaStore(currentFileActions, scope, items, options.position, filePath);
+			}
+			return this.addTodosForNonCurrentFile(filePath, items, options.position);
+		}
+
+		return this.addTodosViaStore(
+			scope === TodoScope.user ? userActions : workspaceActions,
+			scope,
+			items,
+			options.position
 		);
 	}
 
@@ -482,11 +521,11 @@ export default class TodoService {
 		actions: TodoActions,
 		scope: TodoScope,
 		text: string,
-		options?: { filePath?: string }
+		options?: { filePath?: string; position?: CreatePosition }
 	): { scope: TodoScope; filePath?: string; todo: Todo } | null {
 		const state = this.getScopeState(scope);
 		const beforeIds = new Set(state.todos.map((todo) => todo.id));
-		this.store.dispatch(actions.addTodo({ text }));
+		this.store.dispatch(actions.addTodo({ text, position: options?.position }));
 		const updated = this.getScopeState(scope).todos;
 		const added = updated.find((todo) => !beforeIds.has(todo.id));
 
@@ -501,10 +540,13 @@ export default class TodoService {
 		actions: TodoActions,
 		scope: TodoScope,
 		text: string,
-		options: { isNote?: boolean; isMarkdown?: boolean; filePath?: string },
+		options: { isNote?: boolean; isMarkdown?: boolean; filePath?: string; position?: CreatePosition },
 		filePath?: string
 	): { scope: TodoScope; filePath?: string; todo: Todo } | null {
-		const result = this.addTodoViaStore(actions, scope, text, { filePath });
+		const result = this.addTodoViaStore(actions, scope, text, {
+			filePath,
+			position: options.position,
+		});
 		if (!result) {
 			return null;
 		}
@@ -520,13 +562,92 @@ export default class TodoService {
 		return updated ? { ...result, todo: updated } : result;
 	}
 
+	private addTodosViaStore(
+		actions: TodoActions,
+		scope: TodoScope,
+		items: Array<{ text: string; isNote?: boolean; isMarkdown?: boolean }>,
+		position: CreatePosition | undefined,
+		filePath?: string
+	): { scope: TodoScope; filePath?: string; todos: Todo[] } {
+		const beforeIds = new Set(this.getScopeState(scope).todos.map((todo) => todo.id));
+		this.store.dispatch(actions.addTodos({ texts: items.map((item) => item.text), position }));
+
+		// Collect the freshly added items in the order they appear in the post-dispatch list.
+		// Invariant that makes positional alignment with `items` valid: the addTodos reducer
+		// always creates the block as contiguous, all-incomplete tasks and inserts it as a unit
+		// (unshift for "top"; push + stable sortTodosWithNotes for "bottom"). A fresh block never
+		// reorders among itself under either sort type, so its display order equals input order.
+		// (The notes-interleaved batch test in the suite locks this in.)
+		const added: Todo[] = [];
+		for (const todo of this.getScopeState(scope).todos) {
+			if (!beforeIds.has(todo.id)) {
+				added.push(todo);
+			}
+		}
+
+		// Apply each item's optional isNote/isMarkdown flag by id (same per-item toggle pattern
+		// as addTodoWithOptions).
+		items.forEach((item, index) => {
+			const todo = added[index];
+			if (!todo) {
+				return;
+			}
+			if (item.isNote !== undefined && item.isNote !== todo.isNote) {
+				this.store.dispatch(actions.toggleTodoNote({ id: todo.id }));
+			}
+			if (item.isMarkdown !== undefined && item.isMarkdown !== todo.isMarkdown) {
+				this.store.dispatch(actions.toggleMarkdown({ id: todo.id }));
+			}
+		});
+
+		// Re-read so the returned items reflect any flag toggles, preserving input order.
+		const finalById = new Map(
+			this.getScopeState(scope).todos.map((todo) => [todo.id, todo] as const)
+		);
+		const todos = added.map((todo) => finalById.get(todo.id) ?? todo);
+		return { scope, filePath, todos };
+	}
+
+	private async addTodosForNonCurrentFile(
+		filePath: string,
+		items: Array<{ text: string; isNote?: boolean; isMarkdown?: boolean }>,
+		position: CreatePosition | undefined
+	): Promise<{ scope: TodoScope; filePath: string; todos: Todo[] }> {
+		const existing = this.getFileTodos(filePath);
+		const config = getConfig();
+		const resolvedPosition = position ?? config.createPosition;
+
+		const block: Todo[] = [];
+		for (const item of items) {
+			block.push({
+				id: generateUniqueId([...existing, ...block]),
+				text: item.text,
+				completed: false,
+				creationDate: new Date().toISOString(),
+				isMarkdown: item.isMarkdown ?? config.createMarkdownByDefault,
+				isNote: item.isNote ?? false,
+			});
+		}
+
+		let updatedTodos: Todo[];
+		if (resolvedPosition === "top") {
+			updatedTodos = [...block, ...existing];
+		} else {
+			updatedTodos = sortTodosWithNotes([...existing, ...block]);
+		}
+
+		await this.persistFileTodos(filePath, updatedTodos);
+		return { scope: TodoScope.currentFile, filePath, todos: block };
+	}
+
 	private async addTodoForNonCurrentFile(
 		filePath: string,
 		text: string,
-		options: { isNote?: boolean; isMarkdown?: boolean }
+		options: { isNote?: boolean; isMarkdown?: boolean; position?: CreatePosition }
 	): Promise<{ scope: TodoScope; filePath: string; todo: Todo } | null> {
 		const existing = this.getFileTodos(filePath);
 		const config = getConfig();
+		const position = options.position ?? config.createPosition;
 		const newTodo: Todo = {
 			id: generateUniqueId(existing),
 			text,
@@ -537,7 +658,7 @@ export default class TodoService {
 		};
 
 		let updatedTodos: Todo[];
-		if (config.createPosition === "top") {
+		if (position === "top") {
 			updatedTodos = [newTodo, ...existing];
 		} else {
 			updatedTodos = [...existing, newTodo];
