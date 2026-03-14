@@ -415,7 +415,9 @@ export default class McpServerHost implements vscode.Disposable {
 					"Use the todo_* tools to read, create, update, and delete VS Code Todo items and notes " +
 					"across the user, workspace, and currentFile scopes. todo_list_items reads todos/notes for " +
 					"a scope, todo_count_items returns per-scope counts for a quick overview, and " +
-					"todo_list_files lists files that have todos. todo_add_item creates an item; " +
+					"todo_list_files lists files that have todos. todo_add_item creates one item and " +
+					"todo_add_items creates several in a single call preserving their given order (use it " +
+					"for an ordered list such as a multi-step plan); " +
 					"todo_update_text, todo_set_completed, todo_set_note, and todo_set_markdown change an " +
 					"existing item by id; todo_delete_items removes items by id. All write tools are blocked " +
 					"when the server is in read-only mode. For the currentFile scope, pass filePath to target " +
@@ -597,6 +599,25 @@ export default class McpServerHost implements vscode.Disposable {
 				.describe("Offset to pass on the next call to fetch the following page, when has_more is true."),
 		};
 
+		const positionSchema = z
+			.enum(["top", "bottom"])
+			.optional()
+			.describe(
+				"Where to insert: 'top' (newest first) or 'bottom' (append). Omit to use the " +
+					"user's createPosition setting."
+			);
+
+		// The batch tool defaults to 'bottom' (append in order) regardless of the user's
+		// single-add createPosition preference — appending a block in the given order is the
+		// natural "lay down an ordered list" behavior. The block keeps its order either way.
+		const batchPositionSchema = z
+			.enum(["top", "bottom"])
+			.optional()
+			.describe(
+				"Where to insert the whole block: 'top' or 'bottom' (default). The block keeps " +
+					"the given order either way."
+			);
+
 		const addItemOutputSchema = {
 			scope: scopeSchema,
 			filePath: z
@@ -604,6 +625,16 @@ export default class McpServerHost implements vscode.Disposable {
 				.optional()
 				.describe("Resolved file path when the item was added to a 'currentFile' scope."),
 			todo: todoSchema.describe("The newly created todo or note."),
+		};
+
+		const addItemsOutputSchema = {
+			scope: scopeSchema,
+			filePath: z
+				.string()
+				.optional()
+				.describe("Resolved file path when the items were added to a 'currentFile' scope."),
+			todos: z.array(todoSchema).describe("The newly created items, in the order they were given."),
+			count: z.number().describe("Number of items created."),
 		};
 
 		// Per-scope count objects are "loose" (extra keys allowed) so future, more
@@ -784,8 +815,10 @@ export default class McpServerHost implements vscode.Disposable {
 					"Create a new todo or note in the given scope. 'scope' is one of 'user' (global), " +
 					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
 					"'filePath'). Set 'isNote: true' for a free-text note instead of a checkable task. " +
-					"Set 'isMarkdown: true' to render the text as Markdown. Returns the created item. " +
-					"Rejected when the server is in read-only mode.",
+					"Set 'isMarkdown: true' to render the text as Markdown. Set 'position' to 'top' or " +
+					"'bottom' to control placement, overriding the user's createPosition setting. " +
+					"Returns the created item. Rejected when the server is in read-only mode. To create " +
+					"several items in a fixed order, prefer todo_add_items.",
 				inputSchema: {
 					scope: scopeSchema,
 					text: z.string().describe("The text of the todo or note to create."),
@@ -807,6 +840,7 @@ export default class McpServerHost implements vscode.Disposable {
 							"Absolute or workspace-relative path; required when scope is 'currentFile', " +
 								"otherwise ignored."
 						),
+					position: positionSchema,
 				},
 				outputSchema: addItemOutputSchema,
 				annotations: {
@@ -827,6 +861,75 @@ export default class McpServerHost implements vscode.Disposable {
 						scope: result.scope,
 						...(result.filePath !== undefined ? { filePath: result.filePath } : {}),
 						todo: result.todo,
+					});
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo_add_items",
+			{
+				title: "Add Todos (ordered batch)",
+				description:
+					"Create multiple todos or notes in one call, preserving the given order — the " +
+					"resulting list reflects the order of 'items'. Use this to lay down an ordered " +
+					"list (e.g. a multi-step plan) in a single call instead of repeated todo_add_item " +
+					"calls, which would reverse the order under a 'top' createPosition setting. 'scope' " +
+					"is 'user', 'workspace', or 'currentFile' (requires 'filePath'). Each item may set " +
+					"its own 'isNote'/'isMarkdown'. 'position' places the whole block at 'top' or " +
+					"'bottom' (default); the block keeps the given order either way. Returns the created " +
+					"items in order. Rejected when the server is in read-only mode.",
+				inputSchema: {
+					scope: scopeSchema,
+					items: z
+						.array(
+							z.object({
+								text: z.string().describe("The text of the todo or note to create."),
+								isNote: z
+									.boolean()
+									.optional()
+									.describe(
+										"When true, create a free-text note instead of a checkable task. Defaults to false."
+									),
+								isMarkdown: z
+									.boolean()
+									.optional()
+									.describe(
+										"When true, the text is rendered as Markdown in the UI. Defaults to the " +
+											"extension's createMarkdownByDefault setting."
+									),
+							})
+						)
+						.min(1)
+						.describe(
+							"Ordered list of items to create. The resulting list preserves this order. " +
+								"Must contain at least one item."
+						),
+					position: batchPositionSchema,
+					filePath: mutateFilePathSchema,
+				},
+				outputSchema: addItemsOutputSchema,
+				annotations: {
+					title: "Add Todos (ordered batch)",
+					readOnlyHint: false,
+					destructiveHint: false,
+					idempotentHint: false,
+					openWorldHint: false,
+				},
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const result = await this.todoService.addTodos(args.scope as TodoScope, args.items, {
+						// Batch insert defaults to 'bottom' (append the block in order), independent
+						// of the user's single-add createPosition preference. See batchPositionSchema.
+						position: args.position ?? "bottom",
+						filePath: args.filePath,
+					});
+					return this.toolResult({
+						scope: result.scope,
+						...(result.filePath !== undefined ? { filePath: result.filePath } : {}),
+						todos: result.todos,
+						count: result.todos.length,
 					});
 				});
 			}
