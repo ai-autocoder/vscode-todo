@@ -21,6 +21,7 @@ import {
 	TodoSlice,
 } from "../../../todo/todoTypes";
 import { getWorkspacePath, resolveFilesDataKey, ensureFilesDataPaths } from "../../../todo/todoUtils";
+import { getConfig } from "../../../utilities/config";
 
 /**
  * Map-backed mock of the bits of ExtensionContext that TodoService /
@@ -433,6 +434,185 @@ suite("TodoService CRUD", () => {
 			/not permitted/
 		);
 		assert.throws(() => service.listTodos(TodoScope.workspace), /not permitted/);
+	});
+});
+
+/**
+ * Ordered-insert coverage: the per-call `position` override on addTodo and the
+ * addTodos batch. The host's createPosition config defaults to "bottom", so the
+ * "top" path is exercised via an explicit position override — which is exactly the
+ * new capability under test and is deterministic regardless of the host config.
+ * Default sortType1 keeps all-incomplete tasks in insertion order, so an appended
+ * block stays in the order it was given.
+ */
+suite("TodoService ordered insert", () => {
+	let store: EnhancedStore<StoreState>;
+	let context: vscode.ExtensionContext;
+	let service: TodoService;
+	const workspaceRoot = path.join(os.tmpdir(), "vsc-todo-order-test");
+	const otherFilePath = path.join(workspaceRoot, "src", "order-other.ts");
+
+	let originalFolders: PropertyDescriptor | undefined;
+	let originalGetWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder;
+	const fakeFolder = {
+		uri: vscode.Uri.file(workspaceRoot),
+		name: "vsc-todo-order-test",
+		index: 0,
+	} as vscode.WorkspaceFolder;
+
+	before(() => {
+		originalFolders = Object.getOwnPropertyDescriptor(vscode.workspace, "workspaceFolders");
+		Object.defineProperty(vscode.workspace, "workspaceFolders", {
+			configurable: true,
+			get: () => [fakeFolder],
+		});
+		originalGetWorkspaceFolder = vscode.workspace.getWorkspaceFolder;
+		(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
+			(uri: vscode.Uri) => (uri.fsPath.startsWith(workspaceRoot) ? fakeFolder : undefined);
+	});
+
+	after(() => {
+		if (originalFolders) {
+			Object.defineProperty(vscode.workspace, "workspaceFolders", originalFolders);
+		}
+		(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
+			originalGetWorkspaceFolder;
+	});
+
+	beforeEach(() => {
+		store = createStore();
+		const mock = createMockContext();
+		context = mock.context;
+		const storage = createMockStorage(context);
+		service = new TodoService(context, store as EnhancedStore<StoreState>, storage);
+		service.updateAccess(false, ["user", "workspace", "file"]);
+	});
+
+	const texts = (todos: Todo[]): string[] => todos.map((t) => t.text);
+
+	// --- single-item position override --------------------------------------
+
+	test("position: explicit 'top' puts the new item first; 'bottom' appends", async () => {
+		await service.addTodo(TodoScope.user, "first-added");
+		await service.addTodo(TodoScope.user, "to-top", { position: "top" });
+		await service.addTodo(TodoScope.user, "to-bottom", { position: "bottom" });
+
+		assert.deepStrictEqual(texts(store.getState().user.todos), [
+			"to-top",
+			"first-added",
+			"to-bottom",
+		]);
+	});
+
+	test("position: omitted falls back to the configured createPosition", async () => {
+		// Config-agnostic but absolute: omitting position must match BOTH an explicit pass of
+		// the host's configured createPosition AND the concrete order that position implies.
+		// (The dev host may be "top" or "bottom".)
+		const configured = getConfig().createPosition;
+		await service.addTodo(TodoScope.user, "anchor");
+		await service.addTodo(TodoScope.user, "added"); // no position → uses config
+		await service.addTodo(TodoScope.workspace, "anchor");
+		await service.addTodo(TodoScope.workspace, "added", { position: configured });
+
+		const expected = configured === "top" ? ["added", "anchor"] : ["anchor", "added"];
+		assert.deepStrictEqual(texts(store.getState().user.todos), expected);
+		assert.deepStrictEqual(texts(store.getState().workspace.todos), expected);
+	});
+
+	// --- batch addTodos order -----------------------------------------------
+
+	test("batch: 'bottom' appends the block preserving the given order", async () => {
+		const result = await service.addTodos(
+			TodoScope.user,
+			[{ text: "A" }, { text: "B" }, { text: "C" }],
+			{ position: "bottom" }
+		);
+		assert.deepStrictEqual(texts(result.todos), ["A", "B", "C"]);
+		assert.deepStrictEqual(texts(store.getState().user.todos), ["A", "B", "C"]);
+	});
+
+	test("batch: 'top' inserts the block at the front, not reversed", async () => {
+		await service.addTodos(TodoScope.user, [{ text: "existing" }], { position: "bottom" });
+		await service.addTodos(
+			TodoScope.user,
+			[{ text: "A" }, { text: "B" }, { text: "C" }],
+			{ position: "top" }
+		);
+		// First array element ends topmost; block keeps A,B,C order; "existing" stays last.
+		assert.deepStrictEqual(texts(store.getState().user.todos), [
+			"A",
+			"B",
+			"C",
+			"existing",
+		]);
+	});
+
+	test("batch: a notes/tasks mix keeps array order and per-item flags", async () => {
+		const result = await service.addTodos(
+			TodoScope.user,
+			[
+				{ text: "task-1" },
+				{ text: "note-1", isNote: true },
+				{ text: "task-2" },
+			],
+			{ position: "bottom" }
+		);
+		assert.deepStrictEqual(texts(result.todos), ["task-1", "note-1", "task-2"]);
+		assert.deepStrictEqual(texts(store.getState().user.todos), ["task-1", "note-1", "task-2"]);
+		const byText = (t: string) => store.getState().user.todos.find((todo) => todo.text === t);
+		assert.strictEqual(byText("note-1")!.isNote, true);
+		assert.strictEqual(byText("task-1")!.isNote, false);
+		assert.strictEqual(byText("task-2")!.isNote, false);
+	});
+
+	test("batch: ids are unique within the block and against existing items", async () => {
+		await service.addTodos(TodoScope.user, [{ text: "seed" }], { position: "bottom" });
+		const result = await service.addTodos(
+			TodoScope.user,
+			[{ text: "A" }, { text: "B" }, { text: "C" }],
+			{ position: "bottom" }
+		);
+		const ids = new Set(result.todos.map((t) => t.id));
+		assert.strictEqual(ids.size, 3, "new ids are distinct from each other");
+		// No new id collides with the pre-existing item.
+		const allIds = new Set(store.getState().user.todos.map((t) => t.id));
+		assert.strictEqual(allIds.size, 4, "all ids unique across existing + batch");
+	});
+
+	// --- batch on a non-active file -----------------------------------------
+
+	test("batch: non-active currentFile persists the block in order", async () => {
+		const result = await service.addTodos(
+			TodoScope.currentFile,
+			[{ text: "X" }, { text: "Y" }, { text: "Z" }],
+			{ filePath: otherFilePath, position: "bottom" }
+		);
+		assert.strictEqual(result.filePath, otherFilePath);
+		assert.deepStrictEqual(texts(result.todos), ["X", "Y", "Z"]);
+		const persisted = readFileTodos(context, otherFilePath);
+		assert.deepStrictEqual(texts(persisted), ["X", "Y", "Z"]);
+	});
+
+	// --- guards -------------------------------------------------------------
+
+	test("read-only mode blocks addTodos and addTodo with position", async () => {
+		service.updateAccess(true, ["user", "workspace", "file"]);
+		await assert.rejects(
+			() => service.addTodos(TodoScope.user, [{ text: "x" }]),
+			/read-only/
+		);
+		await assert.rejects(
+			() => service.addTodo(TodoScope.user, "x", { position: "top" }),
+			/read-only/
+		);
+	});
+
+	test("batch: disallowed scope is rejected", async () => {
+		service.updateAccess(false, ["user"]);
+		await assert.rejects(
+			() => service.addTodos(TodoScope.workspace, [{ text: "x" }]),
+			/not permitted/
+		);
 	});
 });
 
