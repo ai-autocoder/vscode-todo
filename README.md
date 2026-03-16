@@ -346,7 +346,7 @@ The agent works with three lists (scopes), matching the extension's tabs:
 - **workspace** — the current project's list
 - **currentFile** — todos attached to a specific file (the agent passes the file path)
 
-It can **list** todos and notes (with filtering and paging), **add** todos/notes, **edit** text, **complete/reopen** todos, **convert** between task and note, **toggle Markdown** rendering, and **delete** items. All edits are rejected while `readOnly` is `true`.
+It can **list** todos and notes (with filtering and paging), **add** todos/notes — one at a time or as an ordered batch that preserves the given order (handy for laying down a multi-step plan) — **edit** text, **complete/reopen** todos, **convert** between task and note, **toggle Markdown** rendering, and **delete** items. All edits are rejected while `readOnly` is `true`.
 
 You can also narrow what's reachable with `vscodeTodo.mcp.allowedScopes` (default `["user", "workspace", "file"]`) — e.g. drop `"file"` so agents can't touch per-file lists.
 
@@ -378,7 +378,8 @@ This project has the VS Code Todo MCP server connected. Use it to track work:
 | `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix` (prefix match), `search` (substring match anywhere in the text). Optional ordering: `sortBy` (`creationDate`/`completionDate`/`completed`) and `order` (`asc`/`desc`). Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set — item text is never truncated. |
 | `todo_count_items` | Return todo/note counts per scope (no arguments) — a cheap overview of where the open work is before paging a scope. |
 | `todo_list_files` | List workspace files that have file-scoped todos, with per-file counts; paginated. |
-| `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). _Write._ |
+| `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). Optional `position` (`top`/`bottom`) overrides the `createPosition` setting for this call; omit it to use the setting. _Write._ |
+| `todo_add_items` | Create several todos/notes in one call from an ordered `items` array, preserving the given order — use it to lay down an ordered list (e.g. a multi-step plan) without the list coming out reversed. Each item may set its own `isNote`/`isMarkdown`; optional `position` (`top`/`bottom`, default `bottom`) places the whole block while keeping its order. _Write._ |
 | `todo_update_text` | Change an item's text by `id`. _Write._ |
 | `todo_set_completed` | Mark a todo completed/reopened by `id`. _Write._ |
 | `todo_set_note` | Convert an item between task and note by `id`. _Write._ |
