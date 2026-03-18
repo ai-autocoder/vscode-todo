@@ -9,6 +9,8 @@ import {
 	TodoSlice,
 } from "../todo/todoTypes";
 import { Config } from "../utilities/config";
+import type { McpStatus } from "../mcp/mcpStatus";
+export type { McpStatus } from "../mcp/mcpStatus";
 
 export type UserSyncMode = "profile-local" | "profile-sync" | "github";
 export type WorkspaceSyncMode = "local" | "github";
@@ -83,8 +85,10 @@ type MessagePayload<T, L> = T extends
 										? { isConnected: boolean; hasGistId: boolean }
 										: T extends MessageActionsToWebview.updateGitHubSyncInfo
 											? GitHubSyncInfo
-											: T extends MessageActionsToWebview.updateSyncStatus
-												? { isSyncing: boolean }
+										: T extends MessageActionsToWebview.updateSyncStatus
+											? { isSyncing: boolean }
+											: T extends MessageActionsToWebview.updateMcpStatus
+												? McpStatus
 												: never;
 
 export type Message<
@@ -102,6 +106,7 @@ export type Message<
 				| MessageActionsToWebview.updateGitHubStatus
 				| MessageActionsToWebview.updateGitHubSyncInfo
 				| MessageActionsToWebview.updateSyncStatus
+				| MessageActionsToWebview.updateMcpStatus
 		? {
 				type: T;
 				payload: MessagePayload<T, L>;
@@ -133,6 +138,8 @@ export type Message<
 					| MessageActionsFromWebview.openGistIdSettings
 					| MessageActionsFromWebview.viewGistOnGitHub
 					| MessageActionsFromWebview.syncNow
+					| MessageActionsFromWebview.startMcpServer
+					| MessageActionsFromWebview.stopMcpServer
 			? {
 					type: T;
 				}
@@ -170,6 +177,8 @@ export const enum MessageActionsFromWebview {
 	openGistIdSettings = "openGistIdSettings",
 	viewGistOnGitHub = "viewGistOnGitHub",
 	syncNow = "syncNow",
+	startMcpServer = "startMcpServer",
+	stopMcpServer = "stopMcpServer",
 }
 export const enum MessageActionsToWebview {
 	reloadWebview = "reloadWebview", // Send full data to webview when it reloads
@@ -178,6 +187,7 @@ export const enum MessageActionsToWebview {
 	updateGitHubStatus = "updateGitHubStatus",
 	updateGitHubSyncInfo = "updateGitHubSyncInfo",
 	updateSyncStatus = "updateSyncStatus",
+	updateMcpStatus = "updateMcpStatus",
 }
 
 // Message creators from Webview to Extension
@@ -355,6 +365,12 @@ export const messagesFromWebview = {
 	syncNow: (): { type: MessageActionsFromWebview.syncNow } => ({
 		type: MessageActionsFromWebview.syncNow,
 	}),
+	startMcpServer: (): { type: MessageActionsFromWebview.startMcpServer } => ({
+		type: MessageActionsFromWebview.startMcpServer,
+	}),
+	stopMcpServer: (): { type: MessageActionsFromWebview.stopMcpServer } => ({
+		type: MessageActionsFromWebview.stopMcpServer,
+	}),
 };
 export const messagesToWebview = {
 	// Message creators from extension to UI
@@ -389,5 +405,9 @@ export const messagesToWebview = {
 	updateSyncStatus: (isSyncing: boolean): { type: MessageActionsToWebview.updateSyncStatus; payload: { isSyncing: boolean } } => ({
 		type: MessageActionsToWebview.updateSyncStatus,
 		payload: { isSyncing },
+	}),
+	updateMcpStatus: (payload: McpStatus): { type: MessageActionsToWebview.updateMcpStatus; payload: McpStatus } => ({
+		type: MessageActionsToWebview.updateMcpStatus,
+		payload,
 	}),
 };

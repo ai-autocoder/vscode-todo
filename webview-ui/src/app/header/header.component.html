@@ -109,6 +109,21 @@
 			</button>
 		}
 
+		@if (mcpControlInfo | async; as mcpInfo) {
+			<button
+				mat-menu-item
+				(click)="toggleMcp(mcpInfo.status)"
+				[disabled]="mcpInfo.disabled"
+				[title]="mcpInfo.tooltip"
+				[aria-label]="mcpInfo.ariaLabel"
+			>
+				<span class="submenu-content">
+					<app-icon [name]="mcpInfo.icon"></app-icon>
+					<span style="margin-left: 8px;">{{ mcpInfo.status.running ? "Stop MCP Server" : "Start MCP Server" }}</span>
+				</span>
+			</button>
+		}
+
 		<mat-divider></mat-divider>
 
 		<button

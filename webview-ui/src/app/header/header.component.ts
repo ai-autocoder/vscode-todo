@@ -2,7 +2,12 @@ import { Component, ElementRef, Input, OnInit, ViewChild, inject } from "@angula
 import { TodoService } from "../todo/todo.service";
 import { ExportFormats, ImportFormats, TodoScope } from "../../../../src/todo/todoTypes";
 import { BehaviorSubject, combineLatest, map, Observable } from "rxjs";
-import { GitHubSyncInfo, UserSyncMode, WorkspaceSyncMode } from "../../../../src/panels/message";
+import {
+	GitHubSyncInfo,
+	McpStatus,
+	UserSyncMode,
+	WorkspaceSyncMode,
+} from "../../../../src/panels/message";
 
 type SyncModeInfo = {
 	scope: TodoScope;
@@ -17,6 +22,14 @@ type SyncModeInfo = {
 	pillLabel: string;
 	pillTooltip: string;
 	pillAriaLabel: string;
+};
+
+type McpControlInfo = {
+	status: McpStatus;
+	icon: "mcp-play" | "mcp-stop";
+	tooltip: string;
+	ariaLabel: string;
+	disabled: boolean;
 };
 
 @Component({
@@ -41,6 +54,7 @@ export class HeaderComponent implements OnInit {
 	isSyncing!: Observable<boolean>;
 	syncTooltip!: Observable<string>;
 	syncModeInfo!: Observable<SyncModeInfo>;
+	mcpControlInfo!: Observable<McpControlInfo>;
 	private wideViewDelayHandle: number | null = null;
 	private currentScopeSource = new BehaviorSubject<TodoScope>(TodoScope.user);
 	private currentScopeValue: TodoScope = TodoScope.user;
@@ -76,6 +90,9 @@ export class HeaderComponent implements OnInit {
 			this.todoService.gitHubSyncInfo,
 			this.currentScopeSource,
 		]).pipe(map(([info, scope]) => this.buildSyncModeInfo(info, scope)));
+		this.mcpControlInfo = this.todoService.mcpStatus.pipe(
+			map((status) => this.buildMcpControlInfo(status))
+		);
 	}
 
 	import(format: ImportFormats) {
@@ -252,6 +269,14 @@ export class HeaderComponent implements OnInit {
 		this.todoService.syncNow();
 	}
 
+	toggleMcp(status: McpStatus) {
+		if (status.running) {
+			this.todoService.stopMcpServer();
+		} else {
+			this.todoService.startMcpServer();
+		}
+	}
+
 	private buildSyncTooltip(info: GitHubSyncInfo, isSyncing: boolean, nowMs: number): string {
 		if (!info.isGitHubSyncEnabled) {
 			return (
@@ -388,6 +413,33 @@ export class HeaderComponent implements OnInit {
 				input.select();
 			}
 		}, 0);
+	}
+
+	private buildMcpControlInfo(status: McpStatus): McpControlInfo {
+		const isRunning = status.running;
+		const isTrusted = status.trusted;
+		const isEnabled = status.enabled;
+		const disabled = !isTrusted;
+		const icon: "mcp-play" | "mcp-stop" = isRunning ? "mcp-stop" : "mcp-play";
+
+		let tooltip = isRunning ? "Stop MCP server." : "Start MCP server.";
+		if (!isTrusted) {
+			tooltip = "Workspace not trusted. Trust this workspace to use MCP.";
+		} else if (!isEnabled && !isRunning) {
+			tooltip = "Enable MCP and start the server.";
+		} else if (isRunning && status.port) {
+			tooltip = `Stop MCP server (port ${status.port}).`;
+		}
+
+		const ariaLabel = isRunning ? "Stop MCP server" : "Start MCP server";
+
+		return {
+			status,
+			icon,
+			tooltip,
+			ariaLabel,
+			disabled,
+		};
 	}
 
 }

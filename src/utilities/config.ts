@@ -2,10 +2,13 @@ import * as vscode from "vscode";
 import { contributes } from "../../package.json";
 import LogChannel from "../utilities/LogChannel";
 
+/** Where a newly created todo/note is inserted into its list. */
+export type CreatePosition = "top" | "bottom";
+
 export type Config = {
 	taskSortingOptions: "sortType1" | "sortType2" | "disabled";
 	createMarkdownByDefault: boolean;
-	createPosition: "top" | "bottom";
+	createPosition: CreatePosition;
 	enableLineNumbers: boolean;
 	enableMarkdownDiagrams: boolean;
 	enableMarkdownKatex: boolean;

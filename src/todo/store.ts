@@ -7,7 +7,7 @@ import {
 	PayloadAction,
 } from "@reduxjs/toolkit";
 import LogChannel from "../utilities/LogChannel";
-import { getConfig } from "../utilities/config";
+import { CreatePosition, getConfig } from "../utilities/config";
 import {
 	ActionTrackerState,
 	CurrentFileSlice,
@@ -26,6 +26,34 @@ import {
 	sortTodosWithNotes,
 } from "./todoUtils";
 
+/**
+ * Inserts an already-built block of todos into the list at the given position,
+ * preserving the block's own order. A "top" insert puts the block at the front with
+ * its first element topmost (a naive per-item unshift would reverse it). A "bottom"
+ * insert appends the block and then re-sorts the whole list, exactly as the original
+ * single-item add did: sortTodosWithNotes is a stable sort, and a freshly built block
+ * is all-incomplete, so its items never reorder among themselves — the block stays
+ * contiguous and in caller order while completed items settle below it. Pass a
+ * single-element block for the common single-add case.
+ */
+function insertTodos(state: TodoSlice, block: Todo[], position: CreatePosition): void {
+	switch (position) {
+		case "top":
+			state.todos.unshift(...block);
+			break;
+		case "bottom":
+			state.todos.push(...block);
+			Object.assign(state.todos, sortTodosWithNotes(state.todos));
+			break;
+		default:
+			LogChannel.log("Invalid createPosition value: " + position);
+			assertNever(position);
+	}
+
+	state.numberOfTodos = getNumberOfTodos(state);
+	state.numberOfNotes = getNumberOfNotes(state);
+}
+
 const todoReducers = {
 	loadData: (state: TodoSlice, action: PayloadAction<{ data: Todo[] }>) => {
 		state.todos = action.payload.data;
@@ -33,10 +61,14 @@ const todoReducers = {
 		state.numberOfTodos = getNumberOfTodos(state);
 		state.numberOfNotes = getNumberOfNotes(state);
 	},
-	addTodo: (state: TodoSlice, action: PayloadAction<{ text: string }>) => {
+	addTodo: (
+		state: TodoSlice,
+		action: PayloadAction<{ text: string; position?: CreatePosition }>
+	) => {
 		const { createPosition, createMarkdownByDefault } = getConfig();
+		const position = action.payload.position ?? createPosition;
 
-		const newTodo = {
+		const newTodo: Todo = {
 			id: generateUniqueId(state.todos),
 			text: action.payload.text,
 			completed: false,
@@ -45,22 +77,33 @@ const todoReducers = {
 			isNote: false,
 		};
 
-		switch (createPosition) {
-			case "top":
-				state.todos?.unshift(newTodo);
-				break;
-			case "bottom":
-				state.todos?.push(newTodo);
-				Object.assign(state.todos, sortTodosWithNotes(state.todos));
-				break;
-			default:
-				LogChannel.log("Invalid createPosition value: " + createPosition);
-				assertNever(createPosition);
+		insertTodos(state, [newTodo], position);
+		state.lastActionType = action.type;
+	},
+	addTodos: (
+		state: TodoSlice,
+		action: PayloadAction<{ texts: string[]; position?: CreatePosition }>
+	) => {
+		const { createPosition, createMarkdownByDefault } = getConfig();
+		const position = action.payload.position ?? createPosition;
+
+		// Build the block first, threading it through generateUniqueId so ids stay
+		// unique within the batch (each new id is checked against both the existing
+		// list and the items already built in this batch).
+		const block: Todo[] = [];
+		for (const text of action.payload.texts) {
+			block.push({
+				id: generateUniqueId([...state.todos, ...block]),
+				text,
+				completed: false,
+				creationDate: new Date().toISOString(),
+				isMarkdown: createMarkdownByDefault,
+				isNote: false,
+			});
 		}
 
+		insertTodos(state, block, position);
 		state.lastActionType = action.type;
-		state.numberOfTodos = getNumberOfTodos(state);
-		state.numberOfNotes = getNumberOfNotes(state);
 	},
 	toggleTodo: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
