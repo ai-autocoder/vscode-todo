@@ -7,7 +7,7 @@ import createStore, {
 	workspaceActions,
 	currentFileActions,
 } from "../../../todo/store";
-import { deleteCompletedTodos } from "../../../todo/todoUtils";
+import { deleteCompletedTodos, deleteCompletedTodosCurrentFile } from "../../../todo/todoUtils";
 import { Todo } from "../../../todo/todoTypes";
 
 suite("Auto-delete completed todos", () => {
@@ -57,6 +57,7 @@ suite("Auto-delete completed todos", () => {
 		store.dispatch(currentFileActions.loadData({ filePath: "test.ts", data: [oldTodo] }));
 
 		deleteCompletedTodos(store);
+		deleteCompletedTodosCurrentFile(store);
 
 		assert.strictEqual(store.getState().user.todos.length, 0);
 		assert.strictEqual(store.getState().workspace.todos.length, 0);
