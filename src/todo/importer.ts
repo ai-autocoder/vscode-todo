@@ -32,6 +32,7 @@ import {
 	resolveFilesDataKey,
 	sortByFileName,
 } from "./todoUtils";
+import { normalizeTags } from "./tagUtils";
 
 async function importCommand(
 	context: ExtensionContext,
@@ -331,17 +332,25 @@ function filterValidTodos(todos: TodoPartialInput[]): TodoPartialInput[] {
 }
 
 function initMissingTodoProperties(validImportData: TodoPartialInput[]): Todo[] {
-    return validImportData.map((todo) => ({
-        ...todo,
-        id: todo.id || generateUniqueId(validImportData),
-        text: todo.text.trim(),
-        completed: todo.completed ?? false,
-        isMarkdown: todo.isMarkdown ?? false,
-        isNote: todo.isNote ?? false,
-        collapsed: todo.collapsed ?? false,
-        creationDate: todo.creationDate ?? new Date().toISOString(),
-        completionDate: todo.completed ? (todo.completionDate ?? new Date().toISOString()) : undefined,
-    }));
+    return validImportData.map((todo) => {
+        // Sanitize any imported tags through the shared rules. `tags` is set last so it
+        // always overrides whatever `...todo` spread in: a valid normalized array, or
+        // undefined when nothing valid remains (which JSON.stringify then omits) — never
+        // the raw, unsanitized input.
+        const tags = normalizeTags(todo.tags);
+        return {
+            ...todo,
+            id: todo.id || generateUniqueId(validImportData),
+            text: todo.text.trim(),
+            completed: todo.completed ?? false,
+            isMarkdown: todo.isMarkdown ?? false,
+            isNote: todo.isNote ?? false,
+            collapsed: todo.collapsed ?? false,
+            creationDate: todo.creationDate ?? new Date().toISOString(),
+            completionDate: todo.completed ? (todo.completionDate ?? new Date().toISOString()) : undefined,
+            tags: tags.length > 0 ? tags : undefined,
+        };
+    });
 }
 
 function mergeTodoArrays(

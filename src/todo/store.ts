@@ -156,10 +156,11 @@ const todoReducers = {
 			isMarkdown: boolean;
 			isNote: boolean;
 			collapsed?: boolean;
+			tags?: string[];
 			itemPosition: number;
 		}>
 	) => {
-		const restoredItem = {
+		const restoredItem: Todo = {
 			id: generateUniqueId(state.todos),
 			text: action.payload.text,
 			completed: action.payload.completed,
@@ -167,6 +168,7 @@ const todoReducers = {
 			isMarkdown: action.payload.isMarkdown,
 			isNote: action.payload.isNote,
 			collapsed: action.payload.collapsed ?? false,
+			tags: action.payload.tags,
 		};
 		state.todos?.splice(action.payload.itemPosition, 0, restoredItem);
 		state.lastActionType = action.type;
