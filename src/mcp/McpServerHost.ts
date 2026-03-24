@@ -414,7 +414,9 @@ export default class McpServerHost implements vscode.Disposable {
 				instructions:
 					"Use the todo_* tools to read, create, update, and delete VS Code Todo items and notes " +
 					"across the user, workspace, and currentFile scopes. todo_list_items reads todos/notes for " +
-					"a scope, todo_count_items returns per-scope counts for a quick overview, and " +
+					"a scope (optionally filtered by a 'tag' to pull up every item in a plan/group), " +
+					"todo_count_items returns per-scope counts for a quick overview (pass a 'tag' for " +
+					"tag-scoped progress counts), and " +
 					"todo_list_files lists files that have todos. todo_add_item creates one item and " +
 					"todo_add_items creates several in a single call preserving their given order (use it " +
 					"for an ordered list such as a multi-step plan); " +
@@ -565,6 +567,14 @@ export default class McpServerHost implements vscode.Disposable {
 				.boolean()
 				.optional()
 				.describe("Whether the item is collapsed in the UI."),
+			tags: z
+				.array(z.string())
+				.optional()
+				.describe(
+					"Tags applied to the item, used to group related items (e.g. all steps of a " +
+						"plan). Absent on untagged items. Filter by one with the 'tag' parameter of " +
+						"todo_list_items."
+				),
 		};
 		const todoSchema = z.object(todoShape);
 
@@ -640,13 +650,24 @@ export default class McpServerHost implements vscode.Disposable {
 		// Per-scope count objects are "loose" (extra keys allowed) so future, more
 		// granular counts (e.g. a per-tag breakdown) can be added without a breaking
 		// schema change. z.looseObject is the Zod 4 idiom for the old .passthrough().
+		// completedCountSchema is populated only when the counts are tag-scoped (the
+		// "tag" parameter was supplied), giving a progress readout for a plan/group.
+		const completedCountSchema = z
+			.number()
+			.optional()
+			.describe(
+				"Number of completed (done) tasks among the counted items. Present only when " +
+					"'tag' was supplied; with 'todos' (open tasks) it gives tag-scoped progress."
+			);
 		const scopeCountsSchema = z.looseObject({
-			todos: z.number().describe("Number of checkable tasks in the scope."),
+			todos: z.number().describe("Number of open (incomplete) checkable tasks in the scope."),
 			notes: z.number().describe("Number of free-text notes in the scope."),
+			completed: completedCountSchema,
 		});
 		const fileCountsSchema = z.looseObject({
-			todos: z.number().describe("Number of checkable tasks for the current file."),
+			todos: z.number().describe("Number of open (incomplete) checkable tasks for the current file."),
 			notes: z.number().describe("Number of free-text notes for the current file."),
+			completed: completedCountSchema,
 			filePath: z.string().describe("Path of the current file these counts apply to."),
 		});
 		const countItemsOutputSchema = {
@@ -705,8 +726,10 @@ export default class McpServerHost implements vscode.Disposable {
 					"List todos and notes for a scope. 'scope' is one of 'user' (global), " +
 					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
 					"'filePath'). Optionally filter by 'kind' ('task', 'note', or 'all'), by " +
-					"'completed' (true=done, false=open), by text prefix ('textPrefix'), or by a " +
-					"substring anywhere in the text ('search'). Optionally order results with 'sortBy' (creationDate / " +
+					"'completed' (true=done, false=open), by text prefix ('textPrefix'), by a " +
+					"substring anywhere in the text ('search'), or by 'tag' (only items carrying that " +
+					"tag — use it to pull up every item in a plan/group). Optionally order results with " +
+					"'sortBy' (creationDate / " +
 					"completionDate / completed) and 'order' (asc / desc). Results are paginated: " +
 					"pass 'limit' (default 50, " +
 					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result. " +
@@ -750,6 +773,13 @@ export default class McpServerHost implements vscode.Disposable {
 							"When set, return only items whose text contains this substring " +
 								"(case-insensitive). Unlike textPrefix, it matches anywhere in the item " +
 								"text; whitespace is matched literally."
+						),
+					tag: z
+						.string()
+						.optional()
+						.describe(
+							"When set, return only items tagged with this tag (matched case-insensitively). " +
+								"Use it to fetch every item in a plan or group that shares the tag."
 						),
 					sortBy: z
 						.enum(["creationDate", "completionDate", "completed"])
@@ -797,13 +827,24 @@ export default class McpServerHost implements vscode.Disposable {
 					"fetching the items themselves. Use this for a cheap overview — 'is there " +
 					"outstanding work, and where?' — before paging through a scope with " +
 					"todo_list_items. A scope is omitted when it is not allowed or unavailable " +
-					"(e.g. currentFile with no file, or a scope excluded by allowedScopes).",
-				inputSchema: {},
+					"(e.g. currentFile with no file, or a scope excluded by allowedScopes). " +
+					"Pass 'tag' to count only items carrying that tag; each scope then also " +
+					"reports 'completed' (done tasks), so 'completed' of 'todos'+'completed' is " +
+					"the progress of that plan/group.",
+				inputSchema: {
+					tag: z
+						.string()
+						.optional()
+						.describe(
+							"When set, count only items tagged with this tag (matched case-insensitively), " +
+								"and include a 'completed' count per scope for tag-scoped progress."
+						),
+				},
 				outputSchema: countItemsOutputSchema,
 				annotations: { title: "Count Todos", readOnlyHint: true, openWorldHint: false },
 			},
-			async () => {
-				return this.safeToolCall(() => this.toolResult(this.todoService.getCounts()));
+			async (args) => {
+				return this.safeToolCall(() => this.toolResult(this.todoService.getCounts(args?.tag)));
 			}
 		);
 

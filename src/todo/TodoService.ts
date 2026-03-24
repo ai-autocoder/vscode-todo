@@ -16,6 +16,7 @@ import {
 	TodoScope,
 } from "../todo/todoTypes";
 import { CreatePosition, getConfig } from "../utilities/config";
+import { tagsInclude } from "../todo/tagUtils";
 import {
 	assertNever,
 	ensureFilesDataPaths,
@@ -43,6 +44,17 @@ type TodoActions = {
 
 export type TodoListItemKind = "task" | "note" | "all";
 
+/**
+ * Per-scope count summary. `todos` is open (incomplete) tasks and `notes` is free-text notes,
+ * matching the unfiltered overview. When the counts are tag-scoped, `completed` is also set to
+ * the number of done tasks carrying the tag, enabling "completed of todos" progress readouts.
+ */
+export type ScopeCounts = {
+	todos: number;
+	notes: number;
+	completed?: number;
+};
+
 export type TodoListSortBy = "creationDate" | "completionDate" | "completed";
 export type TodoListSortOrder = "asc" | "desc";
 
@@ -55,6 +67,8 @@ export type TodoListFilters = {
 	textPrefix?: string;
 	/** When set, keep only items whose text contains this substring (case-insensitive). */
 	search?: string;
+	/** When set, keep only items tagged with this tag (matched case-insensitively). */
+	tag?: string;
 	/** Explicit field to sort by. When omitted, the store's insertion order is preserved. */
 	sortBy?: TodoListSortBy;
 	/** Sort direction; defaults to "asc". Ignored when sortBy is omitted. */
@@ -186,41 +200,57 @@ export default class TodoService {
 		return this.allowedScopes.has(this.mapScopeToAllowed(scope));
 	}
 
-	public getCounts(): {
-		user?: { todos: number; notes: number };
-		workspace?: { todos: number; notes: number };
-		currentFile?: { todos: number; notes: number; filePath: string };
+	public getCounts(tag?: string): {
+		user?: ScopeCounts;
+		workspace?: ScopeCounts;
+		currentFile?: ScopeCounts & { filePath: string };
 	} {
 		const state = this.store.getState();
+		const filterTag = tag && tag.trim() ? tag : undefined;
 		const result: {
-			user?: { todos: number; notes: number };
-			workspace?: { todos: number; notes: number };
-			currentFile?: { todos: number; notes: number; filePath: string };
+			user?: ScopeCounts;
+			workspace?: ScopeCounts;
+			currentFile?: ScopeCounts & { filePath: string };
 		} = {};
 
 		if (this.isScopeAllowed(TodoScope.user)) {
-			result.user = {
-				todos: state.user.numberOfTodos,
-				notes: state.user.numberOfNotes,
-			};
+			result.user = filterTag
+				? this.countTagged(state.user.todos, filterTag)
+				: { todos: state.user.numberOfTodos, notes: state.user.numberOfNotes };
 		}
 
 		if (this.isScopeAllowed(TodoScope.workspace)) {
-			result.workspace = {
-				todos: state.workspace.numberOfTodos,
-				notes: state.workspace.numberOfNotes,
-			};
+			result.workspace = filterTag
+				? this.countTagged(state.workspace.todos, filterTag)
+				: { todos: state.workspace.numberOfTodos, notes: state.workspace.numberOfNotes };
 		}
 
 		if (this.isScopeAllowed(TodoScope.currentFile)) {
-			result.currentFile = {
-				todos: state.currentFile.numberOfTodos,
-				notes: state.currentFile.numberOfNotes,
-				filePath: state.currentFile.filePath,
-			};
+			const counts = filterTag
+				? this.countTagged(state.currentFile.todos, filterTag)
+				: {
+						todos: state.currentFile.numberOfTodos,
+						notes: state.currentFile.numberOfNotes,
+					};
+			result.currentFile = { ...counts, filePath: state.currentFile.filePath };
 		}
 
 		return result;
+	}
+
+	/**
+	 * Tag-scoped counts for one scope: only items carrying `tag` are counted, and a
+	 * `completed` field is added alongside the usual open-task / note counts so a caller can
+	 * read progress for a plan/group ("completed of todos"). Note that `todos` here is open
+	 * (incomplete) tasks, matching the unfiltered shape; `completed` is the done tasks.
+	 */
+	private countTagged(todos: Todo[], tag: string): ScopeCounts {
+		const tagged = todos.filter((todo) => tagsInclude(todo.tags, tag));
+		return {
+			todos: tagged.filter((todo) => !todo.isNote && !todo.completed).length,
+			notes: tagged.filter((todo) => todo.isNote).length,
+			completed: tagged.filter((todo) => !todo.isNote && todo.completed).length,
+		};
 	}
 
 	public listFiles(): Array<{ filePath: string; todoNumber: number }> {
@@ -780,7 +810,7 @@ export default class TodoService {
 	}
 
 	private applyFilters(todos: Todo[], filters: TodoListFilters): Todo[] {
-		// Compose independent predicates so new filters (e.g. a future tag filter) slot in
+		// Compose independent predicates so each filter (kind, completed, text, tag) slots in
 		// as one more entry without reworking the chain. An item is kept only if it passes
 		// every active predicate.
 		const predicates: Array<(todo: Todo) => boolean> = [];
@@ -804,6 +834,11 @@ export default class TodoService {
 		if (filters.search) {
 			const needle = filters.search.toLowerCase();
 			predicates.push((todo) => todo.text.toLowerCase().includes(needle));
+		}
+
+		if (filters.tag && filters.tag.trim()) {
+			const tag = filters.tag;
+			predicates.push((todo) => tagsInclude(todo.tags, tag));
 		}
 
 		if (predicates.length === 0) {
