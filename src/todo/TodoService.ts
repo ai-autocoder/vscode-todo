@@ -16,7 +16,7 @@ import {
 	TodoScope,
 } from "../todo/todoTypes";
 import { CreatePosition, getConfig } from "../utilities/config";
-import { tagsInclude } from "../todo/tagUtils";
+import { normalizeTags, tagsInclude } from "../todo/tagUtils";
 import {
 	assertNever,
 	ensureFilesDataPaths,
@@ -39,6 +39,7 @@ type TodoActions = {
 	toggleTodo: TodoActionCreator<{ id: number }>;
 	toggleMarkdown: TodoActionCreator<{ id: number }>;
 	toggleTodoNote: TodoActionCreator<{ id: number }>;
+	setTags: TodoActionCreator<{ id: number; tags: string[] }>;
 	deleteTodos: TodoActionCreator<{ ids: number[] }>;
 };
 
@@ -427,6 +428,28 @@ export default class TodoService {
 		});
 	}
 
+	/**
+	 * Replace an item's tags with a normalized version of `tags` (replace semantics — the
+	 * given list is the new full set). Tags are sanitized through the shared {@link normalizeTags}
+	 * rules, so invalid/duplicate tags are dropped and an empty (or all-invalid) list clears the
+	 * field. Idempotent: when the normalized result already matches the item, nothing is dispatched.
+	 */
+	public async setTags(
+		scope: TodoScope,
+		id: number,
+		tags: string[],
+		options: { filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
+		const normalized = normalizeTags(tags);
+		return this.mutateTodo(scope, id, options.filePath, {
+			dispatch: (actions, current) =>
+				this.sameTags(current.tags, normalized) ? undefined : actions.setTags({ id, tags: normalized }),
+			mutateFile: (todo) => {
+				todo.tags = normalized.length > 0 ? normalized : undefined;
+			},
+		});
+	}
+
 	public async deleteTodos(
 		scope: TodoScope,
 		ids: number[],
@@ -448,9 +471,7 @@ export default class TodoService {
 				});
 				return { scope, filePath, deleted, count: deleted.length };
 			}
-			const deleted = this.store
-				.getState()
-				.currentFile.todos.filter((todo) => idSet.has(todo.id));
+			const deleted = this.store.getState().currentFile.todos.filter((todo) => idSet.has(todo.id));
 			this.store.dispatch(currentFileActions.deleteTodos({ ids }));
 			return { scope, filePath, deleted, count: deleted.length };
 		}
@@ -465,10 +486,7 @@ export default class TodoService {
 		id: number,
 		filePath: string | undefined,
 		handlers: {
-			dispatch: (
-				actions: TodoActions,
-				current: Todo
-			) => { type: string } | undefined;
+			dispatch: (actions: TodoActions, current: Todo) => { type: string } | undefined;
 			mutateFile: (todo: Todo) => void;
 		}
 	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
@@ -495,7 +513,12 @@ export default class TodoService {
 			return { scope, filePath: resolvedPath, todo: updated };
 		}
 
-		const updated = this.applyStoreMutation(scope, this.actionsForScope(scope), id, handlers.dispatch);
+		const updated = this.applyStoreMutation(
+			scope,
+			this.actionsForScope(scope),
+			id,
+			handlers.dispatch
+		);
 		return { scope, filePath: undefined, todo: updated };
 	}
 
@@ -885,6 +908,20 @@ export default class TodoService {
 	private matchesPrefix(text: string, prefix: string): boolean {
 		const trimmed = text.trimStart();
 		return trimmed.toLowerCase().startsWith(prefix.trimStart().toLowerCase());
+	}
+
+	/**
+	 * Order-sensitive equality of an item's current tags against a normalized candidate list,
+	 * used to keep setTags idempotent. Both sides are already normalized (deduped, trimmed) by
+	 * the time this runs, so a plain index-wise compare is sufficient; an absent current list is
+	 * treated as empty.
+	 */
+	private sameTags(current: string[] | undefined, next: string[]): boolean {
+		const existing = current ?? [];
+		if (existing.length !== next.length) {
+			return false;
+		}
+		return existing.every((tag, index) => tag === next[index]);
 	}
 
 	private isSameFilePath(left: string, right: string): boolean {
