@@ -13,6 +13,7 @@ export type Config = {
 	enableMarkdownDiagrams: boolean;
 	enableMarkdownKatex: boolean;
 	enableWideView: boolean;
+	showTags: boolean;
 	autoDeleteCompletedAfterDays: number;
 	collapsedPreviewLines: number;
 	// Webview typography
@@ -28,6 +29,7 @@ type ConfigSectionValueMap = {
 	enableMarkdownDiagrams: Config["enableMarkdownDiagrams"];
 	enableMarkdownKatex: Config["enableMarkdownKatex"];
 	enableWideView: Config["enableWideView"];
+	showTags: Config["showTags"];
 	autoDeleteCompletedAfterDays: Config["autoDeleteCompletedAfterDays"];
 	collapsedPreviewLines: Config["collapsedPreviewLines"];
 	webviewFontFamily: Config["webviewFontFamily"];
@@ -46,6 +48,7 @@ export function getConfig(): Config {
 	const enableMarkdownDiagrams: boolean = config.get("enableMarkdownDiagrams", true);
 	const enableMarkdownKatex: boolean = config.get("enableMarkdownKatex", true);
 	const enableWideView: boolean = config.get("enableWideView", false);
+	const showTags: boolean = config.get("showTags", false);
 	const autoDeleteCompletedAfterDays: number = config.get("autoDeleteCompletedAfterDays", 0);
 	const collapsedPreviewLinesRaw: number = config.get("collapsedPreviewLines", 1);
 	const webviewFontFamily: string = config.get("webviewFontFamily", "");
@@ -64,8 +67,7 @@ export function getConfig(): Config {
 
 	// Validate the createPosition value
 	if (!createPositionEnum.includes(createPosition)) {
-		createPosition =
-			contributes.configuration.properties["vscodeTodo.createPosition"]["default"];
+		createPosition = contributes.configuration.properties["vscodeTodo.createPosition"]["default"];
 	}
 
 	// Sanitize numeric inputs
@@ -81,6 +83,7 @@ export function getConfig(): Config {
 		enableMarkdownDiagrams,
 		enableMarkdownKatex,
 		enableWideView,
+		showTags,
 		autoDeleteCompletedAfterDays,
 		collapsedPreviewLines,
 		webviewFontFamily,
@@ -88,7 +91,10 @@ export function getConfig(): Config {
 	};
 }
 
-export function setConfig<K extends ConfigSection>(section: K, value: ConfigSectionValueMap[K]): void {
+export function setConfig<K extends ConfigSection>(
+	section: K,
+	value: ConfigSectionValueMap[K]
+): void {
 	const config = vscode.workspace.getConfiguration("vscodeTodo");
 	config.update(section, value, vscode.ConfigurationTarget.Workspace).then(
 		() => {

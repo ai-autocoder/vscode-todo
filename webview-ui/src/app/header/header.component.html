@@ -109,6 +109,23 @@
 			</button>
 		}
 
+		@if (!(showTags | async)) {
+			<button mat-menu-item (click)="setShowTagsEnabled(true)" aria-label="Show Tags">
+				<span class="submenu-content">
+					<app-icon name="tag"></app-icon>
+					<span style="margin-left: 8px;">Show Tags</span>
+				</span>
+			</button>
+		}
+		@if (showTags | async) {
+			<button mat-menu-item (click)="setShowTagsEnabled(false)" aria-label="Hide Tags">
+				<span class="submenu-content">
+					<app-icon name="tag"></app-icon>
+					<span style="margin-left: 8px;">Hide Tags</span>
+				</span>
+			</button>
+		}
+
 		@if (mcpControlInfo | async; as mcpInfo) {
 			<button
 				mat-menu-item

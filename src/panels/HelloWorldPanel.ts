@@ -1,14 +1,14 @@
 import { EnhancedStore } from "@reduxjs/toolkit";
 import {
-    Disposable,
-    ExtensionContext,
-    Uri,
-    ViewColumn,
-    Webview,
-    WebviewPanel,
-    window,
-    commands,
-    workspace,
+	Disposable,
+	ExtensionContext,
+	Uri,
+	ViewColumn,
+	Webview,
+	WebviewPanel,
+	window,
+	commands,
+	workspace,
 } from "vscode";
 import { currentFileActions, userActions, workspaceActions } from "../todo/store";
 import {
@@ -31,7 +31,12 @@ import type { McpStatus } from "./message";
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
 import { TodoViewProvider } from "./TodoViewProvider";
-import { deleteCompletedTodos, ensureFilesDataPaths, getWorkspacePath, resolveFilesDataKey } from "../todo/todoUtils";
+import {
+	deleteCompletedTodos,
+	ensureFilesDataPaths,
+	getWorkspacePath,
+	resolveFilesDataKey,
+} from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 import { getGitHubSyncInfo } from "../utilities/syncInfo";
@@ -342,8 +347,7 @@ export class HelloWorldPanel {
 					case MessageActionsFromWebview.addTodo: {
 						const { payload } = message as Message<MessageActionsFromWebview.addTodo, TodoScope>;
 						if (
-							(message.scope === TodoScope.workspace ||
-								message.scope === TodoScope.currentFile) &&
+							(message.scope === TodoScope.workspace || message.scope === TodoScope.currentFile) &&
 							!getWorkspacePath()
 						) {
 							window.showWarningMessage(
@@ -368,11 +372,10 @@ export class HelloWorldPanel {
 							currentFilePath &&
 							store.getState().currentFilePath !== currentFilePath
 						) {
-							const filesData =
-								context.workspaceState.get<TodoFilesData>("TodoFilesData") ?? {};
+							const filesData = context.workspaceState.get<TodoFilesData>("TodoFilesData") ?? {};
 							const filesDataPaths = ensureFilesDataPaths(
 								filesData,
-								(context.workspaceState.get<TodoFilesDataPaths>("TodoFilesDataPaths") ?? {}),
+								context.workspaceState.get<TodoFilesDataPaths>("TodoFilesDataPaths") ?? {},
 								getWorkspacePath()
 							);
 							void context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
@@ -381,7 +384,7 @@ export class HelloWorldPanel {
 								filesData,
 								filesDataPaths,
 							});
-							const todos = resolved.key ? filesData[resolved.key] ?? [] : [];
+							const todos = resolved.key ? (filesData[resolved.key] ?? []) : [];
 
 							store.dispatch(
 								currentFileActions.loadData({
@@ -416,6 +419,11 @@ export class HelloWorldPanel {
 					case MessageActionsFromWebview.toggleTodoNote: {
 						const { payload } = message as Message<MessageActionsFromWebview.toggleTodoNote, TodoScope>;
 						store.dispatch(storeActions!.toggleTodoNote(payload));
+						break;
+					}
+					case MessageActionsFromWebview.setTags: {
+						const { payload } = message as Message<MessageActionsFromWebview.setTags, TodoScope>;
+						store.dispatch(storeActions!.setTags(payload));
 						break;
 					}
 					case MessageActionsFromWebview.toggleCollapsed: {
@@ -477,6 +485,11 @@ export class HelloWorldPanel {
 					case MessageActionsFromWebview.setWideViewEnabled: {
 						const { payload } = message;
 						setConfig("enableWideView", payload.isEnabled);
+						break;
+					}
+					case MessageActionsFromWebview.setShowTagsEnabled: {
+						const { payload } = message;
+						setConfig("showTags", payload.isEnabled);
 						break;
 					}
 					case MessageActionsFromWebview.deleteCompleted: {

@@ -36,6 +36,7 @@ type MessagePayload<T, L> = T extends
 	| MessageActionsFromWebview.reorderTodo
 	| MessageActionsFromWebview.toggleMarkdown
 	| MessageActionsFromWebview.toggleTodoNote
+	| MessageActionsFromWebview.setTags
 	| MessageActionsFromWebview.toggleCollapsed
 	| MessageActionsFromWebview.setAllCollapsed
 	? Parameters<
@@ -65,31 +66,33 @@ type MessagePayload<T, L> = T extends
 				: never
 			: T extends MessageActionsFromWebview.export
 				? { format: ExportFormats }
-					: T extends MessageActionsFromWebview.import
-						? { format: ImportFormats }
-						: T extends MessageActionsFromWebview.setWideViewEnabled
-							? {
-									isEnabled: boolean;
-								}
-							: T extends MessageActionsFromWebview.setUserSyncMode
-								? { mode: UserSyncMode }
-								: T extends MessageActionsFromWebview.setWorkspaceSyncMode
-									? { mode: WorkspaceSyncMode }
-						: T extends MessageActionsToWebview.syncTodoData
-							? TodoSlice | CurrentFileSlice
-							: T extends MessageActionsToWebview.syncEditorFocusAndRecords
-								? EditorFocusAndRecordsSlice
-								: T extends MessageActionsToWebview.reloadWebview
-									? StoreState
-									: T extends MessageActionsToWebview.updateGitHubStatus
-										? { isConnected: boolean; hasGistId: boolean }
-										: T extends MessageActionsToWebview.updateGitHubSyncInfo
-											? GitHubSyncInfo
-										: T extends MessageActionsToWebview.updateSyncStatus
-											? { isSyncing: boolean }
-											: T extends MessageActionsToWebview.updateMcpStatus
-												? McpStatus
-												: never;
+				: T extends MessageActionsFromWebview.import
+					? { format: ImportFormats }
+					: T extends
+								| MessageActionsFromWebview.setWideViewEnabled
+								| MessageActionsFromWebview.setShowTagsEnabled
+						? {
+								isEnabled: boolean;
+							}
+						: T extends MessageActionsFromWebview.setUserSyncMode
+							? { mode: UserSyncMode }
+							: T extends MessageActionsFromWebview.setWorkspaceSyncMode
+								? { mode: WorkspaceSyncMode }
+								: T extends MessageActionsToWebview.syncTodoData
+									? TodoSlice | CurrentFileSlice
+									: T extends MessageActionsToWebview.syncEditorFocusAndRecords
+										? EditorFocusAndRecordsSlice
+										: T extends MessageActionsToWebview.reloadWebview
+											? StoreState
+											: T extends MessageActionsToWebview.updateGitHubStatus
+												? { isConnected: boolean; hasGistId: boolean }
+												: T extends MessageActionsToWebview.updateGitHubSyncInfo
+													? GitHubSyncInfo
+													: T extends MessageActionsToWebview.updateSyncStatus
+														? { isSyncing: boolean }
+														: T extends MessageActionsToWebview.updateMcpStatus
+															? McpStatus
+															: never;
 
 export type Message<
 	T extends MessageActionsFromWebview | MessageActionsToWebview,
@@ -114,40 +117,41 @@ export type Message<
 		: T extends MessageActionsFromWebview.pinFile
 			? { type: T; scope: TodoScope.currentFile }
 			: T extends
-					| MessageActionsFromWebview.export
-					| MessageActionsFromWebview.import
-					| MessageActionsFromWebview.setWideViewEnabled
-					| MessageActionsFromWebview.setUserSyncMode
-					| MessageActionsFromWebview.setWorkspaceSyncMode
+						| MessageActionsFromWebview.export
+						| MessageActionsFromWebview.import
+						| MessageActionsFromWebview.setWideViewEnabled
+						| MessageActionsFromWebview.setShowTagsEnabled
+						| MessageActionsFromWebview.setUserSyncMode
+						| MessageActionsFromWebview.setWorkspaceSyncMode
 				? {
 						type: T;
 						payload: MessagePayload<T, L>;
 					}
-	: T extends MessageActionsFromWebview.deleteCompleted
-		? {
-				type: T;
-				scope: L;
-			}
-		: T extends
-					| MessageActionsFromWebview.selectUserSyncMode
-					| MessageActionsFromWebview.selectWorkspaceSyncMode
-					| MessageActionsFromWebview.connectGitHub
-					| MessageActionsFromWebview.disconnectGitHub
-					| MessageActionsFromWebview.setUserFile
-					| MessageActionsFromWebview.setWorkspaceFile
-					| MessageActionsFromWebview.openGistIdSettings
-					| MessageActionsFromWebview.viewGistOnGitHub
-					| MessageActionsFromWebview.syncNow
-					| MessageActionsFromWebview.startMcpServer
-					| MessageActionsFromWebview.stopMcpServer
-			? {
-					type: T;
-				}
-			: {
-					type: T;
-					scope: L;
-					payload: MessagePayload<T, L>;
-				};
+				: T extends MessageActionsFromWebview.deleteCompleted
+					? {
+							type: T;
+							scope: L;
+						}
+					: T extends
+								| MessageActionsFromWebview.selectUserSyncMode
+								| MessageActionsFromWebview.selectWorkspaceSyncMode
+								| MessageActionsFromWebview.connectGitHub
+								| MessageActionsFromWebview.disconnectGitHub
+								| MessageActionsFromWebview.setUserFile
+								| MessageActionsFromWebview.setWorkspaceFile
+								| MessageActionsFromWebview.openGistIdSettings
+								| MessageActionsFromWebview.viewGistOnGitHub
+								| MessageActionsFromWebview.syncNow
+								| MessageActionsFromWebview.startMcpServer
+								| MessageActionsFromWebview.stopMcpServer
+						? {
+								type: T;
+							}
+						: {
+								type: T;
+								scope: L;
+								payload: MessagePayload<T, L>;
+							};
 
 export const enum MessageActionsFromWebview {
 	addTodo = "addTodo",
@@ -158,6 +162,7 @@ export const enum MessageActionsFromWebview {
 	reorderTodo = "reorderTodo",
 	toggleMarkdown = "toggleMarkdown",
 	toggleTodoNote = "toggleTodoNote",
+	setTags = "setTags",
 	toggleCollapsed = "toggleCollapsed",
 	setAllCollapsed = "setAllCollapsed",
 	requestData = "requestData",
@@ -165,6 +170,7 @@ export const enum MessageActionsFromWebview {
 	export = "export",
 	import = "import",
 	setWideViewEnabled = "setWideViewEnabled",
+	setShowTagsEnabled = "setShowTagsEnabled",
 	deleteCompleted = "deleteCompleted",
 	selectUserSyncMode = "selectUserSyncMode",
 	selectWorkspaceSyncMode = "selectWorkspaceSyncMode",
@@ -274,6 +280,16 @@ export const messagesFromWebview = {
 		scope,
 		payload,
 	}),
+	setTags: <L extends TodoScope>(
+		scope: L,
+		payload: L extends TodoScope.user
+			? Parameters<typeof userActions.setTags>[0]
+			: Parameters<typeof workspaceActions.setTags>[0]
+	): Message<MessageActionsFromWebview.setTags, TodoScope> => ({
+		type: MessageActionsFromWebview.setTags,
+		scope,
+		payload,
+	}),
 	toggleCollapsed: <L extends TodoScope>(
 		scope: L,
 		payload: L extends TodoScope.user
@@ -322,6 +338,12 @@ export const messagesFromWebview = {
 		type: MessageActionsFromWebview.setWideViewEnabled,
 		payload: { isEnabled },
 	}),
+	setShowTagsEnabled: (
+		isEnabled: boolean
+	): Message<MessageActionsFromWebview.setShowTagsEnabled> => ({
+		type: MessageActionsFromWebview.setShowTagsEnabled,
+		payload: { isEnabled },
+	}),
 	deleteCompleted: <L extends TodoScope>(
 		scope: L
 	): Message<MessageActionsFromWebview.deleteCompleted, TodoScope> => ({
@@ -334,13 +356,18 @@ export const messagesFromWebview = {
 	selectWorkspaceSyncMode: (): { type: MessageActionsFromWebview.selectWorkspaceSyncMode } => ({
 		type: MessageActionsFromWebview.selectWorkspaceSyncMode,
 	}),
-	setUserSyncMode: (mode: UserSyncMode): { type: MessageActionsFromWebview.setUserSyncMode; payload: { mode: UserSyncMode } } => ({
+	setUserSyncMode: (
+		mode: UserSyncMode
+	): { type: MessageActionsFromWebview.setUserSyncMode; payload: { mode: UserSyncMode } } => ({
 		type: MessageActionsFromWebview.setUserSyncMode,
 		payload: { mode },
 	}),
 	setWorkspaceSyncMode: (
 		mode: WorkspaceSyncMode
-	): { type: MessageActionsFromWebview.setWorkspaceSyncMode; payload: { mode: WorkspaceSyncMode } } => ({
+	): {
+		type: MessageActionsFromWebview.setWorkspaceSyncMode;
+		payload: { mode: WorkspaceSyncMode };
+	} => ({
 		type: MessageActionsFromWebview.setWorkspaceSyncMode,
 		payload: { mode },
 	}),
@@ -394,19 +421,31 @@ export const messagesToWebview = {
 		type: MessageActionsToWebview.syncEditorFocusAndRecords,
 		payload,
 	}),
-	updateGitHubStatus: (isConnected: boolean, hasGistId: boolean): { type: MessageActionsToWebview.updateGitHubStatus; payload: { isConnected: boolean; hasGistId: boolean } } => ({
+	updateGitHubStatus: (
+		isConnected: boolean,
+		hasGistId: boolean
+	): {
+		type: MessageActionsToWebview.updateGitHubStatus;
+		payload: { isConnected: boolean; hasGistId: boolean };
+	} => ({
 		type: MessageActionsToWebview.updateGitHubStatus,
 		payload: { isConnected, hasGistId },
 	}),
-	updateGitHubSyncInfo: (payload: GitHubSyncInfo): { type: MessageActionsToWebview.updateGitHubSyncInfo; payload: GitHubSyncInfo } => ({
+	updateGitHubSyncInfo: (
+		payload: GitHubSyncInfo
+	): { type: MessageActionsToWebview.updateGitHubSyncInfo; payload: GitHubSyncInfo } => ({
 		type: MessageActionsToWebview.updateGitHubSyncInfo,
 		payload,
 	}),
-	updateSyncStatus: (isSyncing: boolean): { type: MessageActionsToWebview.updateSyncStatus; payload: { isSyncing: boolean } } => ({
+	updateSyncStatus: (
+		isSyncing: boolean
+	): { type: MessageActionsToWebview.updateSyncStatus; payload: { isSyncing: boolean } } => ({
 		type: MessageActionsToWebview.updateSyncStatus,
 		payload: { isSyncing },
 	}),
-	updateMcpStatus: (payload: McpStatus): { type: MessageActionsToWebview.updateMcpStatus; payload: McpStatus } => ({
+	updateMcpStatus: (
+		payload: McpStatus
+	): { type: MessageActionsToWebview.updateMcpStatus; payload: McpStatus } => ({
 		type: MessageActionsToWebview.updateMcpStatus,
 		payload,
 	}),

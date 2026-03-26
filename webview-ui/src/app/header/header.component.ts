@@ -33,10 +33,10 @@ type McpControlInfo = {
 };
 
 @Component({
-    selector: "app-header",
-    templateUrl: "./header.component.html",
-    styleUrl: "./header.component.css",
-    standalone: false
+	selector: "app-header",
+	templateUrl: "./header.component.html",
+	styleUrl: "./header.component.css",
+	standalone: false,
 })
 export class HeaderComponent implements OnInit {
 	private readonly todoService = inject(TodoService);
@@ -48,6 +48,7 @@ export class HeaderComponent implements OnInit {
 	isSettingsMenuOpen = false;
 	isSyncMenuOpen = false;
 	enableWideView!: Observable<boolean>;
+	showTags!: Observable<boolean>;
 	isGitHubConnected!: Observable<boolean>;
 	isGistIdConfigured!: Observable<boolean>;
 	isGitHubSyncEnabled!: Observable<boolean>;
@@ -75,6 +76,7 @@ export class HeaderComponent implements OnInit {
 
 	ngOnInit(): void {
 		this.enableWideView = this.todoService.enableWideView;
+		this.showTags = this.todoService.showTags;
 		this.isGitHubConnected = this.todoService.isGitHubConnected;
 		this.isGistIdConfigured = this.todoService.hasGistId;
 		this.isGitHubSyncEnabled = this.todoService.gitHubSyncInfo.pipe(
@@ -130,6 +132,10 @@ export class HeaderComponent implements OnInit {
 		}, 150);
 	}
 
+	setShowTagsEnabled(isEnabled: boolean) {
+		this.todoService.setShowTagsEnabled(isEnabled);
+	}
+
 	deleteAll() {
 		this.todoService.deleteAll(this.currentScope);
 	}
@@ -141,11 +147,11 @@ export class HeaderComponent implements OnInit {
 	get hasCompletedTodos(): boolean {
 		switch (this.currentScope) {
 			case TodoScope.user:
-				return this.todoService.userTodos.some(todo => todo.completed && !todo.isNote);
+				return this.todoService.userTodos.some((todo) => todo.completed && !todo.isNote);
 			case TodoScope.workspace:
-				return this.todoService.workspaceTodos.some(todo => todo.completed && !todo.isNote);
+				return this.todoService.workspaceTodos.some((todo) => todo.completed && !todo.isNote);
 			case TodoScope.currentFile:
-				return this.todoService.currentFileTodos.some(todo => todo.completed && !todo.isNote);
+				return this.todoService.currentFileTodos.some((todo) => todo.completed && !todo.isNote);
 			default:
 				return false;
 		}
@@ -279,10 +285,7 @@ export class HeaderComponent implements OnInit {
 
 	private buildSyncTooltip(info: GitHubSyncInfo, isSyncing: boolean, nowMs: number): string {
 		if (!info.isGitHubSyncEnabled) {
-			return (
-				"GitHub Gist sync is off for all scopes. " +
-				"Enable it via the Sync menu in the header."
-			);
+			return "GitHub Gist sync is off for all scopes. " + "Enable it via the Sync menu in the header.";
 		}
 
 		const summary = isSyncing
@@ -310,14 +313,11 @@ export class HeaderComponent implements OnInit {
 		const modeLabel = this.getSyncModeLabel(mode);
 		const modeIcon = this.getSyncModeIcon(mode);
 		const isGitHubMode = mode === "github";
-		const gistFile = isGitHubMode
-			? isUserScope
-				? info.userFile
-				: info.workspaceFile
-			: "";
-		const pillLabel = isGitHubMode && gistFile
-			? `Sync: ${scopeLabel} - ${modeLabel} - ${gistFile}`
-			: `Sync: ${scopeLabel} - ${modeLabel}`;
+		const gistFile = isGitHubMode ? (isUserScope ? info.userFile : info.workspaceFile) : "";
+		const pillLabel =
+			isGitHubMode && gistFile
+				? `Sync: ${scopeLabel} - ${modeLabel} - ${gistFile}`
+				: `Sync: ${scopeLabel} - ${modeLabel}`;
 		const pillTooltipBase = `${scopeLabel} sync mode: ${modeLabel}.`;
 		const scopeNotePart = scopeNote ? ` ${scopeNote}` : "";
 		const filePart = isGitHubMode && gistFile ? ` Gist file: ${gistFile}` : "";
@@ -441,5 +441,4 @@ export class HeaderComponent implements OnInit {
 			disabled,
 		};
 	}
-
 }

@@ -81,10 +81,49 @@
 				></markdown>
 			</div>
 		}
+		@if (!isEditable && (showTags | async) && todo.tags?.length) {
+			<div class="tag-chips" [class.complete]="todo.completed && !todo.isNote">
+				@for (tag of todo.tags; track tag) {
+					<button
+						type="button"
+						class="tag-chip"
+						(click)="filterByTag($event, tag)"
+						[attr.aria-label]="'Filter by tag ' + tag"
+						[title]="'Filter by tag ' + tag"
+					>{{ tag }}</button>
+				}
+			</div>
+		}
 		@if (isEditable) {
 			<div class="footer" (mousedown)="$event.stopPropagation()" (dragstart)="$event.preventDefault()">
 				<div class="labels">
 					<todo-label [todo]="todo"></todo-label>
+					<div class="tag-editor">
+						@for (tag of todo.tags; track tag) {
+							<span class="tag-chip editable">
+								{{ tag }}
+								<button
+									type="button"
+									class="tag-remove"
+									(click)="removeTag(tag)"
+									[attr.aria-label]="'Remove tag ' + tag"
+									title="Remove tag"
+								>×</button>
+							</span>
+						}
+						<input
+							type="text"
+							class="tag-input"
+							placeholder="Add tag…"
+							aria-label="Add tag"
+							autocapitalize="none"
+							autocomplete="off"
+							spellcheck="false"
+							[(ngModel)]="tagInput"
+							(keydown)="onTagInputKeydown($event)"
+							(blur)="addTagFromInput()"
+						/>
+					</div>
 				</div>
 				<div class="buttons">
 					<vscode-button (click)="saveEdit()" aria-label="Save"

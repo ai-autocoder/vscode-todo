@@ -157,11 +157,63 @@
 				margin-right: 1rem;
 			}
 			@media (max-width: 650px) {
-				.labels {
+				// Keep the tag editor reachable on narrow widths; only the dates fold away.
+				.labels todo-label {
 					display: none;
 				}
+			}
+
+			.labels .tag-editor {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 0.25rem;
+				margin-top: 0.25rem;
+			}
+			.labels .tag-input {
+				flex: 1 1 70px;
+				background: transparent;
+				border: none;
+				outline: none;
+				color: var(--vscode-foreground);
+				font: inherit;
+				font-size: 0.85em;
 			}
 		}
 	}
 }
-
+// Tag chips: filterable badges under the content, removable tokens in the editor.
+.tag-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+	margin-top: 0.25rem;
+	&.complete { opacity: 0.6; }
+}
+.tag-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	padding: 0 0.4rem;
+	height: 1.4em;
+	border: none;
+	border-radius: 0.7em;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font: inherit;
+	font-size: 0.8em;
+	line-height: 1.4em;
+	white-space: nowrap;
+	cursor: pointer;
+	&.editable { cursor: default; }
+}
+.tag-remove {
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	font-size: 1.1em;
+	line-height: 1;
+	&:hover { color: var(--vscode-errorForeground); }
+}
