@@ -172,6 +172,26 @@ suite("filterValidFilesData()", () => {
 	});
 });
 
+suite("initMissingTodoProperties() tags", () => {
+	test("sanitizes imported tags through the shared rules", () => {
+		const [todo] = tests.initMissingTodoProperties([
+			{ text: "task", tags: ["  bug  ", "Bug", "a b", "feature"] as any },
+		]);
+		// Trimmed, deduped case-insensitively (first-seen casing kept), invalid dropped.
+		assert.deepStrictEqual(todo.tags, ["bug", "feature"]);
+	});
+
+	test("omits the tags field entirely when nothing valid remains", () => {
+		const [noTags] = tests.initMissingTodoProperties([{ text: "task" }]);
+		assert.strictEqual(noTags.tags, undefined);
+
+		const [allInvalid] = tests.initMissingTodoProperties([
+			{ text: "task", tags: ["a b", ""] as any },
+		]);
+		assert.strictEqual(allInvalid.tags, undefined, "raw invalid tags must not survive");
+	});
+});
+
 suite("isImportObject()", () => {
 	test("returns true if contains valid data", () => {
 		const validData = {

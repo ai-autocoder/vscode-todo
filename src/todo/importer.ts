@@ -540,6 +540,7 @@ let tests = {
 	isTodoFilesDataPartialInput,
 	isTodoPartialInput,
 	isImportObject,
+	initMissingTodoProperties,
 };
 if (process.env.NODE_ENV !== "test") {
 	// @ts-ignore
