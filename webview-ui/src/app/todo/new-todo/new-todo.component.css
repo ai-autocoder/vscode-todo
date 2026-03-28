@@ -11,6 +11,7 @@
 	width: 100%;
 	margin: 3px 0;
 	padding: 0 5px;
+	align-items: flex-end;
 }
 
 autosize-text-area {
@@ -21,7 +22,7 @@ autosize-text-area {
 /* Border + radius normalization is global (styles.css). Only the Add button's
    padding and label size are specific to this view. */
 vscode-button {
-	padding: 0 9px;
+	padding: 2px 9px;
 }
 
 vscode-button::part(content) {
