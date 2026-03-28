@@ -1,0 +1,12 @@
+name = "vsc-todo-auth-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# CORS allowlist. Use "*" for local dev; set to your PWA origin(s) in production, e.g.
+#   ALLOWED_ORIGINS = "https://vsc-todo.pages.dev"
+[vars]
+ALLOWED_ORIGINS = "*"
+
+# Optional hardening: uncomment and set to your GitHub OAuth App client id so the proxy only
+# forwards requests for your app.
+# CLIENT_ID = "Iv1.xxxxxxxxxxxxxxxx"

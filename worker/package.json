@@ -1,0 +1,16 @@
+{
+	"name": "vsc-todo-auth-proxy",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Cloudflare Worker that adds CORS headers to GitHub's OAuth Device Flow endpoints so the VS Code Todo PWA can authenticate. Holds no secrets.",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy",
+		"typecheck": "tsc -p ./tsconfig.json --noEmit"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20241127.0",
+		"typescript": "~5.9.2",
+		"wrangler": "^3.90.0"
+	}
+}
