@@ -1,0 +1,33 @@
+{
+	"name": "@vsc-todo/core",
+	"version": "0.1.0",
+	"description": "Shared, framework-agnostic core for VS Code Todo: data model, tag rules, three-way merge, and GitHub Gist sync. Used by the VS Code extension and the standalone mobile/PWA companion.",
+	"license": "MIT",
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"sideEffects": false,
+	"scripts": {
+		"build": "tsc -p ./tsconfig.json",
+		"watch": "tsc -p ./tsconfig.json --watch",
+		"clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc -p ./tsconfig.json --noEmit"
+	},
+	"devDependencies": {
+		"typescript": "~5.9.2",
+		"vitest": "^2.1.8"
+	}
+}
