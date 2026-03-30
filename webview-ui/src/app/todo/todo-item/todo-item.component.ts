@@ -217,7 +217,13 @@ export class TodoItemComponent implements OnInit, OnChanges, OnDestroy {
 		}
 	}
 
-	removeTag(tag: string) {
+	removeTag(tag: string, event?: MouseEvent) {
+		// Stop the click here: commitTags re-renders the chip @for, detaching the
+		// clicked × button. The edit-mode global click listener (see edit()) would
+		// then see a detached event.target, treat it as a click outside the item,
+		// and call saveEdit() — kicking us out of edit mode. Adding a tag goes
+		// through the <input>, which isn't detached, so it doesn't hit this.
+		event?.stopPropagation();
 		const next = (this.todo.tags ?? []).filter((t) => t !== tag);
 		this.commitTags(next);
 	}

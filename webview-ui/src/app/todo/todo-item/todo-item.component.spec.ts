@@ -108,6 +108,38 @@ describe("TodoItemComponent tags", () => {
 		expect(setTagsSpy).toHaveBeenCalledWith(TodoScope.user, { id: 1, tags: ["bug"] });
 	});
 
+	it("removeTag stops the click event so the edit-mode outside-click listener doesn't fire", () => {
+		component.todo = makeTodo({ tags: ["plan", "bug"] });
+		const event = jasmine.createSpyObj<MouseEvent>("MouseEvent", ["stopPropagation"]);
+		component.removeTag("plan", event);
+		expect(event.stopPropagation).toHaveBeenCalled();
+		expect(setTagsSpy).toHaveBeenCalledWith(TodoScope.user, { id: 1, tags: ["bug"] });
+	});
+
+	it("clicking the × in edit mode removes the tag without leaving edit mode", (done) => {
+		component.todo = makeTodo({ tags: ["plan", "bug"] });
+		// Enter edit mode through a real DOM click so edit()'s outside-click listener
+		// is installed, then click the × and assert we stayed in edit mode.
+		const todoText = fixture.nativeElement.querySelector(".todo-text") as HTMLElement;
+		todoText.click();
+		fixture.detectChanges();
+
+		// edit() installs the outside-click listener inside a setTimeout(0); wait for it
+		// so the click below actually exercises that listener (the regression path).
+		setTimeout(() => {
+			const removeButton = fixture.nativeElement.querySelector(
+				".tag-editor .tag-chip .tag-remove"
+			) as HTMLButtonElement;
+			// A real bubbling click reaches the document-level listener, just like in the app.
+			removeButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+			fixture.detectChanges();
+
+			expect(setTagsSpy).toHaveBeenCalledWith(TodoScope.user, { id: 1, tags: ["bug"] });
+			expect(component.isEditable).toBeTrue();
+			done();
+		}, 0);
+	});
+
 	it("Backspace on an empty input removes the last tag", () => {
 		component.todo = makeTodo({ tags: ["plan", "bug"] });
 		component.tagInput = "";
