@@ -29,7 +29,11 @@ export interface SelectionState {
 	totalCount: number;
 }
 
-export type SelectionCommand = "selectAll" | "deleteSelected" | "deleteCompleted" | "clearSelection";
+export type SelectionCommand =
+	| "selectAll"
+	| "deleteSelected"
+	| "deleteCompleted"
+	| "clearSelection";
 
 @Injectable({
 	providedIn: "root",
@@ -55,6 +59,7 @@ export class TodoService {
 		enableMarkdownDiagrams: true,
 		enableMarkdownKatex: true,
 		enableWideView: false,
+		showTags: false,
 		autoDeleteCompletedAfterDays: 0,
 		collapsedPreviewLines: 1,
 		webviewFontFamily: "",
@@ -66,6 +71,7 @@ export class TodoService {
 	>([]);
 	private _filesDataPathsSource = new BehaviorSubject<TodoFilesDataPaths>({});
 	private _enableWideViewSource = new BehaviorSubject<boolean>(this._config.enableWideView);
+	private _showTagsSource = new BehaviorSubject<boolean>(this._config.showTags);
 
 	private _enableWideViewAnimation = new BehaviorSubject<boolean>(false);
 
@@ -94,9 +100,21 @@ export class TodoService {
 	});
 
 	private _selectionStateMap: Record<TodoScope, BehaviorSubject<SelectionState>> = {
-		[TodoScope.user]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
-		[TodoScope.workspace]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
-		[TodoScope.currentFile]: new BehaviorSubject<SelectionState>({ hasSelection: false, selectedCount: 0, totalCount: 0 }),
+		[TodoScope.user]: new BehaviorSubject<SelectionState>({
+			hasSelection: false,
+			selectedCount: 0,
+			totalCount: 0,
+		}),
+		[TodoScope.workspace]: new BehaviorSubject<SelectionState>({
+			hasSelection: false,
+			selectedCount: 0,
+			totalCount: 0,
+		}),
+		[TodoScope.currentFile]: new BehaviorSubject<SelectionState>({
+			hasSelection: false,
+			selectedCount: 0,
+			totalCount: 0,
+		}),
 	};
 	private _selectionCommandMap: Record<TodoScope, Subject<SelectionCommand>> = {
 		[TodoScope.user]: new Subject<SelectionCommand>(),
@@ -117,6 +135,7 @@ export class TodoService {
 	readonly isSearchActive = computed(() => this.normalizedSearchQuery().length > 0);
 
 	enableWideView = this._enableWideViewSource.asObservable();
+	showTags = this._showTagsSource.asObservable();
 	enableWideViewAnimation = this._enableWideViewAnimation.asObservable();
 	isGitHubConnected = this._isGitHubConnectedSource.asObservable();
 	hasGistId = this._hasGistIdSource.asObservable();
@@ -155,7 +174,6 @@ export class TodoService {
 		this._searchQuery.set("");
 	}
 
-
 	setActiveEditor(scope: TodoScope, todoId: number): void {
 		const subject = this._activeEditorMap[scope];
 		if (subject.getValue() === todoId) {
@@ -178,7 +196,6 @@ export class TodoService {
 	activeEditor(scope: TodoScope) {
 		return this._activeEditorMap[scope].asObservable();
 	}
-
 
 	constructor() {
 		window.addEventListener("message", this.handleMessage.bind(this));
@@ -232,6 +249,7 @@ export class TodoService {
 		this._todoCount.currentFile = data.payload.currentFile.numberOfTodos;
 		this._currentFilePathSource.next(data.payload.currentFile.filePath);
 		this._enableWideViewSource.next(this._config.enableWideView);
+		this._showTagsSource.next(this._config.showTags);
 		this.userLastAction.next("");
 		this.workspaceLastAction.next("");
 		this.currentFileLastAction.next("");
@@ -313,8 +331,8 @@ export class TodoService {
 		return this._todoCount;
 	}
 
-    get config(): Config {
-        return this._config;
+	get config(): Config {
+		return this._config;
 	}
 
 	get isPinned(): boolean {
@@ -343,6 +361,10 @@ export class TodoService {
 
 	editTodo(...args: Parameters<typeof messagesFromWebview.editTodo>) {
 		vscode.postMessage(messagesFromWebview.editTodo(...args));
+	}
+
+	setTags(...args: Parameters<typeof messagesFromWebview.setTags>) {
+		vscode.postMessage(messagesFromWebview.setTags(...args));
 	}
 
 	reorderTodos(...args: Parameters<typeof messagesFromWebview.reorderTodo>) {
@@ -390,6 +412,12 @@ export class TodoService {
 		this._config.enableWideView = isEnabled;
 		this._enableWideViewSource.next(isEnabled);
 		vscode.postMessage(messagesFromWebview.setWideViewEnabled(isEnabled));
+	}
+
+	setShowTagsEnabled(isEnabled: boolean) {
+		this._config.showTags = isEnabled;
+		this._showTagsSource.next(isEnabled);
+		vscode.postMessage(messagesFromWebview.setShowTagsEnabled(isEnabled));
 	}
 
 	deleteAll(scope: TodoScope) {

@@ -397,7 +397,9 @@ export default class McpServerHost implements vscode.Disposable {
 		if (!entry) {
 			return;
 		}
-		McpLogChannel.log(`[MCP] Evicting idle session ${sessionId} (max ${McpServerHost.MAX_SESSIONS}).`);
+		McpLogChannel.log(
+			`[MCP] Evicting idle session ${sessionId} (max ${McpServerHost.MAX_SESSIONS}).`
+		);
 		void entry.server.close().catch((error) => {
 			McpLogChannel.log(`[MCP] Error closing evicted session: ${String(error)}`);
 		});
@@ -414,12 +416,15 @@ export default class McpServerHost implements vscode.Disposable {
 				instructions:
 					"Use the todo_* tools to read, create, update, and delete VS Code Todo items and notes " +
 					"across the user, workspace, and currentFile scopes. todo_list_items reads todos/notes for " +
-					"a scope, todo_count_items returns per-scope counts for a quick overview, and " +
+					"a scope (optionally filtered by a 'tag' to pull up every item in a plan/group), " +
+					"todo_count_items returns per-scope counts for a quick overview (pass a 'tag' for " +
+					"tag-scoped progress counts), and " +
 					"todo_list_files lists files that have todos. todo_add_item creates one item and " +
 					"todo_add_items creates several in a single call preserving their given order (use it " +
 					"for an ordered list such as a multi-step plan); " +
-					"todo_update_text, todo_set_completed, todo_set_note, and todo_set_markdown change an " +
-					"existing item by id; todo_delete_items removes items by id. All write tools are blocked " +
+					"todo_update_text, todo_set_completed, todo_set_note, todo_set_markdown, and " +
+					"todo_set_tags change an existing item by id (todo_set_tags replaces an item's tags, " +
+					"used to group items into a plan); todo_delete_items removes items by id. All write tools are blocked " +
 					"when the server is in read-only mode. For the currentFile scope, pass filePath to target " +
 					"a specific file (it need not be open in the editor). The todo:// resources expose " +
 					"read-only snapshots of the same data.",
@@ -558,22 +563,22 @@ export default class McpServerHost implements vscode.Disposable {
 				.optional()
 				.describe("ISO 8601 timestamp of when the item was completed, if completed."),
 			isMarkdown: z.boolean().describe("Whether the text is rendered as Markdown in the UI."),
-			isNote: z
-				.boolean()
-				.describe("True for a free-text note, false for a checkable task."),
-			collapsed: z
-				.boolean()
+			isNote: z.boolean().describe("True for a free-text note, false for a checkable task."),
+			collapsed: z.boolean().optional().describe("Whether the item is collapsed in the UI."),
+			tags: z
+				.array(z.string())
 				.optional()
-				.describe("Whether the item is collapsed in the UI."),
+				.describe(
+					"Tags applied to the item, used to group related items (e.g. all steps of a " +
+						"plan). Absent on untagged items. Filter by one with the 'tag' parameter of " +
+						"todo_list_items."
+				),
 		};
 		const todoSchema = z.object(todoShape);
 
 		const listItemsOutputSchema = {
 			scope: scopeSchema,
-			filePath: z
-				.string()
-				.optional()
-				.describe("Resolved file path when scope is 'currentFile'."),
+			filePath: z.string().optional().describe("Resolved file path when scope is 'currentFile'."),
 			todos: z.array(todoSchema).describe("The page of todos/notes for this scope."),
 			total: z.number().describe("Total number of items matching the query across all pages."),
 			count: z.number().describe("Number of items returned in this page."),
@@ -581,7 +586,9 @@ export default class McpServerHost implements vscode.Disposable {
 			next_offset: z
 				.number()
 				.optional()
-				.describe("Offset to pass on the next call to fetch the following page, when has_more is true."),
+				.describe(
+					"Offset to pass on the next call to fetch the following page, when has_more is true."
+				),
 		};
 
 		const fileEntrySchema = z.object({
@@ -596,7 +603,9 @@ export default class McpServerHost implements vscode.Disposable {
 			next_offset: z
 				.number()
 				.optional()
-				.describe("Offset to pass on the next call to fetch the following page, when has_more is true."),
+				.describe(
+					"Offset to pass on the next call to fetch the following page, when has_more is true."
+				),
 		};
 
 		const positionSchema = z
@@ -640,20 +649,29 @@ export default class McpServerHost implements vscode.Disposable {
 		// Per-scope count objects are "loose" (extra keys allowed) so future, more
 		// granular counts (e.g. a per-tag breakdown) can be added without a breaking
 		// schema change. z.looseObject is the Zod 4 idiom for the old .passthrough().
+		// completedCountSchema is populated only when the counts are tag-scoped (the
+		// "tag" parameter was supplied), giving a progress readout for a plan/group.
+		const completedCountSchema = z
+			.number()
+			.optional()
+			.describe(
+				"Number of completed (done) tasks among the counted items. Present only when " +
+					"'tag' was supplied; with 'todos' (open tasks) it gives tag-scoped progress."
+			);
 		const scopeCountsSchema = z.looseObject({
-			todos: z.number().describe("Number of checkable tasks in the scope."),
+			todos: z.number().describe("Number of open (incomplete) checkable tasks in the scope."),
 			notes: z.number().describe("Number of free-text notes in the scope."),
+			completed: completedCountSchema,
 		});
 		const fileCountsSchema = z.looseObject({
-			todos: z.number().describe("Number of checkable tasks for the current file."),
+			todos: z.number().describe("Number of open (incomplete) checkable tasks for the current file."),
 			notes: z.number().describe("Number of free-text notes for the current file."),
+			completed: completedCountSchema,
 			filePath: z.string().describe("Path of the current file these counts apply to."),
 		});
 		const countItemsOutputSchema = {
 			user: scopeCountsSchema.optional().describe("Counts for the user scope, if allowed."),
-			workspace: scopeCountsSchema
-				.optional()
-				.describe("Counts for the workspace scope, if allowed."),
+			workspace: scopeCountsSchema.optional().describe("Counts for the workspace scope, if allowed."),
 			currentFile: fileCountsSchema
 				.optional()
 				.describe("Counts for the current file scope, if allowed."),
@@ -673,19 +691,13 @@ export default class McpServerHost implements vscode.Disposable {
 		// Shared by the four single-item mutators (update text, set completed/note/markdown).
 		const itemOutputSchema = {
 			scope: scopeSchema,
-			filePath: z
-				.string()
-				.optional()
-				.describe("Resolved file path when scope is 'currentFile'."),
+			filePath: z.string().optional().describe("Resolved file path when scope is 'currentFile'."),
 			todo: todoSchema.describe("The item after the change."),
 		};
 
 		const deleteOutputSchema = {
 			scope: scopeSchema,
-			filePath: z
-				.string()
-				.optional()
-				.describe("Resolved file path when scope is 'currentFile'."),
+			filePath: z.string().optional().describe("Resolved file path when scope is 'currentFile'."),
 			deleted: z.array(todoSchema).describe("The items that were deleted."),
 			count: z.number().describe("Number of items deleted (0 if no id matched)."),
 		};
@@ -705,8 +717,10 @@ export default class McpServerHost implements vscode.Disposable {
 					"List todos and notes for a scope. 'scope' is one of 'user' (global), " +
 					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
 					"'filePath'). Optionally filter by 'kind' ('task', 'note', or 'all'), by " +
-					"'completed' (true=done, false=open), by text prefix ('textPrefix'), or by a " +
-					"substring anywhere in the text ('search'). Optionally order results with 'sortBy' (creationDate / " +
+					"'completed' (true=done, false=open), by text prefix ('textPrefix'), by a " +
+					"substring anywhere in the text ('search'), or by 'tag' (only items carrying that " +
+					"tag — use it to pull up every item in a plan/group). Optionally order results with " +
+					"'sortBy' (creationDate / " +
 					"completionDate / completed) and 'order' (asc / desc). Results are paginated: " +
 					"pass 'limit' (default 50, " +
 					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result. " +
@@ -750,6 +764,13 @@ export default class McpServerHost implements vscode.Disposable {
 							"When set, return only items whose text contains this substring " +
 								"(case-insensitive). Unlike textPrefix, it matches anywhere in the item " +
 								"text; whitespace is matched literally."
+						),
+					tag: z
+						.string()
+						.optional()
+						.describe(
+							"When set, return only items tagged with this tag (matched case-insensitively). " +
+								"Use it to fetch every item in a plan or group that shares the tag."
 						),
 					sortBy: z
 						.enum(["creationDate", "completionDate", "completed"])
@@ -797,13 +818,24 @@ export default class McpServerHost implements vscode.Disposable {
 					"fetching the items themselves. Use this for a cheap overview — 'is there " +
 					"outstanding work, and where?' — before paging through a scope with " +
 					"todo_list_items. A scope is omitted when it is not allowed or unavailable " +
-					"(e.g. currentFile with no file, or a scope excluded by allowedScopes).",
-				inputSchema: {},
+					"(e.g. currentFile with no file, or a scope excluded by allowedScopes). " +
+					"Pass 'tag' to count only items carrying that tag; each scope then also " +
+					"reports 'completed' (done tasks), so 'completed' of 'todos'+'completed' is " +
+					"the progress of that plan/group.",
+				inputSchema: {
+					tag: z
+						.string()
+						.optional()
+						.describe(
+							"When set, count only items tagged with this tag (matched case-insensitively), " +
+								"and include a 'completed' count per scope for tag-scoped progress."
+						),
+				},
 				outputSchema: countItemsOutputSchema,
 				annotations: { title: "Count Todos", readOnlyHint: true, openWorldHint: false },
 			},
-			async () => {
-				return this.safeToolCall(() => this.toolResult(this.todoService.getCounts()));
+			async (args) => {
+				return this.safeToolCall(() => this.toolResult(this.todoService.getCounts(args?.tag)));
 			}
 		);
 
@@ -825,7 +857,9 @@ export default class McpServerHost implements vscode.Disposable {
 					isNote: z
 						.boolean()
 						.optional()
-						.describe("When true, create a free-text note instead of a checkable task. Defaults to false."),
+						.describe(
+							"When true, create a free-text note instead of a checkable task. Defaults to false."
+						),
 					isMarkdown: z
 						.boolean()
 						.optional()
@@ -1047,12 +1081,9 @@ export default class McpServerHost implements vscode.Disposable {
 			},
 			async (args) => {
 				return this.safeToolCall(async () => {
-					const result = await this.todoService.setNote(
-						args.scope as TodoScope,
-						args.id,
-						args.isNote,
-						{ filePath: args.filePath }
-					);
+					const result = await this.todoService.setNote(args.scope as TodoScope, args.id, args.isNote, {
+						filePath: args.filePath,
+					});
 					return this.toolResult(this.itemResult(result));
 				});
 			}
@@ -1084,6 +1115,43 @@ export default class McpServerHost implements vscode.Disposable {
 						args.isMarkdown,
 						{ filePath: args.filePath }
 					);
+					return this.toolResult(this.itemResult(result));
+				});
+			}
+		);
+
+		server.registerTool(
+			"todo_set_tags",
+			{
+				title: "Set Todo Tags",
+				description:
+					"Replace the tags on an existing todo or note with the given list (replace " +
+					"semantics — the array you pass becomes the item's full set of tags). Identify the " +
+					"item by 'scope' and numeric 'id'; for 'currentFile' scope also pass 'filePath'. " +
+					"Tags are normalized: surrounding whitespace is trimmed, duplicates are removed " +
+					"case-insensitively, invalid tags are dropped, and an empty list clears all tags. " +
+					"Use tags to group related items — e.g. tag every step of a plan with the same tag, " +
+					"then read them back with the 'tag' filter of todo_list_items. Idempotent. Returns " +
+					"the updated item. Rejected when the server is in read-only mode.",
+				inputSchema: {
+					scope: scopeSchema,
+					id: idSchema,
+					tags: z
+						.array(z.string())
+						.describe(
+							"The new full list of tags for the item. Pass an empty array to clear all tags. " +
+								"Tags are normalized (trimmed, de-duplicated case-insensitively, invalid ones dropped)."
+						),
+					filePath: mutateFilePathSchema,
+				},
+				outputSchema: itemOutputSchema,
+				annotations: { title: "Set Todo Tags", ...mutateAnnotations },
+			},
+			async (args) => {
+				return this.safeToolCall(async () => {
+					const result = await this.todoService.setTags(args.scope as TodoScope, args.id, args.tags, {
+						filePath: args.filePath,
+					});
 					return this.toolResult(this.itemResult(result));
 				});
 			}
@@ -1315,14 +1383,19 @@ export default class McpServerHost implements vscode.Disposable {
 		// Guard against DNS-rebinding: only loopback origins may reach the server.
 		const hostname = parsed.hostname.toLowerCase();
 		const isLoopbackHost =
-			hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+			hostname === "localhost" ||
+			hostname === "127.0.0.1" ||
+			hostname === "[::1]" ||
+			hostname === "::1";
 		if (!isLoopbackHost) {
 			return false;
 		}
 
 		// When bound to a fixed port, require the origin to target it (or be portless).
 		if (config.port && parsed.port) {
-			return parsed.port === String(config.port) || parsed.port === String(this.lastPort ?? config.port);
+			return (
+				parsed.port === String(config.port) || parsed.port === String(this.lastPort ?? config.port)
+			);
 		}
 
 		return true;
@@ -1469,7 +1542,7 @@ export default class McpServerHost implements vscode.Disposable {
 	private refreshStatus(): void {
 		const config = this.readConfig();
 		const running = Boolean(this.server);
-		const port = running ? this.lastPort ?? config.port : null;
+		const port = running ? (this.lastPort ?? config.port) : null;
 		const next = this.buildStatus(config, running, port);
 		if (!this.isStatusEqual(this.status, next)) {
 			this.status = next;

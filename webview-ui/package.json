@@ -8,6 +8,7 @@
     "build": "ng build --output-hashing=none",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "test:ci": "ng test --watch=false --browsers=ChromeHeadlessCI",
     "prism-generate-imports": "node generate-prism-imports.js"
   },
   "dependencies": {

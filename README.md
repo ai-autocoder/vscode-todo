@@ -94,6 +94,7 @@ VS Code Todo
   - [Mermaid Diagram Support](#mermaid-diagram-support)
   - [KaTeX Math Support](#katex-math-support)
   - [Customizable Sorting](#customizable-sorting)
+  - [Tags](#tags)
   - [Auto delete completed todos after a specified number of days](#auto-delete-completed-todos-after-a-specified-number-of-days)
   - [Collapsed item preview lines](#collapsed-item-preview-lines)
   - [Webview Font Settings](#webview-font-settings)
@@ -346,7 +347,7 @@ The agent works with three lists (scopes), matching the extension's tabs:
 - **workspace** — the current project's list
 - **currentFile** — todos attached to a specific file (the agent passes the file path)
 
-It can **list** todos and notes (with filtering and paging), **add** todos/notes — one at a time or as an ordered batch that preserves the given order (handy for laying down a multi-step plan) — **edit** text, **complete/reopen** todos, **convert** between task and note, **toggle Markdown** rendering, and **delete** items. All edits are rejected while `readOnly` is `true`.
+It can **list** todos and notes (with filtering and paging, including by `tag`), **add** todos/notes — one at a time or as an ordered batch that preserves the given order (handy for laying down a multi-step plan) — **edit** text, **complete/reopen** todos, **convert** between task and note, **toggle Markdown** rendering, **tag** items to group them (e.g. all steps of a plan, then track progress with a tag-scoped count), and **delete** items. All edits are rejected while `readOnly` is `true`.
 
 You can also narrow what's reachable with `vscodeTodo.mcp.allowedScopes` (default `["user", "workspace", "file"]`) — e.g. drop `"file"` so agents can't touch per-file lists.
 
@@ -375,8 +376,8 @@ This project has the VS Code Todo MCP server connected. Use it to track work:
 
 | Tool | What it does |
 | --- | --- |
-| `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix` (prefix match), `search` (substring match anywhere in the text). Optional ordering: `sortBy` (`creationDate`/`completionDate`/`completed`) and `order` (`asc`/`desc`). Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set — item text is never truncated. |
-| `todo_count_items` | Return todo/note counts per scope (no arguments) — a cheap overview of where the open work is before paging a scope. |
+| `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix` (prefix match), `search` (substring match anywhere in the text), `tag` (only items carrying that tag — pulls up a whole plan/group). Optional ordering: `sortBy` (`creationDate`/`completionDate`/`completed`) and `order` (`asc`/`desc`). Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set — item text is never truncated. |
+| `todo_count_items` | Return todo/note counts per scope (no arguments) — a cheap overview of where the open work is before paging a scope. Pass an optional `tag` to count only items carrying that tag; each scope then also reports a `completed` count, giving tag-scoped progress (e.g. "3 of 9 done"). |
 | `todo_list_files` | List workspace files that have file-scoped todos, with per-file counts; paginated. |
 | `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). Optional `position` (`top`/`bottom`) overrides the `createPosition` setting for this call; omit it to use the setting. _Write._ |
 | `todo_add_items` | Create several todos/notes in one call from an ordered `items` array, preserving the given order — use it to lay down an ordered list (e.g. a multi-step plan) without the list coming out reversed. Each item may set its own `isNote`/`isMarkdown`; optional `position` (`top`/`bottom`, default `bottom`) places the whole block while keeping its order. _Write._ |
@@ -384,6 +385,7 @@ This project has the VS Code Todo MCP server connected. Use it to track work:
 | `todo_set_completed` | Mark a todo completed/reopened by `id`. _Write._ |
 | `todo_set_note` | Convert an item between task and note by `id`. _Write._ |
 | `todo_set_markdown` | Toggle Markdown rendering for an item by `id`. _Write._ |
+| `todo_set_tags` | Replace an item's tags by `id` with a given list (tags are normalized; an empty list clears them). Tag related items — e.g. every step of a plan — then read them back with the `tag` filter. _Write._ |
 | `todo_delete_items` | Delete one or more items by their `ids`. _Write._ |
 
 **Resources** — read-only JSON snapshots of the same data:
@@ -495,6 +497,20 @@ Default: **sortType1**.
 
 ```json
 "vscodeTodo.taskSortingOptions": "sortType1"
+```
+
+### Tags
+
+Tag any todo or note to group related items — for example, label every step of a plan with the same tag, then pull the whole group up at once and track its progress.
+
+- **Add or remove tags**: open an item for editing; a tag input appears next to the dates in the edit footer. Type a tag and press **Enter** (or click away) to add it — you can also enter a comma-separated list and it's split into several tags. Click the **×** on a chip, or press **Backspace** in an empty input, to remove one. Tags are normalized automatically (trimmed, de-duplicated case-insensitively, with a sensible length/count cap).
+- **Show Tags**: tag chips are hidden by default to keep dense lists clean. Turn them on from the gear/settings menu (**Show Tags** / **Hide Tags**), or set `vscodeTodo.showTags` directly. Chips then appear under each item in both the collapsed and expanded views.
+- **Filter by tag**: click a chip to filter the list to that tag, or type `tag:<name>` in the search box. A plain search query also matches tags (not just the item text); a `tag:` query matches **only** tags, so it pulls up exactly the items in that plan/group.
+
+Tags are part of the item, so they sync and round-trip through JSON export/import like any other field. AI agents can read and set them through the MCP server (the `tag` filter on `todo_list_items` / `todo_count_items` and the `todo_set_tags` tool — see [MCP Server (AI Agent Integration)](#mcp-server-ai-agent-integration)), so a plan laid down by an agent and one tagged by hand share the same grouping.
+
+```json
+"vscodeTodo.showTags": true
 ```
 
 ### Auto delete completed todos after a specified number of days

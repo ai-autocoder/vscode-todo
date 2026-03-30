@@ -16,6 +16,7 @@ import {
 	TodoScope,
 } from "../todo/todoTypes";
 import { CreatePosition, getConfig } from "../utilities/config";
+import { normalizeTags, tagsInclude } from "../todo/tagUtils";
 import {
 	assertNever,
 	ensureFilesDataPaths,
@@ -38,10 +39,22 @@ type TodoActions = {
 	toggleTodo: TodoActionCreator<{ id: number }>;
 	toggleMarkdown: TodoActionCreator<{ id: number }>;
 	toggleTodoNote: TodoActionCreator<{ id: number }>;
+	setTags: TodoActionCreator<{ id: number; tags: string[] }>;
 	deleteTodos: TodoActionCreator<{ ids: number[] }>;
 };
 
 export type TodoListItemKind = "task" | "note" | "all";
+
+/**
+ * Per-scope count summary. `todos` is open (incomplete) tasks and `notes` is free-text notes,
+ * matching the unfiltered overview. When the counts are tag-scoped, `completed` is also set to
+ * the number of done tasks carrying the tag, enabling "completed of todos" progress readouts.
+ */
+export type ScopeCounts = {
+	todos: number;
+	notes: number;
+	completed?: number;
+};
 
 export type TodoListSortBy = "creationDate" | "completionDate" | "completed";
 export type TodoListSortOrder = "asc" | "desc";
@@ -55,6 +68,8 @@ export type TodoListFilters = {
 	textPrefix?: string;
 	/** When set, keep only items whose text contains this substring (case-insensitive). */
 	search?: string;
+	/** When set, keep only items tagged with this tag (matched case-insensitively). */
+	tag?: string;
 	/** Explicit field to sort by. When omitted, the store's insertion order is preserved. */
 	sortBy?: TodoListSortBy;
 	/** Sort direction; defaults to "asc". Ignored when sortBy is omitted. */
@@ -186,41 +201,57 @@ export default class TodoService {
 		return this.allowedScopes.has(this.mapScopeToAllowed(scope));
 	}
 
-	public getCounts(): {
-		user?: { todos: number; notes: number };
-		workspace?: { todos: number; notes: number };
-		currentFile?: { todos: number; notes: number; filePath: string };
+	public getCounts(tag?: string): {
+		user?: ScopeCounts;
+		workspace?: ScopeCounts;
+		currentFile?: ScopeCounts & { filePath: string };
 	} {
 		const state = this.store.getState();
+		const filterTag = tag && tag.trim() ? tag : undefined;
 		const result: {
-			user?: { todos: number; notes: number };
-			workspace?: { todos: number; notes: number };
-			currentFile?: { todos: number; notes: number; filePath: string };
+			user?: ScopeCounts;
+			workspace?: ScopeCounts;
+			currentFile?: ScopeCounts & { filePath: string };
 		} = {};
 
 		if (this.isScopeAllowed(TodoScope.user)) {
-			result.user = {
-				todos: state.user.numberOfTodos,
-				notes: state.user.numberOfNotes,
-			};
+			result.user = filterTag
+				? this.countTagged(state.user.todos, filterTag)
+				: { todos: state.user.numberOfTodos, notes: state.user.numberOfNotes };
 		}
 
 		if (this.isScopeAllowed(TodoScope.workspace)) {
-			result.workspace = {
-				todos: state.workspace.numberOfTodos,
-				notes: state.workspace.numberOfNotes,
-			};
+			result.workspace = filterTag
+				? this.countTagged(state.workspace.todos, filterTag)
+				: { todos: state.workspace.numberOfTodos, notes: state.workspace.numberOfNotes };
 		}
 
 		if (this.isScopeAllowed(TodoScope.currentFile)) {
-			result.currentFile = {
-				todos: state.currentFile.numberOfTodos,
-				notes: state.currentFile.numberOfNotes,
-				filePath: state.currentFile.filePath,
-			};
+			const counts = filterTag
+				? this.countTagged(state.currentFile.todos, filterTag)
+				: {
+						todos: state.currentFile.numberOfTodos,
+						notes: state.currentFile.numberOfNotes,
+					};
+			result.currentFile = { ...counts, filePath: state.currentFile.filePath };
 		}
 
 		return result;
+	}
+
+	/**
+	 * Tag-scoped counts for one scope: only items carrying `tag` are counted, and a
+	 * `completed` field is added alongside the usual open-task / note counts so a caller can
+	 * read progress for a plan/group ("completed of todos"). Note that `todos` here is open
+	 * (incomplete) tasks, matching the unfiltered shape; `completed` is the done tasks.
+	 */
+	private countTagged(todos: Todo[], tag: string): ScopeCounts {
+		const tagged = todos.filter((todo) => tagsInclude(todo.tags, tag));
+		return {
+			todos: tagged.filter((todo) => !todo.isNote && !todo.completed).length,
+			notes: tagged.filter((todo) => todo.isNote).length,
+			completed: tagged.filter((todo) => !todo.isNote && todo.completed).length,
+		};
 	}
 
 	public listFiles(): Array<{ filePath: string; todoNumber: number }> {
@@ -397,6 +428,28 @@ export default class TodoService {
 		});
 	}
 
+	/**
+	 * Replace an item's tags with a normalized version of `tags` (replace semantics — the
+	 * given list is the new full set). Tags are sanitized through the shared {@link normalizeTags}
+	 * rules, so invalid/duplicate tags are dropped and an empty (or all-invalid) list clears the
+	 * field. Idempotent: when the normalized result already matches the item, nothing is dispatched.
+	 */
+	public async setTags(
+		scope: TodoScope,
+		id: number,
+		tags: string[],
+		options: { filePath?: string } = {}
+	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
+		const normalized = normalizeTags(tags);
+		return this.mutateTodo(scope, id, options.filePath, {
+			dispatch: (actions, current) =>
+				this.sameTags(current.tags, normalized) ? undefined : actions.setTags({ id, tags: normalized }),
+			mutateFile: (todo) => {
+				todo.tags = normalized.length > 0 ? normalized : undefined;
+			},
+		});
+	}
+
 	public async deleteTodos(
 		scope: TodoScope,
 		ids: number[],
@@ -418,9 +471,7 @@ export default class TodoService {
 				});
 				return { scope, filePath, deleted, count: deleted.length };
 			}
-			const deleted = this.store
-				.getState()
-				.currentFile.todos.filter((todo) => idSet.has(todo.id));
+			const deleted = this.store.getState().currentFile.todos.filter((todo) => idSet.has(todo.id));
 			this.store.dispatch(currentFileActions.deleteTodos({ ids }));
 			return { scope, filePath, deleted, count: deleted.length };
 		}
@@ -435,10 +486,7 @@ export default class TodoService {
 		id: number,
 		filePath: string | undefined,
 		handlers: {
-			dispatch: (
-				actions: TodoActions,
-				current: Todo
-			) => { type: string } | undefined;
+			dispatch: (actions: TodoActions, current: Todo) => { type: string } | undefined;
 			mutateFile: (todo: Todo) => void;
 		}
 	): Promise<{ scope: TodoScope; filePath?: string; todo: Todo }> {
@@ -465,7 +513,12 @@ export default class TodoService {
 			return { scope, filePath: resolvedPath, todo: updated };
 		}
 
-		const updated = this.applyStoreMutation(scope, this.actionsForScope(scope), id, handlers.dispatch);
+		const updated = this.applyStoreMutation(
+			scope,
+			this.actionsForScope(scope),
+			id,
+			handlers.dispatch
+		);
 		return { scope, filePath: undefined, todo: updated };
 	}
 
@@ -780,7 +833,7 @@ export default class TodoService {
 	}
 
 	private applyFilters(todos: Todo[], filters: TodoListFilters): Todo[] {
-		// Compose independent predicates so new filters (e.g. a future tag filter) slot in
+		// Compose independent predicates so each filter (kind, completed, text, tag) slots in
 		// as one more entry without reworking the chain. An item is kept only if it passes
 		// every active predicate.
 		const predicates: Array<(todo: Todo) => boolean> = [];
@@ -804,6 +857,11 @@ export default class TodoService {
 		if (filters.search) {
 			const needle = filters.search.toLowerCase();
 			predicates.push((todo) => todo.text.toLowerCase().includes(needle));
+		}
+
+		if (filters.tag && filters.tag.trim()) {
+			const tag = filters.tag;
+			predicates.push((todo) => tagsInclude(todo.tags, tag));
 		}
 
 		if (predicates.length === 0) {
@@ -850,6 +908,20 @@ export default class TodoService {
 	private matchesPrefix(text: string, prefix: string): boolean {
 		const trimmed = text.trimStart();
 		return trimmed.toLowerCase().startsWith(prefix.trimStart().toLowerCase());
+	}
+
+	/**
+	 * Order-sensitive equality of an item's current tags against a normalized candidate list,
+	 * used to keep setTags idempotent. Both sides are already normalized (deduped, trimmed) by
+	 * the time this runs, so a plain index-wise compare is sufficient; an absent current list is
+	 * treated as empty.
+	 */
+	private sameTags(current: string[] | undefined, next: string[]): boolean {
+		const existing = current ?? [];
+		if (existing.length !== next.length) {
+			return false;
+		}
+		return existing.every((tag, index) => tag === next[index]);
 	}
 
 	private isSameFilePath(left: string, right: string): boolean {

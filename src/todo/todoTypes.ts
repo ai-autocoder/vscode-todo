@@ -9,6 +9,11 @@ export interface Todo {
 	isMarkdown: boolean;
 	isNote: boolean;
 	collapsed?: boolean;
+	/**
+	 * Optional, normalized list of tags (see {@link "../todo/tagUtils"}). Absent on items
+	 * created before the Tags feature, so existing stored/synced data loads unchanged.
+	 */
+	tags?: string[];
 }
 
 export enum TodoScope {

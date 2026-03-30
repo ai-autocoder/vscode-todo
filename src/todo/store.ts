@@ -107,7 +107,9 @@ const todoReducers = {
 	},
 	toggleTodo: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
-		if (!todo) {return;}
+		if (!todo) {
+			return;
+		}
 
 		todo.completed = !todo.completed;
 		todo.completionDate = todo.completed ? new Date().toISOString() : undefined;
@@ -118,14 +120,18 @@ const todoReducers = {
 	},
 	editTodo: (state: TodoSlice, action: PayloadAction<{ id: number; newText: string }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
-		if (!todo) {return;}
+		if (!todo) {
+			return;
+		}
 
 		todo.text = action.payload.newText;
 		state.lastActionType = action.type;
 	},
 	deleteTodo: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const index = state.todos?.findIndex((todo) => todo.id === action.payload.id);
-		if (index === undefined || index === -1) {return;}
+		if (index === undefined || index === -1) {
+			return;
+		}
 
 		state.todos?.splice(index, 1);
 		state.lastActionType = action.type;
@@ -156,10 +162,11 @@ const todoReducers = {
 			isMarkdown: boolean;
 			isNote: boolean;
 			collapsed?: boolean;
+			tags?: string[];
 			itemPosition: number;
 		}>
 	) => {
-		const restoredItem = {
+		const restoredItem: Todo = {
 			id: generateUniqueId(state.todos),
 			text: action.payload.text,
 			completed: action.payload.completed,
@@ -167,6 +174,7 @@ const todoReducers = {
 			isMarkdown: action.payload.isMarkdown,
 			isNote: action.payload.isNote,
 			collapsed: action.payload.collapsed ?? false,
+			tags: action.payload.tags,
 		};
 		state.todos?.splice(action.payload.itemPosition, 0, restoredItem);
 		state.lastActionType = action.type;
@@ -176,7 +184,9 @@ const todoReducers = {
 
 	toggleCollapsed: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
-		if (!todo) {return;}
+		if (!todo) {
+			return;
+		}
 		todo.collapsed = !todo.collapsed;
 		state.lastActionType = action.type;
 	},
@@ -193,13 +203,17 @@ const todoReducers = {
 	},
 	toggleMarkdown: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
-		if (!todo) {return;}
+		if (!todo) {
+			return;
+		}
 		todo.isMarkdown = !(todo.isMarkdown ?? false);
 		state.lastActionType = action.type;
 	},
 	toggleTodoNote: (state: TodoSlice, action: PayloadAction<{ id: number }>) => {
 		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
-		if (!todo) {return;}
+		if (!todo) {
+			return;
+		}
 		todo.isNote = !(todo.isNote ?? false);
 		if (!todo.isNote) {
 			Object.assign(state.todos, sortTodosWithNotes(state.todos));
@@ -207,6 +221,16 @@ const todoReducers = {
 		state.lastActionType = action.type;
 		state.numberOfTodos = getNumberOfTodos(state);
 		state.numberOfNotes = getNumberOfNotes(state);
+	},
+	setTags: (state: TodoSlice, action: PayloadAction<{ id: number; tags: string[] }>) => {
+		const todo = state.todos?.find((todo) => todo.id === action.payload.id);
+		if (!todo) {
+			return;
+		}
+		// Replace semantics: callers pass the full, already-normalized tag list. An empty
+		// list clears the field entirely so untagged items carry no empty array.
+		todo.tags = action.payload.tags.length > 0 ? action.payload.tags : undefined;
+		state.lastActionType = action.type;
 	},
 };
 

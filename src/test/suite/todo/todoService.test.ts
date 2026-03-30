@@ -20,7 +20,11 @@ import {
 	TodoScope,
 	TodoSlice,
 } from "../../../todo/todoTypes";
-import { getWorkspacePath, resolveFilesDataKey, ensureFilesDataPaths } from "../../../todo/todoUtils";
+import {
+	getWorkspacePath,
+	resolveFilesDataKey,
+	ensureFilesDataPaths,
+} from "../../../todo/todoUtils";
 import { getConfig } from "../../../utilities/config";
 
 /**
@@ -137,17 +141,19 @@ suite("TodoService CRUD", () => {
 			get: () => [fakeFolder],
 		});
 		originalGetWorkspaceFolder = vscode.workspace.getWorkspaceFolder;
-		(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
-			(uri: vscode.Uri) =>
-				uri.fsPath.startsWith(workspaceRoot) ? fakeFolder : undefined;
+		(
+			vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }
+		).getWorkspaceFolder = (uri: vscode.Uri) =>
+			uri.fsPath.startsWith(workspaceRoot) ? fakeFolder : undefined;
 	});
 
 	after(() => {
 		if (originalFolders) {
 			Object.defineProperty(vscode.workspace, "workspaceFolders", originalFolders);
 		}
-		(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
-			originalGetWorkspaceFolder;
+		(
+			vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }
+		).getWorkspaceFolder = originalGetWorkspaceFolder;
 	});
 
 	beforeEach(() => {
@@ -429,10 +435,7 @@ suite("TodoService CRUD", () => {
 
 	test("guard: disallowed scope is rejected", async () => {
 		service.updateAccess(false, ["user"]);
-		await assert.rejects(
-			() => service.addTodo(TodoScope.workspace, "x"),
-			/not permitted/
-		);
+		await assert.rejects(() => service.addTodo(TodoScope.workspace, "x"), /not permitted/);
 		assert.throws(() => service.listTodos(TodoScope.workspace), /not permitted/);
 	});
 });
@@ -467,16 +470,19 @@ suite("TodoService ordered insert", () => {
 			get: () => [fakeFolder],
 		});
 		originalGetWorkspaceFolder = vscode.workspace.getWorkspaceFolder;
-		(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
-			(uri: vscode.Uri) => (uri.fsPath.startsWith(workspaceRoot) ? fakeFolder : undefined);
+		(
+			vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }
+		).getWorkspaceFolder = (uri: vscode.Uri) =>
+			uri.fsPath.startsWith(workspaceRoot) ? fakeFolder : undefined;
 	});
 
 	after(() => {
 		if (originalFolders) {
 			Object.defineProperty(vscode.workspace, "workspaceFolders", originalFolders);
 		}
-		(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
-			originalGetWorkspaceFolder;
+		(
+			vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }
+		).getWorkspaceFolder = originalGetWorkspaceFolder;
 	});
 
 	beforeEach(() => {
@@ -533,28 +539,17 @@ suite("TodoService ordered insert", () => {
 
 	test("batch: 'top' inserts the block at the front, not reversed", async () => {
 		await service.addTodos(TodoScope.user, [{ text: "existing" }], { position: "bottom" });
-		await service.addTodos(
-			TodoScope.user,
-			[{ text: "A" }, { text: "B" }, { text: "C" }],
-			{ position: "top" }
-		);
+		await service.addTodos(TodoScope.user, [{ text: "A" }, { text: "B" }, { text: "C" }], {
+			position: "top",
+		});
 		// First array element ends topmost; block keeps A,B,C order; "existing" stays last.
-		assert.deepStrictEqual(texts(store.getState().user.todos), [
-			"A",
-			"B",
-			"C",
-			"existing",
-		]);
+		assert.deepStrictEqual(texts(store.getState().user.todos), ["A", "B", "C", "existing"]);
 	});
 
 	test("batch: a notes/tasks mix keeps array order and per-item flags", async () => {
 		const result = await service.addTodos(
 			TodoScope.user,
-			[
-				{ text: "task-1" },
-				{ text: "note-1", isNote: true },
-				{ text: "task-2" },
-			],
+			[{ text: "task-1" }, { text: "note-1", isNote: true }, { text: "task-2" }],
 			{ position: "bottom" }
 		);
 		assert.deepStrictEqual(texts(result.todos), ["task-1", "note-1", "task-2"]);
@@ -597,10 +592,7 @@ suite("TodoService ordered insert", () => {
 
 	test("read-only mode blocks addTodos and addTodo with position", async () => {
 		service.updateAccess(true, ["user", "workspace", "file"]);
-		await assert.rejects(
-			() => service.addTodos(TodoScope.user, [{ text: "x" }]),
-			/read-only/
-		);
+		await assert.rejects(() => service.addTodos(TodoScope.user, [{ text: "x" }]), /read-only/);
 		await assert.rejects(
 			() => service.addTodo(TodoScope.user, "x", { position: "top" }),
 			/read-only/
@@ -643,10 +635,7 @@ suite("TodoService list filters & size-aware pagination", () => {
 		await service.addTodo(TodoScope.user, "a note", { isNote: true });
 
 		assert.strictEqual(service.listTodos(TodoScope.user, { kind: "task" }).todos.length, 1);
-		assert.strictEqual(
-			service.listTodos(TodoScope.user, { kind: "task" }).todos[0].text,
-			"a task"
-		);
+		assert.strictEqual(service.listTodos(TodoScope.user, { kind: "task" }).todos[0].text, "a task");
 		assert.strictEqual(service.listTodos(TodoScope.user, { kind: "note" }).todos.length, 1);
 		assert.strictEqual(service.listTodos(TodoScope.user, { kind: "all" }).todos.length, 2);
 		// Omitting kind behaves like "all".
@@ -714,10 +703,7 @@ suite("TodoService list filters & size-aware pagination", () => {
 		await service.addTodo(TodoScope.user, "fix the parser");
 
 		// "parser" is not a prefix of the text, so textPrefix misses it...
-		assert.strictEqual(
-			service.listTodos(TodoScope.user, { textPrefix: "parser" }).todos.length,
-			0
-		);
+		assert.strictEqual(service.listTodos(TodoScope.user, { textPrefix: "parser" }).todos.length, 0);
 		// ...but search matches the substring anywhere.
 		assert.strictEqual(service.listTodos(TodoScope.user, { search: "parser" }).todos.length, 1);
 	});
@@ -1030,5 +1016,121 @@ suite("TodoService getCounts", () => {
 		assert.ok(counts.user, "user scope should be present");
 		assert.strictEqual(counts.workspace, undefined, "workspace omitted when not allowed");
 		assert.strictEqual(counts.currentFile, undefined, "currentFile omitted when not allowed");
+	});
+});
+
+/**
+ * Phase 4 coverage: the tag read filter (todo_list_items `tag`), tag-scoped counts
+ * (todo_count_items `tag`), and the todo_set_tags write path, all backed by TodoService.
+ */
+suite("TodoService tags", () => {
+	let store: EnhancedStore<StoreState>;
+	let service: TodoService;
+
+	beforeEach(() => {
+		store = createStore();
+		const mock = createMockContext();
+		const storage = createMockStorage(mock.context);
+		service = new TodoService(mock.context, store as EnhancedStore<StoreState>, storage);
+		service.updateAccess(false, ["user", "workspace", "file"]);
+	});
+
+	test("tag filter returns only items carrying the tag (case-insensitive)", () => {
+		store.dispatch(
+			userActions.loadData({
+				data: [
+					makeTodo(1, "a", { tags: ["Plan", "bug"] }),
+					makeTodo(2, "b", { tags: ["plan"] }),
+					makeTodo(3, "c", { tags: ["other"] }),
+					makeTodo(4, "d"),
+				],
+			})
+		);
+
+		const result = service.listTodos(TodoScope.user, { tag: "PLAN" }).todos;
+		assert.deepStrictEqual(
+			result.map((t) => t.id),
+			[1, 2]
+		);
+	});
+
+	test("tag filter composes with kind and completed", () => {
+		store.dispatch(
+			userActions.loadData({
+				data: [
+					makeTodo(1, "open task", { tags: ["plan"] }),
+					makeTodo(2, "done task", { tags: ["plan"], completed: true }),
+					makeTodo(3, "note", { tags: ["plan"], isNote: true }),
+					makeTodo(4, "untagged task"),
+				],
+			})
+		);
+
+		const openPlanTasks = service.listTodos(TodoScope.user, {
+			tag: "plan",
+			kind: "task",
+			completed: false,
+		}).todos;
+		assert.deepStrictEqual(
+			openPlanTasks.map((t) => t.id),
+			[1]
+		);
+	});
+
+	test("empty / whitespace tag is a no-op filter", () => {
+		store.dispatch(
+			userActions.loadData({ data: [makeTodo(1, "a", { tags: ["plan"] }), makeTodo(2, "b")] })
+		);
+		assert.strictEqual(service.listTodos(TodoScope.user, { tag: "" }).todos.length, 2);
+		assert.strictEqual(service.listTodos(TodoScope.user, { tag: "   " }).todos.length, 2);
+	});
+
+	test("getCounts with a tag reports tag-scoped progress including completed", () => {
+		store.dispatch(
+			userActions.loadData({
+				data: [
+					makeTodo(1, "open", { tags: ["plan"] }),
+					makeTodo(2, "done", { tags: ["plan"], completed: true }),
+					makeTodo(3, "note", { tags: ["plan"], isNote: true }),
+					makeTodo(4, "other", { tags: ["misc"] }),
+				],
+			})
+		);
+
+		const counts = service.getCounts("plan");
+		assert.deepStrictEqual(counts.user, { todos: 1, notes: 1, completed: 1 });
+	});
+
+	test("getCounts without a tag is unchanged (no completed field)", () => {
+		store.dispatch(
+			userActions.loadData({ data: [makeTodo(1, "task"), makeTodo(2, "note", { isNote: true })] })
+		);
+		assert.deepStrictEqual(service.getCounts().user, { todos: 1, notes: 1 });
+	});
+
+	test("setTags normalizes and replaces tags", async () => {
+		const created = await service.addTodo(TodoScope.user, "task");
+		const id = created!.todo.id;
+
+		const result = await service.setTags(TodoScope.user, id, ["  Bug  ", "bug", "a b", "feature"]);
+		assert.deepStrictEqual(result.todo.tags, ["Bug", "feature"]);
+		assert.deepStrictEqual(store.getState().user.todos[0].tags, ["Bug", "feature"]);
+	});
+
+	test("setTags with an empty list clears the field", async () => {
+		const created = await service.addTodo(TodoScope.user, "task");
+		const id = created!.todo.id;
+		await service.setTags(TodoScope.user, id, ["bug"]);
+
+		const cleared = await service.setTags(TodoScope.user, id, []);
+		assert.strictEqual(cleared.todo.tags, undefined);
+		assert.strictEqual(store.getState().user.todos[0].tags, undefined);
+	});
+
+	test("setTags is blocked in read-only mode", async () => {
+		const created = await service.addTodo(TodoScope.user, "task");
+		const id = created!.todo.id;
+		service.updateAccess(true, ["user", "workspace", "file"]);
+		await assert.rejects(() => service.setTags(TodoScope.user, id, ["bug"]), /read-only/);
 	});
 });

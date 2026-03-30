@@ -6,23 +6,25 @@ import {
 	Input,
 	NgZone,
 	OnChanges,
+	OnDestroy,
 	OnInit,
 	Output,
 	Renderer2,
 	SimpleChanges,
 	ViewChild,
 } from "@angular/core";
-import { Subscription } from "rxjs";
+import { Observable, Subscription } from "rxjs";
 import { Todo, TodoScope } from "../../../../../src/todo/todoTypes";
+import { normalizeTags } from "../../../../../src/todo/tagUtils";
 import { TodoService } from "../todo.service";
 
 @Component({
-    selector: "todo-item",
-    templateUrl: "./todo-item.component.html",
-    styleUrls: ["./todo-item.component.scss"],
-    standalone: false
+	selector: "todo-item",
+	templateUrl: "./todo-item.component.html",
+	styleUrls: ["./todo-item.component.scss"],
+	standalone: false,
 })
-export class TodoItemComponent implements OnInit, OnChanges {
+export class TodoItemComponent implements OnInit, OnChanges, OnDestroy {
 	@Input() todo!: Todo;
 	@Input() scope!: TodoScope;
 	@Input() dragging = false;
@@ -39,6 +41,8 @@ export class TodoItemComponent implements OnInit, OnChanges {
 	enableMarkdownDiagrams: boolean = true;
 	enableMarkdownKatex: boolean = true;
 	collapsedPreviewLines: number = 1;
+	showTags!: Observable<boolean>;
+	tagInput = "";
 	diagramZoomOpen = false;
 	zoomSvgSource?: SVGSVGElement;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
@@ -59,11 +63,14 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		this.enableMarkdownDiagrams = this.todoService.config.enableMarkdownDiagrams;
 		this.enableMarkdownKatex = this.todoService.config.enableMarkdownKatex;
 		this.collapsedPreviewLines = this.todoService.config.collapsedPreviewLines ?? 1;
-		this.activeEditorSubscription = this.todoService.activeEditor(this.scope).subscribe((activeId) => {
-			if (activeId !== this.todo.id && this.isEditable) {
-				this.saveEdit();
-			}
-		});
+		this.showTags = this.todoService.showTags;
+		this.activeEditorSubscription = this.todoService
+			.activeEditor(this.scope)
+			.subscribe((activeId) => {
+				if (activeId !== this.todo.id && this.isEditable) {
+					this.saveEdit();
+				}
+			});
 	}
 
 	ngOnChanges(changes: SimpleChanges) {
@@ -198,6 +205,60 @@ export class TodoItemComponent implements OnInit, OnChanges {
 		event.stopPropagation();
 		if (this.todo.isNote === isNote) return;
 		this.todoService.toggleTodoNote(this.scope, { id: this.todo.id });
+	}
+
+	addTagFromInput() {
+		// Split on commas so a pasted "a, b" adds both; normalizeTags drops invalid/dupes.
+		const additions = this.tagInput.split(",");
+		const next = normalizeTags([...(this.todo.tags ?? []), ...additions]);
+		this.tagInput = "";
+		if (!this.sameTags(this.todo.tags, next)) {
+			this.commitTags(next);
+		}
+	}
+
+	removeTag(tag: string, event?: MouseEvent) {
+		// Stop the click here: commitTags re-renders the chip @for, detaching the
+		// clicked × button. The edit-mode global click listener (see edit()) would
+		// then see a detached event.target, treat it as a click outside the item,
+		// and call saveEdit() — kicking us out of edit mode. Adding a tag goes
+		// through the <input>, which isn't detached, so it doesn't hit this.
+		event?.stopPropagation();
+		const next = (this.todo.tags ?? []).filter((t) => t !== tag);
+		this.commitTags(next);
+	}
+
+	onTagInputKeydown(event: KeyboardEvent) {
+		// Enter adds the typed tag; Backspace on an empty input removes the last chip.
+		if (event.key === "Enter") {
+			event.preventDefault();
+			event.stopPropagation();
+			this.addTagFromInput();
+		} else if (event.key === "Backspace" && this.tagInput.length === 0) {
+			const tags = this.todo.tags ?? [];
+			if (tags.length > 0) {
+				event.preventDefault();
+				this.removeTag(tags[tags.length - 1]);
+			}
+		}
+	}
+
+	filterByTag(event: MouseEvent, tag: string) {
+		// Clicking a chip pulls up the whole group: set the search to `tag:<tag>`,
+		// the same predicate the list filter and the MCP `tag` filter use.
+		event.stopPropagation();
+		this.todoService.setSearchQuery(`tag:${tag}`);
+	}
+
+	private commitTags(tags: string[]) {
+		// Optimistic local update keeps the chips responsive; the store echoes it back.
+		this.todo = { ...this.todo, tags: tags.length > 0 ? tags : undefined };
+		this.todoService.setTags(this.scope, { id: this.todo.id, tags });
+	}
+
+	private sameTags(current: string[] | undefined, next: string[]): boolean {
+		const existing = current ?? [];
+		return existing.length === next.length && existing.every((t, i) => t === next[i]);
 	}
 
 	onDelete(todo: Todo): void {
