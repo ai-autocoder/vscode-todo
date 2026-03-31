@@ -13,6 +13,24 @@ Key Technologies:
 
 ---
 
+## Task tracking (VS Code Todo MCP)
+
+When the `todo_*` tools are connected, the MCP is this project's task tracker. Reach for it
+when the task at hand actually involves tracked work — don't call it on every turn:
+
+- **When the user refers to tasks, todos, plans, or "what's next"** (or you need to find
+  existing tracked work), read with `todo_list_items` / `todo_count_items` (`workspace` scope)
+  before searching the repo — the MCP is the source of truth for outstanding work.
+- **When you produce a multi-step plan worth keeping**, save it with `todo_add_items`
+  (`workspace`) and tag every step with one shared plan tag via `todo_set_tags`; re-read it
+  with the `tag` filter.
+- **When you finish a tracked step**, mark it with `todo_set_completed` (don't delete).
+
+Skip it for quick questions or one-off edits that aren't about tracked work. Each tool's
+description covers scopes, notes, filtering, and read-only behavior.
+
+---
+
 ## Common Commands
 
 ### Setup
