@@ -414,20 +414,19 @@ export default class McpServerHost implements vscode.Disposable {
 			{
 				capabilities: { resources: {}, tools: {} },
 				instructions:
-					"Use the todo_* tools to read, create, update, and delete VS Code Todo items and notes " +
-					"across the user, workspace, and currentFile scopes. todo_list_items reads todos/notes for " +
-					"a scope (optionally filtered by a 'tag' to pull up every item in a plan/group), " +
-					"todo_count_items returns per-scope counts for a quick overview (pass a 'tag' for " +
-					"tag-scoped progress counts), and " +
-					"todo_list_files lists files that have todos. todo_add_item creates one item and " +
-					"todo_add_items creates several in a single call preserving their given order (use it " +
-					"for an ordered list such as a multi-step plan); " +
-					"todo_update_text, todo_set_completed, todo_set_note, todo_set_markdown, and " +
-					"todo_set_tags change an existing item by id (todo_set_tags replaces an item's tags, " +
-					"used to group items into a plan); todo_delete_items removes items by id. All write tools are blocked " +
-					"when the server is in read-only mode. For the currentFile scope, pass filePath to target " +
-					"a specific file (it need not be open in the editor). The todo:// resources expose " +
-					"read-only snapshots of the same data.",
+					"The todo_* tools are this project's task tracker for the user's plans, todos, and " +
+					"notes. Reach for them when the task at hand actually involves tracked work — not on " +
+					"every turn:\n" +
+					"- When the user refers to tasks, todos, plans, or what's next (or you need to find " +
+					"existing tracked work), read with todo_list_items / todo_count_items ('workspace' " +
+					"scope) before searching the repo.\n" +
+					"- When you produce a multi-step plan worth keeping, save it with todo_add_items " +
+					"('workspace') and tag every step with one shared plan tag via todo_set_tags; re-read " +
+					"it with the 'tag' filter.\n" +
+					"- When you finish a tracked step, mark it with todo_set_completed (don't delete).\n" +
+					"Skip these for quick questions or one-off edits that aren't about tracked work. Each " +
+					"tool's own description covers scopes, notes, filtering, and read-only behavior. The " +
+					"todo:// resources expose read-only snapshots of the same data.",
 			}
 		);
 
