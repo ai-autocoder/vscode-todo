@@ -353,21 +353,35 @@ You can also narrow what's reachable with `vscodeTodo.mcp.allowedScopes` (defaul
 
 #### Tips for `CLAUDE.md` / agent instructions
 
-Add a note to your project's `CLAUDE.md` (or equivalent) so the agent uses the lists consistently:
+<details>
+<summary>Add a note to your project's <code>CLAUDE.md</code> / <code>AGENTS.md</code> (click to expand)</summary>
+
+Drop this into your project's `CLAUDE.md`, `AGENTS.md`, or equivalent so the agent uses the
+lists consistently — and only when the work actually calls for it (so it doesn't read your
+todos on every unrelated turn):
 
 ```markdown
-## Task tracking
+## Task tracking (VS Code Todo MCP)
 
-This project has the VS Code Todo MCP server connected. Use it to track work:
+When the `todo_*` tools are connected, the MCP is this project's task tracker. Reach for it
+when the task at hand actually involves tracked work — don't call it on every turn:
 
-- Before starting, check open items with the workspace todo list.
-- When you discover follow-up work, add a todo to the **workspace** list
-  (use the **user** list only for things that apply across all my projects).
-- Mark a todo completed as soon as the work is done — don't delete it.
-- Prefer notes (not tasks) for reference material like commands or snippets.
+- **When the user refers to tasks, todos, plans, or "what's next"** (or you need to find
+  existing tracked work), read with `todo_list_items` / `todo_count_items` (`workspace` scope)
+  before searching the repo — the MCP is the source of truth for outstanding work.
+- **When you produce a multi-step plan worth keeping**, save it with `todo_add_items`
+  (`workspace`) and tag every step with one shared plan tag via `todo_set_tags`; re-read it
+  with the `tag` filter.
+- **When you finish a tracked step**, mark it with `todo_set_completed` (don't delete).
+
+Skip it for quick questions or one-off edits that aren't about tracked work. Each tool's
+description covers scopes, notes, filtering, and read-only behavior.
 ```
 
-(For read-only setups, drop the "add/mark/complete" lines and keep only the "check open items" guidance.)
+For read-only setups (`vscodeTodo.mcp.readOnly: true`), drop the "save"/"mark" lines and keep
+only the "read existing tracked work" guidance.
+
+</details>
 
 <details>
 <summary>Full tool &amp; resource reference (click to expand)</summary>
