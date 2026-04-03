@@ -255,6 +255,24 @@ button.danger {
 	}
 }
 
+/*
+ * Text buttons (Add, Save, Cancel, …). The toolkit paints the border on the
+ * inner `.control`, where a translucent `button.border` (e.g. Dark Modern's
+ * #ffffff1a) doubles over the host fill and reads as a lighter second edge.
+ * Move the outline onto the component (host) and match VS Code's native button
+ * radius of 4px (no radius CSS var is exposed to webviews; toolkit default is 2px).
+ * --vscode-contrastBorder is set only in high-contrast themes, so regular themes
+ * show no border while high contrast outlines the whole component.
+ */
+vscode-button:not([appearance="icon"]) {
+	border: calc(var(--border-width, 1) * 1px) solid var(--vscode-contrastBorder, transparent);
+	border-radius: 4px;
+}
+
+vscode-button:not([appearance="icon"])::part(control) {
+	border-color: transparent;
+}
+
 vscode-button[appearance="icon"] {
 	display: flex;
 	align-self: center;

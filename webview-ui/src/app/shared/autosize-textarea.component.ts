@@ -30,7 +30,8 @@ import {
 				overflow-y: hidden;
 				color: var(--vscode-input-foreground);
 				background: var(--vscode-input-background);
-				border-radius: calc(var(--corner-radius-round) * 1px);
+				/* Match VS Code's native input radius (4px); no radius CSS var is exposed to webviews. */
+				border-radius: 4px;
 				border: calc(var(--border-width) * 1px) solid var(--vscode-dropdown-border);
 				font-style: inherit;
 				font-variant: inherit;
