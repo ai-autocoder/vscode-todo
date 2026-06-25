@@ -1,5 +1,11 @@
 # Change Log
 
+## [2.2.0]
+
+- Add built-in MCP server so AI agents can read and manage todos, notes, and plans (list, count, add, edit, delete, complete, with filtering, search, sorting, pagination, and tags), with start/stop controls and status in the UI.
+- Add Tags: tag todos and notes, edit them via chips, and filter by tag in the webview and MCP.
+- Add plan archiving with cascade options.
+
 ## [2.1.0]
 
 - Webview: add always-visible header search with shared filtering, clear-all icon, and header button layout tweaks.
