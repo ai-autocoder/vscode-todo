@@ -1,289 +1,50 @@
-# VS Code Todo - Developer Guide
+@AGENTS.md
 
-## Project Overview
+# VS Code Todo — Claude Code guide
 
-VS Code Todo is a VS Code extension providing comprehensive todo list, notes, and task management.
-Published on VS Code Marketplace and Open VSX. Version 1.17.1.
+The import above pulls in **AGENTS.md** (project structure, build/test commands, coding
+style, commit conventions, security rules, and the VS Code Todo MCP task-tracking
+workflow). This file adds only the architecture map and a couple of non-obvious notes.
 
-Key Technologies:
-- Frontend: Angular 20.x with Material, Mermaid, KaTeX
-- Backend: TypeScript, Node.js, Redux Toolkit
-- Testing: Mocha (extension), Karma/Jasmine (webview)
-- Code Quality: ESLint, Prettier, strict TypeScript
-
----
-
-## Task tracking (VS Code Todo MCP)
-
-When the `todo_*` tools are connected, the MCP is this project's task tracker. Reach for it
-when the task at hand actually involves tracked work — don't call it on every turn:
-
-- **When the user refers to tasks, todos, plans, or "what's next"** (or you need to find
-  existing tracked work), read with `todo_list_items` / `todo_count_items` (`workspace` scope)
-  before searching the repo — the MCP is the source of truth for outstanding work.
-- **When you produce a multi-step plan worth keeping**, save it with `todo_add_items`
-  (`workspace`) and tag every step with one shared plan tag via `todo_set_tags`; re-read it
-  with the `tag` filter.
-- **When you finish a tracked step**, mark it with `todo_set_completed` (don't delete).
-
-Skip it for quick questions or one-off edits that aren't about tracked work. Each tool's
-description covers scopes, notes, filtering, and read-only behavior.
+VS Code extension for todo lists, notes, and task management. Published on the VS Code
+Marketplace (`FrancescoAnzalone.vsc-todo`) and Open VSX. Angular 20.x (Material, Mermaid,
+KaTeX) webview + TypeScript/Node extension host with Redux Toolkit.
 
 ---
 
-## Common Commands
+## Architecture
 
-### Setup
-npm run install:all          # Install both extension and webview deps
-npm install                  # Root extension only
-cd webview-ui && npm install # Webview only
+Two halves communicating over VS Code's webview messaging:
+- **Extension host** (`src/`) — TypeScript, Redux store, VS Code APIs
+- **Webview UI** (`webview-ui/`) — Angular SPA
 
-### Build
-npm run compile              # TypeScript to out/
-npm run watch                # Watch mode
-npm run build:webview        # Angular build to build/
-npm run start:webview        # Dev server localhost:4200
+### Extension modules (`src/`)
+- `extension.ts` — entry point: store init, command registration
+- `todo/store.ts` — Redux store and slices
+- `todo/todoTypes.ts` — core interfaces (`Todo`, `TodoScope`, slices)
+- `todo/todoUtils.ts` — sorting, filtering, auto-delete
+- `todo/exporter.ts` / `todo/importer.ts` — JSON/Markdown export & import
+- `panels/TodoViewProvider.ts` — main webview (activity bar)
+- `storage/` — `StorageSyncManager` persistence layer
+- `editorHandler.ts` — active-editor tracking
+- `statusBarItem.ts` — status bar integration
+- `utilities/` — config, theme, logging
 
-### Linting & Testing
-npm run lint                 # ESLint on src/
-npm run pretest              # compile + lint
-npm test                     # Mocha extension tests
-cd webview-ui && npm test    # Karma tests
+### Redux slices
+`user` (per-profile, synced via profile-sync or GitHub gist), `workspace`,
+`currentFile` (auto-updates with the active editor), plus internal
+`editorFocusAndRecords` and `actionTracker` (change-tracking middleware).
 
-### Publishing
-npm run vscode:prepublish    # Prep for publishing
-
----
-
-## Architecture Overview
-
-VS Code Extension Structure:
-- Extension Host (src/) - TypeScript, Redux store, VS Code APIs
-- Webview UI (webview-ui/) - Angular app communicating via messaging
-
-### Core Extension Modules
-
-extension.ts            - Entry point, store init, command registration
-todo/store.ts           - Redux store with slices
-todo/todoTypes.ts       - Interfaces: Todo, TodoScope, Slices
-todo/todoUtils.ts       - Utilities: sorting, filtering, auto-delete
-todo/exporter.ts        - Export to JSON/Markdown
-todo/importer.ts        - Import from JSON/Markdown
-panels/TodoViewProvider.ts - Main webview (activity bar)
-panels/HelloWorldPanel.ts   - Legacy webview panel
-storage/StorageSyncManager  - Persistence layer
-editorHandler.ts        - Active editor tracking
-statusBarItem.ts        - Status bar integration
-utilities/              - Config, theme, logging, helpers
-
-### Redux Store Slices
-
-user            - User-scope todos (per profile, synced via profile-sync or GitHub)
-workspace       - Workspace-scoped todos
-currentFile     - File-specific todos (auto-updates)
-editorFocusAndRecords - Internal tracking
-actionTracker   - Middleware for change tracking
-
-### Webview Architecture
-
-Angular 20.x SPA with components:
-- app.component.ts - Root, messaging handler
-- header/ - Toolbar buttons
-- todo/ - Main list, items, new todo input, file list
-- shared/ - Reusable components
-- pipes/ - file-name, safe-html
-
-Features:
-- ngx-markdown rendering with PrismJS syntax highlighting
-- Mermaid diagram support
-- KaTeX math expressions
-- Drag-drop reordering (CDK)
-- Angular Material UI
-- Clipboard integration
-
-### Data Structure
-
-interface Todo {
-  id: number
-  text: string
-  completed: boolean
-  creationDate: string
-  completionDate?: string
-  isMarkdown: boolean
-  isNote: boolean
-  collapsed?: boolean
-}
-
-TodoScope enum: user, workspace, currentFile
+### Webview (`webview-ui/src/app/`)
+Angular 20 + Material root `app.component.ts` handles messaging. Components under
+`header/`, `todo/`, `shared/`; markdown via ngx-markdown/PrismJS, Mermaid diagrams,
+KaTeX math, CDK drag-drop.
 
 ---
 
-## Coding Conventions
+## Settings
 
-Naming:
-- Variables/Functions: camelCase
-- Classes/Enums/Interfaces: PascalCase
-- Constants: UPPER_CASE
-- Redux actions: slice/actionName
-
-TypeScript:
-- Strict mode enabled
-- ES6 target
-- CommonJS modules
-
-Prettier:
-- Tab width: 1 (tabs)
-- Print width: 100
-- Semicolons: enabled
-- Trailing commas: ES5
-
----
-
-## Important Directories
-
-src/                    - Extension source
-src/panels/             - Webview providers
-src/storage/            - Persistence
-src/todo/               - Core logic
-src/utilities/          - Helpers
-src/test/               - Extension tests
-webview-ui/             - Angular app
-webview-ui/src/app/     - Components/services
-out/                    - Compiled JS (generated)
-webview-ui/build/       - Built webview (generated)
-
----
-
-## VS Code Settings
-
-All settings under vscodeTodo.*:
-
-sync.github.gistId             - GitHub gist ID (32-char hex string)
-sync.github.userFile           - User file in gist (default: user-todos.json)
-sync.github.workspaceFile      - Workspace file in gist (auto-derived if not set)
-sync.github.pollInterval       - Poll interval in seconds (30-600)
-taskSortingOptions             - sortType1, sortType2, disabled
-createMarkdownByDefault         - boolean
-createPosition                 - top or bottom
-enableLineNumbers              - boolean
-enableMarkdownDiagrams         - boolean
-enableMarkdownKaTeX            - boolean
-enableWideView                 - boolean
-autoDeleteCompletedAfterDays   - number (0 = disabled)
-collapsedPreviewLines          - number (min 1)
-webviewFontFamily              - string
-webviewFontSize                - number
-
-Note: User and workspace sync modes are stored in extension internal storage, not settings.
-Access via commands: "Todo: Select User Sync Mode" / "Todo: Select Workspace Sync Mode"
-
----
-
-## Development Workflow
-
-Setup:
-1. npm run install:all
-2. Open in VS Code
-
-Running:
-1. Extension: F5 to launch (opens new window)
-2. Webview: npm run start:webview (localhost:4200)
-
-Testing:
-- Extension: npm test (Mocha)
-- Webview: cd webview-ui && npm test (Karma)
-
-Before commit:
-npm run lint
-npm run compile
-npm run build:webview
-npm test
-
-Commit format (Conventional Commits):
-feat(extension): add feature
-fix(webview): fix bug
-docs: update
-chore(deps): upgrade
-
----
-
-## Deployment
-
-Build:
-npm run vscode:prepublish
-npm run build:webview
-
-Published to:
-- VS Code Marketplace: FrancescoAnzalone.vsc-todo
-- Open VSX Registry
-
----
-
-## Security
-
-Webview:
-- Strict CSP
-- Use getNonce() for inline scripts
-- Use getUri() for resources
-- Avoid eval()
-
-Storage:
-- No sensitive data unencrypted
-- Validate imports
-- Handle file path differences
-
----
-
-## Useful Resources
-
-VS Code Extension API: https://code.visualstudio.com/api
-Redux Toolkit: https://redux-toolkit.js.org/
-Angular: https://angular.io/docs
-ngx-markdown: https://github.com/jfcere/ngx-markdown
-Mermaid: https://mermaid-js.github.io/mermaid/
-KaTeX: https://katex.org/
-PrismJS: https://prismjs.com/
-
-Repository Files:
-- AGENTS.md - AI development guidelines
-- README.md - User documentation
-- CHANGELOG.md - Release history
-- docs/sync-modes-prd.md - Sync feature spec
-
----
-
-## Troubleshooting
-
-Extension not loading:
-- npm run compile
-- Check console for errors
-- Verify .vscodeignore
-
-Webview not appearing:
-- npm run build:webview
-- Check webview-ui/build/
-- Verify asset paths
-
-Tests failing:
-- npm run compile
-- cd webview-ui && npm install
-- Check Node.js version (18+)
-
-Store not persisting:
-- Verify StorageSyncManager init
-- Check storage keys
-- Ensure context.workspaceState accessible
-
----
-
-## Key Files
-
-package.json                    - Metadata, commands, settings
-src/extension.ts                - Entry point
-src/todo/store.ts               - Redux store
-src/panels/TodoViewProvider.ts  - Main webview
-webview-ui/src/app/app.component.ts - Angular root
-AGENTS.md                       - AI guidelines
-.eslintrc.json                  - Linting
-.prettierrc                     - Formatting
-tsconfig.json                   - TypeScript config
+All settings live under `vscodeTodo.*` — see the `contributes.configuration` block in
+`package.json` for the authoritative list. Non-obvious: user/workspace **sync modes** are
+not settings; they're stored in extension internal storage and set via the
+"Todo: Select User/Workspace Sync Mode" commands.
