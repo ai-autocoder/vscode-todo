@@ -3,6 +3,9 @@
 	"compileOnSave": false,
 	"compilerOptions": {
     "baseUrl": "./",
+    "paths": {
+      "@vsc-todo/core": ["../packages/core/src/index.ts"]
+    },
     "outDir": "./dist/out-tsc",
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
