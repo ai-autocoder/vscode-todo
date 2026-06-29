@@ -27,6 +27,7 @@
 		"typecheck": "tsc -p ./tsconfig.json --noEmit"
 	},
 	"devDependencies": {
+		"fake-indexeddb": "^6.2.5",
 		"typescript": "~5.9.2",
 		"vitest": "^2.1.8"
 	}
