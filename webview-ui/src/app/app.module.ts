@@ -20,6 +20,9 @@ import { ClipboardButtonComponent } from "./shared/clipboard-button.component";
 import { IconComponent } from "./shared/icon/icon.component";
 import { HeaderComponent } from "./header/header.component";
 import { MermaidZoomOverlayComponent } from "./shared/mermaid-zoom-overlay/mermaid-zoom-overlay.component";
+import { provideServiceWorker } from "@angular/service-worker";
+import { dataGatewayProvider } from "./data/data.providers";
+import { environment } from "../environments/environment";
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
@@ -67,7 +70,14 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 		ClipboardButtonComponent,
 		MermaidZoomOverlayComponent
 	],
-	providers: [],
+	providers: [
+		dataGatewayProvider,
+		// Service worker only in the standalone PWA build; never registered in the webview.
+		provideServiceWorker("ngsw-worker.js", {
+			enabled: environment.pwa && environment.production,
+			registrationStrategy: "registerWhenStable:30000",
+		}),
+	],
 	bootstrap: [AppComponent],
 	schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })

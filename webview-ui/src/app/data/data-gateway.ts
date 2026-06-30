@@ -29,6 +29,7 @@
  * this interface is the contract the PWA's `GistGateway` is built against.
  */
 
+import { InjectionToken } from "@angular/core";
 import type { Observable } from "rxjs";
 import type {
 	ExportFormats,
@@ -109,5 +110,11 @@ export interface DataGateway {
 	stopMcpServer(): void;
 }
 
-/** Marker used by the eventual TodoService refactor for DI. */
-export const DATA_GATEWAY = "DATA_GATEWAY";
+/**
+ * DI token for the active gateway. Provided once (see `data.providers.ts`) by selecting
+ * `VsCodeGateway` or `GistGateway` from the build environment. Resolves to a
+ * `Promise<DataGateway>` because the PWA gateway is code-split behind a dynamic import; the
+ * eventual `TodoService` refactor injects and awaits this instead of calling
+ * `vscode.postMessage` directly.
+ */
+export const DATA_GATEWAY = new InjectionToken<Promise<DataGateway>>("DATA_GATEWAY");
