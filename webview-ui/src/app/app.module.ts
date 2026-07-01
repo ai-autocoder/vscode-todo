@@ -78,6 +78,8 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 			registrationStrategy: "registerWhenStable:30000",
 		}),
 	],
+	// Exported so the standalone PWA's shell (PwaAppModule) can embed <app-root>.
+	exports: [AppComponent],
 	bootstrap: [AppComponent],
 	schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })

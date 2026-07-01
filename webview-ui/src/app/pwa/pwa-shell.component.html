@@ -1,0 +1,92 @@
+<app-root *ngIf="showApp"></app-root>
+
+<div class="connect-screen" *ngIf="!showApp" [ngSwitch]="state.phase">
+	<div class="card">
+		<h1>VS Code Todo</h1>
+		<p class="subtitle">Sync your todos with the VS Code Todo extension via a GitHub Gist.</p>
+
+		<ng-container *ngSwitchCase="'disconnected'">
+			<button class="primary" (click)="connect()">Connect GitHub</button>
+			<p class="hint">
+				Uses the GitHub device flow with the <code>gist</code> scope only. Your token stays on
+				this device.
+			</p>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'requesting-code'">
+			<p>Requesting a sign-in code…</p>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'awaiting-authorization'">
+			<p>Enter this code on GitHub to authorize:</p>
+			<div class="user-code" *ngIf="state.phase === 'awaiting-authorization'">
+				{{ state.userCode }}
+			</div>
+			<a
+				*ngIf="state.phase === 'awaiting-authorization'"
+				class="primary link-button"
+				[href]="state.verificationUri"
+				target="_blank"
+				rel="noopener"
+			>
+				Open github.com/login/device
+			</a>
+			<p class="hint">Waiting for authorization…</p>
+			<button (click)="cancel()">Cancel</button>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'discovering'">
+			<p>Looking for your "VS Code Todo Sync" gist…</p>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'needs-gist'">
+			<p>No sync gist found on your account.</p>
+			<p class="hint">
+				Paste the id of your sync gist (the 32-character part of its URL). Set one up first in
+				VS Code via <em>Todo: Connect GitHub</em> if you haven't yet.
+			</p>
+			<input
+				type="text"
+				[(ngModel)]="gistIdInput"
+				placeholder="0123456789abcdef0123456789abcdef"
+				spellcheck="false"
+			/>
+			<div class="row">
+				<button class="primary" (click)="submitGistId()">Use this gist</button>
+				<button (click)="disconnect()">Disconnect</button>
+			</div>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'needs-files'">
+			<p>Choose which lists to sync:</p>
+			<ng-container *ngIf="state.phase === 'needs-files'">
+				<label>User list</label>
+				<select [(ngModel)]="userFileChoice">
+					<option *ngFor="let file of state.userFiles" [value]="file.fullPath">
+						{{ file.fullPath }}
+					</option>
+					<option [value]="newUserFileValue">New file ({{ defaultUserFileName }})</option>
+				</select>
+				<label>Workspace list (optional)</label>
+				<select [(ngModel)]="workspaceFileChoice">
+					<option value="">None</option>
+					<option *ngFor="let file of state.workspaceFiles" [value]="file.fullPath">
+						{{ file.fullPath }}
+					</option>
+				</select>
+			</ng-container>
+			<div class="row">
+				<button class="primary" (click)="confirmFiles()">Start syncing</button>
+				<button (click)="disconnect()">Disconnect</button>
+			</div>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'error'">
+			<p class="error" *ngIf="state.phase === 'error'">{{ state.message }}</p>
+			<div class="row">
+				<button class="primary" (click)="retry()">Retry</button>
+				<button (click)="disconnect()">Disconnect</button>
+			</div>
+		</ng-container>
+	</div>
+</div>

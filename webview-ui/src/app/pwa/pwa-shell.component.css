@@ -1,0 +1,114 @@
+:host {
+	display: block;
+	height: 100%;
+}
+
+.connect-screen {
+	min-height: 100dvh;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+	background-color: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-font-family);
+}
+
+.card {
+	width: 100%;
+	max-width: 420px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 24px;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 8px;
+	background-color: var(--vscode-editorWidget-background);
+}
+
+h1 {
+	margin: 0;
+	font-size: 1.4em;
+	color: var(--vscode-settings-headerForeground);
+}
+
+.subtitle,
+.hint {
+	margin: 0;
+	color: var(--vscode-descriptionForeground);
+	font-size: 0.9em;
+}
+
+.error {
+	margin: 0;
+	color: var(--vscode-errorForeground);
+}
+
+.user-code {
+	align-self: center;
+	padding: 10px 18px;
+	border: 1px dashed var(--vscode-focusBorder);
+	border-radius: 6px;
+	font-family: monospace;
+	font-size: 1.8em;
+	letter-spacing: 0.15em;
+	user-select: all;
+}
+
+button,
+.link-button {
+	padding: 8px 14px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 4px;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	font-family: inherit;
+	font-size: 0.95em;
+	text-align: center;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+button.primary,
+.link-button.primary {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+button.primary:hover,
+.link-button.primary:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
+.row {
+	display: flex;
+	gap: 8px;
+}
+
+.row > * {
+	flex: 1;
+}
+
+label {
+	font-size: 0.85em;
+	color: var(--vscode-descriptionForeground);
+}
+
+input,
+select {
+	padding: 8px;
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-family: inherit;
+	font-size: 0.95em;
+}
+
+input::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+code {
+	font-family: monospace;
+}

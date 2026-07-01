@@ -52,10 +52,13 @@ export class IndexedDbCacheStore implements CacheStore {
 
 const TOKEN_KEY = "github-token";
 const GIST_ID_KEY = "gist-id";
+const USER_FILE_KEY = "user-file";
+const WORKSPACE_FILE_KEY = "workspace-file";
 
 /**
- * Stores the GitHub `gist`-scoped token and the selected gist id for the PWA. A single
- * IndexedDB object store with two well-known keys; reads return `undefined` when disconnected.
+ * Stores the PWA's connection settings: the GitHub `gist`-scoped token, the selected gist id,
+ * and the chosen `user-*.json`/`workspace-*.json` file names. A single IndexedDB object store
+ * with well-known keys; reads return `undefined` when not set.
  */
 export class IndexedDbTokenStore {
 	private readonly kv: KeyValueStore;
@@ -80,9 +83,27 @@ export class IndexedDbTokenStore {
 		await this.kv.set<string>(GIST_ID_KEY, gistId);
 	}
 
-	/** Clears the token and gist id — the "Disconnect" action. */
+	async getUserFile(): Promise<string | undefined> {
+		return this.kv.get<string>(USER_FILE_KEY);
+	}
+
+	async setUserFile(fileName: string): Promise<void> {
+		await this.kv.set<string>(USER_FILE_KEY, fileName);
+	}
+
+	async getWorkspaceFile(): Promise<string | undefined> {
+		return this.kv.get<string>(WORKSPACE_FILE_KEY);
+	}
+
+	async setWorkspaceFile(fileName: string): Promise<void> {
+		await this.kv.set<string>(WORKSPACE_FILE_KEY, fileName);
+	}
+
+	/** Clears everything — the "Disconnect" action. */
 	async clear(): Promise<void> {
 		await this.kv.delete(TOKEN_KEY);
 		await this.kv.delete(GIST_ID_KEY);
+		await this.kv.delete(USER_FILE_KEY);
+		await this.kv.delete(WORKSPACE_FILE_KEY);
 	}
 }

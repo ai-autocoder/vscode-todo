@@ -96,6 +96,14 @@
 								{
 									"replace": "src/environments/environment.ts",
 									"with": "src/environments/environment.pwa.ts"
+								},
+								{
+									"replace": "src/bootstrap.ts",
+									"with": "src/bootstrap.pwa.ts"
+								},
+								{
+									"replace": "src/app/data/data.providers.ts",
+									"with": "src/app/data/data.providers.pwa.ts"
 								}
 							],
 							"assets": [

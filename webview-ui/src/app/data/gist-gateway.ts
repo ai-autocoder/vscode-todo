@@ -19,15 +19,18 @@
  * no-ops or open GitHub directly, since there is no extension host.
  */
 
-import { Observable, Subject } from "rxjs";
+import { BehaviorSubject, Observable, Subject } from "rxjs";
 import {
 	GistClient,
 	GistSyncEngine,
 	DeviceFlowClient,
+	DeviceFlowError,
 	IndexedDbCacheStore,
 	IndexedDbTokenStore,
 	SYNC_GIST_DESCRIPTION,
 	DefaultFileNames,
+	GIST_ID_REGEX,
+	type GistFileInfo,
 	type GlobalGistData,
 	type WorkspaceGistData,
 	type ReducerConfig,
@@ -60,6 +63,27 @@ export interface GistGatewayConfig {
 	/** Debounce window for pushing local edits to the gist (ms). Defaults to 3000. */
 	pushDebounceMs?: number;
 }
+
+/**
+ * The connection flow as a state machine, driven by {@link GistGateway.connectGitHub} /
+ * {@link GistGateway.submitGistId} / {@link GistGateway.chooseFiles} and observed by the PWA's
+ * connect screen. Phases advance: disconnected → requesting-code → awaiting-authorization
+ * (user enters the code on GitHub) → discovering → (needs-gist →) needs-files → connected.
+ */
+export type GistConnectionState =
+	| { phase: "disconnected" }
+	| { phase: "requesting-code" }
+	| {
+			phase: "awaiting-authorization";
+			userCode: string;
+			verificationUri: string;
+			expiresIn: number;
+	  }
+	| { phase: "discovering" }
+	| { phase: "needs-gist" }
+	| { phase: "needs-files"; userFiles: GistFileInfo[]; workspaceFiles: GistFileInfo[] }
+	| { phase: "connected"; userFile: string; workspaceFile?: string }
+	| { phase: "error"; message: string };
 
 const DEFAULT_CONFIG: Config = {
 	taskSortingOptions: "sortType1",
@@ -118,8 +142,15 @@ export class GistGateway implements DataGateway {
 
 	private token: string | undefined;
 	private gistId: string | undefined;
-	private userFile = DefaultFileNames.user;
-	private workspaceFile = DefaultFileNames.workspace("default");
+	private userFile: string | undefined;
+	private workspaceFile: string | undefined;
+
+	private readonly _connection = new BehaviorSubject<GistConnectionState>({
+		phase: "disconnected",
+	});
+	/** Connection flow state for the PWA's connect screen. */
+	readonly connection: Observable<GistConnectionState> = this._connection.asObservable();
+	private connectAbort: AbortController | undefined;
 
 	private user = newUserSlice();
 	private workspace = newWorkspaceSlice();
@@ -145,16 +176,41 @@ export class GistGateway implements DataGateway {
 
 	// --- lifecycle ---
 
-	async ready(): Promise<void> {
+	/**
+	 * Restores a persisted session (token + gist + file selections) and reports the resulting
+	 * connection phase. The PWA shell calls this once at startup to decide whether to show the
+	 * connect screen or the app.
+	 */
+	async restoreSession(): Promise<GistConnectionState> {
 		this.token = await this.tokenStore.getToken();
 		this.gistId = await this.tokenStore.getGistId();
+		this.userFile = await this.tokenStore.getUserFile();
+		this.workspaceFile = await this.tokenStore.getWorkspaceFile();
 		if (this.gistId) {
 			this.engine = new GistSyncEngine({ client: this.client, gistId: this.gistId });
 		}
+
+		let state: GistConnectionState;
+		if (!this.token) {
+			state = { phase: "disconnected" };
+		} else if (!this.gistId) {
+			state = { phase: "needs-gist" };
+		} else if (!this.userFile) {
+			state = await this.enterFileSelection();
+		} else {
+			state = { phase: "connected", userFile: this.userFile, workspaceFile: this.workspaceFile };
+		}
+		this._connection.next(state);
+		this.emitGitHubStatus();
+		this.emitSyncInfo();
+		return state;
+	}
+
+	async ready(): Promise<void> {
 		this.emitReload();
 		this.emitGitHubStatus();
 		this.emitSyncInfo();
-		if (this.token && this.gistId) {
+		if (this.token && this.gistId && this.userFile) {
 			void this.pullAll();
 		}
 	}
@@ -205,14 +261,15 @@ export class GistGateway implements DataGateway {
 	}
 
 	private emitSyncInfo(): void {
+		const configured = !!this.token && !!this.gistId && !!this.userFile;
 		const info: GitHubSyncInfo = {
-			isGitHubSyncEnabled: !!this.token && !!this.gistId,
-			userSyncEnabled: !!this.token && !!this.gistId,
-			workspaceSyncEnabled: !!this.token && !!this.gistId,
+			isGitHubSyncEnabled: configured,
+			userSyncEnabled: configured,
+			workspaceSyncEnabled: configured && !!this.workspaceFile,
 			userSyncMode: "github",
 			workspaceSyncMode: "github",
-			userFile: this.userFile,
-			workspaceFile: this.workspaceFile,
+			userFile: this.userFile ?? DefaultFileNames.user,
+			workspaceFile: this.workspaceFile ?? "",
 			isWorkspaceOpen: true,
 		};
 		this._messages.next({ type: MessageActionsToWebview.updateGitHubSyncInfo, payload: info });
@@ -246,13 +303,15 @@ export class GistGateway implements DataGateway {
 	}
 
 	private async reconcileUser(): Promise<void> {
-		if (!this.engine) {
+		const engine = this.engine;
+		const fileName = this.userFile;
+		if (!engine || !fileName) {
 			return;
 		}
 		this.emitSyncing(true);
 		try {
 			const local: GlobalGistData = { userTodos: this.user.todos };
-			const res = await this.engine.reconcileUser(this.userFile, local);
+			const res = await engine.reconcileUser(fileName, local);
 			if (res.success && res.data) {
 				if (res.data.changedRemotely) {
 					this.user.todos = res.data.data.userTodos;
@@ -267,7 +326,9 @@ export class GistGateway implements DataGateway {
 	}
 
 	private async reconcileWorkspace(): Promise<void> {
-		if (!this.engine) {
+		const engine = this.engine;
+		const fileName = this.workspaceFile;
+		if (!engine || !fileName) {
 			return;
 		}
 		this.emitSyncing(true);
@@ -278,7 +339,7 @@ export class GistGateway implements DataGateway {
 				filesData: {},
 				filesDataPaths: {},
 			};
-			const res = await this.engine.reconcileWorkspace(this.workspaceFile, local);
+			const res = await engine.reconcileWorkspace(fileName, local);
 			if (res.success && res.data && res.data.changedRemotely) {
 				this.workspace.todos = res.data.data.workspaceTodos;
 				this.workspace.lastActionType = "loadData";
@@ -387,39 +448,142 @@ export class GistGateway implements DataGateway {
 	}
 
 	/**
-	 * Runs the GitHub Device Flow, persists the token, auto-discovers the sync gist by its
-	 * description, and pulls. Surfaces progress/identity through the existing status messages.
+	 * Runs the GitHub Device Flow, advancing {@link connection} through the phases the connect
+	 * screen renders: requesting-code → awaiting-authorization (shows `user_code` +
+	 * verification URL) → discovering → needs-gist | needs-files. Errors land in the "error"
+	 * phase instead of throwing, so the UI can offer a retry.
 	 */
 	async connectGitHub(): Promise<void> {
-		const code = await this.deviceFlow.requestDeviceCode();
-		// The connection UI (next sub-step) listens for this to show the user code; for now we
-		// open GitHub's verification page so the flow is usable even before that UI lands.
-		window.open(code.verification_uri, "_blank", "noopener");
-		const token = await this.deviceFlow.pollForToken(code.device_code, code.interval);
+		this.connectAbort?.abort();
+		this.connectAbort = new AbortController();
+		try {
+			this._connection.next({ phase: "requesting-code" });
+			const code = await this.deviceFlow.requestDeviceCode();
+			this._connection.next({
+				phase: "awaiting-authorization",
+				userCode: code.user_code,
+				verificationUri: code.verification_uri,
+				expiresIn: code.expires_in,
+			});
+			const token = await this.deviceFlow.pollForToken(code.device_code, code.interval, {
+				signal: this.connectAbort.signal,
+			});
 
-		this.token = token;
-		await this.tokenStore.setToken(token);
-		this.emitGitHubStatus();
+			this.token = token;
+			await this.tokenStore.setToken(token);
+			this.emitGitHubStatus();
 
-		const found = await this.client.findGistByDescription(SYNC_GIST_DESCRIPTION);
-		if (found.success && found.data) {
-			this.gistId = found.data.id;
-			await this.tokenStore.setGistId(this.gistId);
-			this.engine = new GistSyncEngine({ client: this.client, gistId: this.gistId });
+			this._connection.next({ phase: "discovering" });
+			const found = await this.client.findGistByDescription(SYNC_GIST_DESCRIPTION);
+			if (found.success && found.data) {
+				await this.useGist(found.data.id);
+			} else {
+				this._connection.next({ phase: "needs-gist" });
+			}
+		} catch (error) {
+			if (error instanceof DeviceFlowError && error.code === "cancelled") {
+				this._connection.next({ phase: "disconnected" });
+				return;
+			}
+			const message = error instanceof Error ? error.message : "Connection failed.";
+			this._connection.next({ phase: "error", message });
 		}
+	}
+
+	/** Aborts an in-progress device-flow authorization and returns to the disconnected phase. */
+	cancelConnect(): void {
+		this.connectAbort?.abort();
+	}
+
+	/** Manual gist selection (paste the 32-hex id) for when auto-discovery finds nothing. */
+	async submitGistId(gistId: string): Promise<void> {
+		const trimmed = gistId.trim();
+		if (!GIST_ID_REGEX.test(trimmed)) {
+			this._connection.next({ phase: "error", message: "Invalid gist id — expected 32 hex characters." });
+			return;
+		}
+		const gist = await this.client.fetchGist(trimmed);
+		if (!gist.success) {
+			this._connection.next({
+				phase: "error",
+				message: gist.error?.message ?? "Could not open that gist.",
+			});
+			return;
+		}
+		await this.useGist(trimmed);
+	}
+
+	/** Persists the gist id, then moves to file selection (or straight to connected). */
+	private async useGist(gistId: string): Promise<void> {
+		this.gistId = gistId;
+		await this.tokenStore.setGistId(gistId);
+		this.engine = new GistSyncEngine({ client: this.client, gistId });
+		this.emitGitHubStatus();
+		this._connection.next(await this.enterFileSelection());
+		this.emitSyncInfo();
+	}
+
+	/**
+	 * Lists the gist's `user-*`/`workspace-*` files. If a previously chosen user file is still
+	 * present the session resumes as connected; otherwise the picker phase is returned.
+	 */
+	private async enterFileSelection(): Promise<GistConnectionState> {
+		const gistId = this.gistId;
+		if (!gistId) {
+			return { phase: "needs-gist" };
+		}
+		const [userFiles, workspaceFiles] = await Promise.all([
+			this.client.listFiles(gistId, "user"),
+			this.client.listFiles(gistId, "workspace"),
+		]);
+		if (!userFiles.success || !workspaceFiles.success) {
+			return {
+				phase: "error",
+				message: userFiles.error?.message ?? workspaceFiles.error?.message ?? "Failed to list gist files.",
+			};
+		}
+		const users = userFiles.data ?? [];
+		const workspaces = workspaceFiles.data ?? [];
+		if (this.userFile && users.some((f) => f.fullPath === this.userFile)) {
+			return { phase: "connected", userFile: this.userFile, workspaceFile: this.workspaceFile };
+		}
+		return { phase: "needs-files", userFiles: users, workspaceFiles: workspaces };
+	}
+
+	/**
+	 * Persists the chosen files and completes the connection. A user file that doesn't exist
+	 * yet is fine — the sync engine seeds missing files on first reconcile. Pass an empty
+	 * workspace file to sync the user list only.
+	 */
+	async chooseFiles(userFile: string, workspaceFile?: string): Promise<void> {
+		this.userFile = userFile || DefaultFileNames.user;
+		await this.tokenStore.setUserFile(this.userFile);
+		this.workspaceFile = workspaceFile || undefined;
+		if (this.workspaceFile) {
+			await this.tokenStore.setWorkspaceFile(this.workspaceFile);
+		}
+		this._connection.next({
+			phase: "connected",
+			userFile: this.userFile,
+			workspaceFile: this.workspaceFile,
+		});
 		this.emitGitHubStatus();
 		this.emitSyncInfo();
 		await this.pullAll();
 	}
 
 	async disconnectGitHub(): Promise<void> {
+		this.connectAbort?.abort();
 		this.token = undefined;
 		this.gistId = undefined;
+		this.userFile = undefined;
+		this.workspaceFile = undefined;
 		this.engine = undefined;
 		await this.tokenStore.clear();
 		await this.cacheStore.clear();
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
+		this._connection.next({ phase: "disconnected" });
 		this.emitReload();
 		this.emitGitHubStatus();
 		this.emitSyncInfo();

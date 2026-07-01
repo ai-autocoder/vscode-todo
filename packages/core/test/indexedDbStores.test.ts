@@ -142,19 +142,27 @@ describe("IndexedDbCacheStore", () => {
 });
 
 describe("IndexedDbTokenStore", () => {
-	it("stores and clears the token and gist id", async () => {
+	it("stores and clears the token, gist id, and selected files", async () => {
 		const store = new IndexedDbTokenStore(env);
 		expect(await store.getToken()).toBeUndefined();
 		expect(await store.getGistId()).toBeUndefined();
+		expect(await store.getUserFile()).toBeUndefined();
+		expect(await store.getWorkspaceFile()).toBeUndefined();
 
 		await store.setToken("gho_secret");
 		await store.setGistId("0123456789abcdef0123456789abcdef");
+		await store.setUserFile("user-todos.json");
+		await store.setWorkspaceFile("workspace-ProjectA.json");
 		expect(await store.getToken()).toBe("gho_secret");
 		expect(await store.getGistId()).toBe("0123456789abcdef0123456789abcdef");
+		expect(await store.getUserFile()).toBe("user-todos.json");
+		expect(await store.getWorkspaceFile()).toBe("workspace-ProjectA.json");
 
 		await store.clear();
 		expect(await store.getToken()).toBeUndefined();
 		expect(await store.getGistId()).toBeUndefined();
+		expect(await store.getUserFile()).toBeUndefined();
+		expect(await store.getWorkspaceFile()).toBeUndefined();
 	});
 
 	it("persists the token across store handles (survives reload)", async () => {

@@ -11,6 +11,7 @@ import type { WebviewApi } from "vscode-webview";
  */
 class VSCodeAPIWrapper {
 	private readonly vsCodeApi: WebviewApi<unknown> | undefined;
+	private postMessageDelegate: ((message: unknown) => void) | undefined;
 
 	constructor() {
 		// Check if the acquireVsCodeApi function exists in the current development
@@ -18,6 +19,15 @@ class VSCodeAPIWrapper {
 		if (typeof acquireVsCodeApi === "function") {
 			this.vsCodeApi = acquireVsCodeApi();
 		}
+	}
+
+	/**
+	 * Install a receiver for messages posted outside VS Code. The standalone PWA sets this to
+	 * route the app's outbound messages to its data gateway. Never consulted inside the real
+	 * webview, where acquireVsCodeApi exists and takes precedence.
+	 */
+	public setPostMessageDelegate(delegate: (message: unknown) => void) {
+		this.postMessageDelegate = delegate;
 	}
 
 	/**
@@ -31,6 +41,8 @@ class VSCodeAPIWrapper {
 	public postMessage(message: unknown) {
 		if (this.vsCodeApi) {
 			this.vsCodeApi.postMessage(message);
+		} else if (this.postMessageDelegate) {
+			this.postMessageDelegate(message);
 		} else {
 			console.log(message);
 		}
