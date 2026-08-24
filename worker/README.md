@@ -1,7 +1,7 @@
-# vsc-todo-auth-proxy
+# agent-plans-auth-proxy
 
 A tiny Cloudflare Worker that adds CORS headers to GitHub's **OAuth Device Flow** endpoints
-so the VS Code Todo **PWA** can complete sign-in from the browser.
+so the Agent Plans **PWA** can complete sign-in from the browser.
 
 ## Why it exists
 
@@ -33,7 +33,7 @@ and refuses every other path, so it cannot be used as a general open proxy.
 
 ```bash
 npm run dev      # local: http://127.0.0.1:8787
-npm run deploy   # publishes to https://vsc-todo-auth-proxy.<your-subdomain>.workers.dev
+npm run deploy   # publishes to https://agent-plans-auth-proxy.<your-subdomain>.workers.dev
 ```
 
 ## Configuration (`wrangler.toml` → `[vars]`)

@@ -16,7 +16,7 @@ export const environment: AppEnvironment = {
 	production: true,
 	pwa: true,
 	gist: {
-		clientId: "REPLACE_WITH_GITHUB_OAUTH_CLIENT_ID",
-		deviceFlowProxyUrl: "https://REPLACE_WITH_YOUR_WORKER.workers.dev",
+		clientId: "Ov23liYdFH31bLiQ1J3P",
+		deviceFlowProxyUrl: "https://agent-plans-auth-proxy.aiautocoder.workers.dev",
 	},
 };

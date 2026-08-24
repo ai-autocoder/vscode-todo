@@ -85,7 +85,7 @@ export default {
 				headers: {
 					"Content-Type": request.headers.get("Content-Type") ?? "application/json",
 					Accept: "application/json",
-					"User-Agent": "vsc-todo-auth-proxy",
+					"User-Agent": "agent-plans-auth-proxy",
 				},
 				body: bodyText,
 			});

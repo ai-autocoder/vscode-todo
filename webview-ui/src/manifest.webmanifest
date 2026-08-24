@@ -1,7 +1,7 @@
 {
-	"name": "VS Code Todo",
-	"short_name": "Todo",
-	"description": "Todo lists and notes synced with the VS Code Todo extension via GitHub Gist.",
+	"name": "Agent Plans",
+	"short_name": "Plans",
+	"description": "Plans, todo lists, and notes synced with the VS Code Todo extension via GitHub Gist.",
 	"start_url": "/",
 	"scope": "/",
 	"display": "standalone",

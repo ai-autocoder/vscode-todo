@@ -1,5 +1,5 @@
 {
-	"name": "vsc-todo-auth-proxy",
+	"name": "agent-plans-auth-proxy",
 	"version": "0.1.0",
 	"private": true,
 	"description": "Cloudflare Worker that adds CORS headers to GitHub's OAuth Device Flow endpoints so the VS Code Todo PWA can authenticate. Holds no secrets.",

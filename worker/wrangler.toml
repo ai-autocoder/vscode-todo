@@ -1,12 +1,18 @@
-name = "vsc-todo-auth-proxy"
+name = "agent-plans-auth-proxy"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
 # CORS allowlist. Use "*" for local dev; set to your PWA origin(s) in production, e.g.
-#   ALLOWED_ORIGINS = "https://vsc-todo.pages.dev"
+#   ALLOWED_ORIGINS = "https://agent-plans.pages.dev"
 [vars]
 ALLOWED_ORIGINS = "*"
 
 # Optional hardening: uncomment and set to your GitHub OAuth App client id so the proxy only
 # forwards requests for your app.
-# CLIENT_ID = "Iv1.xxxxxxxxxxxxxxxx"
+# CLIENT_ID = "Ov23lixxxxxxxxxxxxxx"
+
+# Keep dashboard-enabled logging in config so it survives `wrangler deploy`.
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
