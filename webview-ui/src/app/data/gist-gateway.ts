@@ -12,11 +12,15 @@
  * `reloadWebview` (full initial state), `syncTodoData` (per-scope updates),
  * `updateGitHubStatus`/`updateGitHubSyncInfo`/`updateSyncStatus` (connection + sync state).
  *
- * SCOPE OF THIS FIRST VERSION: user-scope todos are wired end-to-end (mutate → echo →
- * reconcile → pull-on-focus). Workspace mutations apply locally and reconcile too, but the
- * richer workspace file-list UI (`filesData` grouping, file discovery) is Phase 5. MCP and the
- * VS Code-only commands (import/export dialogs, sync-mode pickers, gist-id settings) are
- * no-ops or open GitHub directly, since there is no extension host.
+ * SCOPE: user, workspace and per-file (`currentFile`) todos are all wired end-to-end
+ * (mutate → echo → reconcile → pull-on-focus). Per-file lists live inside the workspace gist
+ * file's `filesData`, so a `currentFile` edit is written back there and pushed on the workspace
+ * timer; `filesData` is always round-tripped even when nothing is selected, because the merge
+ * would otherwise read a missing entry as a deletion. With no editor to follow, the selected
+ * file changes only via the file list, which lists every path carrying todos in the gist.
+ *
+ * MCP and the VS Code-only commands (import/export dialogs, sync-mode pickers, gist-id
+ * settings) are no-ops or open GitHub directly, since there is no extension host.
  */
 
 import { BehaviorSubject, Observable, Subject } from "rxjs";
@@ -35,6 +39,8 @@ import {
 	type WorkspaceGistData,
 	type ReducerConfig,
 	type TodoSliceState,
+	type TodoFilesData,
+	type TodoFilesDataPaths,
 	todoMutations,
 } from "@vsc-todo/core";
 import {
@@ -155,6 +161,22 @@ export class GistGateway implements DataGateway {
 	private user = newUserSlice();
 	private workspace = newWorkspaceSlice();
 
+	/**
+	 * Per-file todos from the workspace gist file, keyed by the path the extension recorded.
+	 * These MUST be round-tripped even when the PWA shows none of them: `reconcileWorkspace`
+	 * treats the local value as authoritative under the default prefer-local policy, so pushing
+	 * `{}` would delete every per-file list the extension has stored.
+	 */
+	private filesData: TodoFilesData = {};
+	private filesDataPaths: TodoFilesDataPaths = {};
+
+	/**
+	 * The file the UI is currently showing. There is no editor in the PWA, so unlike the
+	 * extension (where it follows the active editor) it only changes when the user picks a file
+	 * from the file list.
+	 */
+	private currentFile = newCurrentFileSlice();
+
 	private userPushTimer: ReturnType<typeof setTimeout> | undefined;
 	private workspacePushTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -224,17 +246,32 @@ export class GistGateway implements DataGateway {
 
 	// --- inbound message emitters ---
 
+	/**
+	 * The file list the UI's `<file-list>` renders, derived from `filesData`. The extension
+	 * builds this from the files it has seen in the workspace; the PWA has no workspace on disk,
+	 * so every file that carries todos in the gist is listed. Counts match the extension's
+	 * (open, non-note todos). Sorted by path so the list is stable across pulls.
+	 */
+	private filesWithRecords(): Array<{ filePath: string; todoNumber: number }> {
+		return Object.entries(this.filesData)
+			.map(([filePath, todos]) => ({
+				filePath,
+				todoNumber: (todos ?? []).filter((t) => !t.completed && !t.isNote).length,
+			}))
+			.sort((a, b) => a.filePath.localeCompare(b.filePath));
+	}
+
 	private emitReload(): void {
 		const editorFocusAndRecords: StoreState["editorFocusAndRecords"] = {
-			editorFocusedFilePath: "",
-			workspaceFilesWithRecords: [],
-			filesDataPaths: {},
+			editorFocusedFilePath: this.currentFile.filePath,
+			workspaceFilesWithRecords: this.filesWithRecords(),
+			filesDataPaths: this.filesDataPaths,
 			lastActionType: "",
 		};
 		const payload: StoreState = {
 			user: this.user,
 			workspace: this.workspace,
-			currentFile: newCurrentFileSlice(),
+			currentFile: this.currentFile,
 			editorFocusAndRecords,
 			actionTracker: { lastSliceName: "" as StoreState["actionTracker"]["lastSliceName"] },
 		};
@@ -245,8 +282,13 @@ export class GistGateway implements DataGateway {
 		});
 	}
 
-	private emitScope(scope: TodoScope.user | TodoScope.workspace): void {
-		const slice = scope === TodoScope.user ? this.user : this.workspace;
+	private emitScope(scope: TodoScope): void {
+		const slice =
+			scope === TodoScope.user
+				? this.user
+				: scope === TodoScope.workspace
+					? this.workspace
+					: this.currentFile;
 		this._messages.next({
 			type: MessageActionsToWebview.syncTodoData,
 			payload: slice,
@@ -333,18 +375,37 @@ export class GistGateway implements DataGateway {
 		}
 		this.emitSyncing(true);
 		try {
-			// Phase 5 will carry real filesData; for now the PWA owns only workspaceTodos.
+			// Round-trip the per-file todos we last saw: the PWA never edits them, but sending
+			// `{}` would make the merge treat them as locally deleted and wipe them from the gist.
 			const local: WorkspaceGistData = {
 				workspaceTodos: this.workspace.todos,
-				filesData: {},
-				filesDataPaths: {},
+				filesData: this.filesData,
+				filesDataPaths: this.filesDataPaths,
 			};
 			const res = await engine.reconcileWorkspace(fileName, local);
-			if (res.success && res.data && res.data.changedRemotely) {
-				this.workspace.todos = res.data.data.workspaceTodos;
-				this.workspace.lastActionType = "loadData";
-				this.recount(this.workspace);
-				this.emitScope(TodoScope.workspace);
+			if (res.success && res.data) {
+				// Always adopt the merged per-file data, even when workspaceTodos did not change
+				// remotely — it is the baseline for the next push.
+				this.filesData = res.data.data.filesData;
+				this.filesDataPaths = res.data.data.filesDataPaths ?? {};
+				if (res.data.changedRemotely) {
+					this.workspace.todos = res.data.data.workspaceTodos;
+					this.workspace.lastActionType = "loadData";
+					this.recount(this.workspace);
+					this.emitScope(TodoScope.workspace);
+					// Re-project the open file from the merged data so a remote edit to it shows up.
+					if (this.currentFile.filePath) {
+						this.currentFile = {
+							...this.currentFile,
+							todos: [...(this.filesData[this.currentFile.filePath] ?? [])],
+							lastActionType: "loadData",
+						};
+						this.recount(this.currentFile);
+						this.emitScope(TodoScope.currentFile);
+					}
+					// File list / counts may have changed too.
+					this.emitReload();
+				}
 			}
 		} finally {
 			this.emitSyncing(false);
@@ -371,8 +432,15 @@ export class GistGateway implements DataGateway {
 			fn(this.asSliceState(this.workspace));
 			this.emitScope(TodoScope.workspace);
 			this.scheduleWorkspacePush();
+		} else if (scope === TodoScope.currentFile && this.currentFile.filePath) {
+			fn(this.asSliceState(this.currentFile));
+			// Per-file todos live inside the workspace gist file, so a currentFile edit is
+			// written back into filesData and pushed on the workspace timer.
+			this.filesData = { ...this.filesData, [this.currentFile.filePath]: this.currentFile.todos };
+			this.recount(this.currentFile);
+			this.emitScope(TodoScope.currentFile);
+			this.scheduleWorkspacePush();
 		}
-		// currentFile scope is Phase 5 (file-specific lists).
 	}
 
 	// --- item commands ---
@@ -414,10 +482,19 @@ export class GistGateway implements DataGateway {
 	// --- file / view commands ---
 
 	pinFile(): void {
-		/* no file scope in the PWA yet (Phase 5) */
+		// Pinning exists to stop the list following the active editor. The PWA has no editor, so
+		// the selection is already sticky and there is nothing to pin.
 	}
-	setCurrentFile(_filePath: string): void {
-		/* Phase 5 */
+	setCurrentFile(filePath: string): void {
+		this.currentFile = {
+			...newCurrentFileSlice(),
+			filePath,
+			todos: filePath ? [...(this.filesData[filePath] ?? [])] : [],
+			lastActionType: "loadData",
+		};
+		this.recount(this.currentFile);
+		this.emitScope(TodoScope.currentFile);
+		this.emitReload();
 	}
 	import(_format: unknown): void {
 		/* No host file dialogs in the PWA; import/export UI is out of scope for now. */

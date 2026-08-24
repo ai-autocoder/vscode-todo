@@ -4,6 +4,7 @@ import {
 	GistFileIO,
 	MemoryCacheStore,
 	GlobalGistData,
+	WorkspaceGistData,
 	SyncErrorType,
 	SyncResult,
 	serialize,
@@ -150,5 +151,146 @@ describe("GistSyncEngine.reconcileUser", () => {
 		const res = await engine.reconcileUser(FILE, merged); // feed merged back in
 		expect(res.data?.pushed).toBe(false);
 		expect(res.data?.changedRemotely).toBe(false);
+	});
+});
+
+const WS_FILE = "workspace-myproject.json";
+/** File paths used as `filesData` keys (computed, so the camelCase lint rule does not apply). */
+const A = "src/a.ts";
+const B = "src/b.ts";
+
+/** Read the workspace file back off the fake gist. */
+const readWs = (gist: FakeGist): WorkspaceGistData => JSON.parse(gist.files.get(WS_FILE)!);
+
+describe("GistSyncEngine.reconcileWorkspace", () => {
+	it("round-trips filesData and filesDataPaths through a push", async () => {
+		const gist = new FakeGist();
+		const engine = makeEngine(gist);
+		const local: WorkspaceGistData = {
+			workspaceTodos: [todo(1, "ws task")],
+			filesData: { [A]: [todo(10, "fix a")] },
+			filesDataPaths: { [A]: { absPaths: ["/repo/src/a.ts"], relPaths: [A] } },
+		};
+
+		const res = await engine.reconcileWorkspace(WS_FILE, local);
+
+		expect(res.success).toBe(true);
+		const written = readWs(gist);
+		expect(written.workspaceTodos).toHaveLength(1);
+		expect(written.filesData[A]).toHaveLength(1);
+		expect(written.filesDataPaths?.[A].absPaths).toEqual(["/repo/src/a.ts"]);
+	});
+
+	it("preserves remote per-file todos when the local side passes them back unchanged", async () => {
+		const gist = new FakeGist();
+		const engine = makeEngine(gist);
+		const seeded: WorkspaceGistData = {
+			workspaceTodos: [todo(1, "ws task")],
+			filesData: { [A]: [todo(10, "fix a")] },
+			filesDataPaths: {},
+		};
+		await engine.reconcileWorkspace(WS_FILE, seeded); // baseline
+
+		// The PWA edits only workspaceTodos but echoes filesData back as-is.
+		const res = await engine.reconcileWorkspace(WS_FILE, {
+			...seeded,
+			workspaceTodos: [todo(1, "ws task"), todo(2, "from phone")],
+		});
+
+		expect(res.data?.data.filesData[A]).toHaveLength(1);
+		expect(readWs(gist).filesData[A]).toHaveLength(1);
+	});
+
+	it("treats an empty local filesData as a deletion (why the gateway must round-trip it)", async () => {
+		const gist = new FakeGist();
+		const engine = makeEngine(gist);
+		await engine.reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(10, "fix a")] },
+			filesDataPaths: {},
+		});
+
+		// Regression guard: this is exactly what the gateway used to send.
+		const res = await engine.reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			filesData: {},
+			filesDataPaths: {},
+		});
+
+		expect(res.data?.data.filesData[A]).toBeUndefined();
+	});
+
+	it("pulls a remote per-file edit made by the extension", async () => {
+		const gist = new FakeGist();
+		const engine = makeEngine(gist);
+		const local: WorkspaceGistData = {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(10, "fix a")] },
+			filesDataPaths: {},
+		};
+		await engine.reconcileWorkspace(WS_FILE, local); // baseline
+
+		gist.files.set(
+			WS_FILE,
+			serialize({
+				workspaceTodos: [],
+				filesData: { [A]: [todo(10, "fix a"), todo(11, "and b")] },
+				filesDataPaths: {},
+			})
+		);
+
+		const res = await engine.reconcileWorkspace(WS_FILE, local); // local unchanged
+
+		expect(res.data?.changedRemotely).toBe(true);
+		expect(res.data?.data.filesData[A].map((t) => t.id)).toEqual([10, 11]);
+	});
+
+	it("auto-merges per-file edits made on both sides in different files", async () => {
+		const gist = new FakeGist();
+		const engine = makeEngine(gist);
+		const base: WorkspaceGistData = {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(10, "fix a")] },
+			filesDataPaths: {},
+		};
+		await engine.reconcileWorkspace(WS_FILE, base); // baseline
+
+		// Extension adds a todo to a different file.
+		gist.files.set(
+			WS_FILE,
+			serialize({
+				workspaceTodos: [],
+				filesData: { [A]: [todo(10, "fix a")], [B]: [todo(20, "fix b")] },
+				filesDataPaths: {},
+			})
+		);
+		// PWA adds one to the file it has open.
+		const res = await engine.reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(10, "fix a"), todo(12, "from phone")] },
+			filesDataPaths: {},
+		});
+
+		const merged = res.data!.data.filesData;
+		expect(merged[A].map((t) => t.id)).toEqual([10, 12]);
+		expect(merged[B].map((t) => t.id)).toEqual([20]);
+	});
+
+	it("is a no-op on the second reconcile with unchanged data", async () => {
+		const gist = new FakeGist();
+		const engine = makeEngine(gist);
+		const local: WorkspaceGistData = {
+			workspaceTodos: [todo(1, "ws")],
+			filesData: { [A]: [todo(10, "fix a")] },
+			filesDataPaths: {},
+		};
+
+		await engine.reconcileWorkspace(WS_FILE, local);
+		const writesAfterSeed = gist.writes;
+		const res = await engine.reconcileWorkspace(WS_FILE, local);
+
+		expect(res.data?.pushed).toBe(false);
+		expect(res.data?.changedRemotely).toBe(false);
+		expect(gist.writes).toBe(writesAfterSeed);
 	});
 });
