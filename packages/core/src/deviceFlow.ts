@@ -8,7 +8,7 @@
  * the proxy holds no credentials.
  */
 
-export const DEVICE_CODE_PATH = "/login/oauth/device/code";
+export const DEVICE_CODE_PATH = "/login/device/code";
 export const ACCESS_TOKEN_PATH = "/login/oauth/access_token";
 export const DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 

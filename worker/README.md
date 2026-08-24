@@ -9,7 +9,7 @@ GitHub's device-flow endpoints live on `github.com` and send **no CORS headers**
 browser cannot call them directly. This Worker forwards **only** these two POSTs and echoes
 the response with CORS headers:
 
-- `POST /login/oauth/device/code`
+- `POST /login/device/code`
 - `POST /login/oauth/access_token`
 
 It holds **no secrets** (device flow is a public-client flow keyed by a public `client_id`)
@@ -48,7 +48,7 @@ Point the PWA at the deployed URL via its `deviceFlow.proxyBaseUrl` config.
 ## Quick check
 
 ```bash
-curl -i -X POST "$WORKER_URL/login/oauth/device/code" \
+curl -i -X POST "$WORKER_URL/login/device/code" \
   -H "Content-Type: application/json" -H "Origin: http://localhost:4200" \
   -d '{"client_id":"<your-client-id>","scope":"gist"}'
 # Expect 200 with a JSON body containing user_code + verification_uri and

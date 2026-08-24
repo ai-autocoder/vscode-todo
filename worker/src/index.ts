@@ -19,7 +19,7 @@ export interface Env {
 }
 
 const GITHUB_BASE = "https://github.com";
-const ALLOWED_PATHS = new Set(["/login/oauth/device/code", "/login/oauth/access_token"]);
+const ALLOWED_PATHS = new Set(["/login/device/code", "/login/oauth/access_token"]);
 
 function resolveAllowedOrigin(env: Env, requestOrigin: string | null): string {
 	const configured = (env.ALLOWED_ORIGINS ?? "*").trim();
