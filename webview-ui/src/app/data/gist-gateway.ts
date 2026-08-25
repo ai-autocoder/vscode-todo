@@ -35,6 +35,7 @@ import {
 	DefaultFileNames,
 	GIST_ID_REGEX,
 	type GistFileInfo,
+	type GistSummary,
 	type GlobalGistData,
 	type WorkspaceGistData,
 	type ReducerConfig,
@@ -87,6 +88,21 @@ export type GistConnectionState =
 	  }
 	| { phase: "discovering" }
 	| { phase: "needs-gist" }
+	| {
+			/**
+			 * Reached from the *connected* state so a persisted gist can be changed. Without it
+			 * `restoreSession` reads the stored id and skips discovery forever, leaving no way to
+			 * switch gists or create one.
+			 */
+			phase: "change-gist";
+			currentGistId: string;
+			current?: GistSummary;
+			gists: GistSummary[];
+			/** True when the connected gist's description isn't the one the extension discovers by. */
+			descriptionMismatch: boolean;
+			busy?: boolean;
+			message?: string;
+	  }
 	| { phase: "needs-files"; userFiles: GistFileInfo[]; workspaceFiles: GistFileInfo[] }
 	| { phase: "connected"; userFile: string; workspaceFile?: string }
 	| { phase: "error"; message: string };
@@ -592,12 +608,137 @@ export class GistGateway implements DataGateway {
 
 	/** Persists the gist id, then moves to file selection (or straight to connected). */
 	private async useGist(gistId: string): Promise<void> {
+		if (this.gistId && this.gistId !== gistId) {
+			await this.resetForNewGist();
+		}
 		this.gistId = gistId;
 		await this.tokenStore.setGistId(gistId);
 		this.engine = new GistSyncEngine({ client: this.client, gistId });
 		this.emitGitHubStatus();
 		this._connection.next(await this.enterFileSelection());
 		this.emitSyncInfo();
+	}
+
+	/**
+	 * Drops everything tied to the previous gist before switching. Clearing `cacheStore` is not
+	 * optional: its per-file `lastCleanRemoteData` entries are the three-way-merge baselines, so
+	 * keeping them would compare one gist's baseline against another gist's content and corrupt
+	 * the merge. The file selections go too — they name files in the old gist.
+	 */
+	private async resetForNewGist(): Promise<void> {
+		this.cancelPendingPushes();
+		await this.cacheStore.clear();
+		this.userFile = undefined;
+		this.workspaceFile = undefined;
+		await this.tokenStore.setUserFile("");
+		await this.tokenStore.setWorkspaceFile("");
+		this.user = newUserSlice();
+		this.workspace = newWorkspaceSlice();
+		this.filesData = {};
+		this.filesDataPaths = {};
+		this.currentFile = newCurrentFileSlice();
+		this.emitReload();
+	}
+
+	private cancelPendingPushes(): void {
+		if (this.userPushTimer) {
+			clearTimeout(this.userPushTimer);
+			this.userPushTimer = undefined;
+		}
+		if (this.workspacePushTimer) {
+			clearTimeout(this.workspacePushTimer);
+			this.workspacePushTimer = undefined;
+		}
+	}
+
+	/**
+	 * Enters the gist picker from the connected state, listing the account's gists so the user
+	 * can switch or create one. Listing failures are non-fatal — paste-an-id still works.
+	 */
+	async changeGist(): Promise<void> {
+		const currentGistId = this.gistId ?? "";
+		this._connection.next({
+			phase: "change-gist",
+			currentGistId,
+			gists: [],
+			descriptionMismatch: false,
+			busy: true,
+		});
+		const listed = await this.client.listGists();
+		const gists = listed.success ? (listed.data ?? []) : [];
+		const current = gists.find((g) => g.id === currentGistId);
+		this._connection.next({
+			phase: "change-gist",
+			currentGistId,
+			current,
+			gists,
+			descriptionMismatch: !!current && current.description !== SYNC_GIST_DESCRIPTION,
+			message: listed.success ? undefined : listed.error?.message,
+		});
+	}
+
+	/** Leaves the picker without changing anything. */
+	async cancelChangeGist(): Promise<void> {
+		this._connection.next(
+			this.gistId && this.userFile
+				? { phase: "connected", userFile: this.userFile, workspaceFile: this.workspaceFile }
+				: await this.enterFileSelection()
+		);
+	}
+
+	/** Switches to an existing gist (from the list or a pasted id). */
+	async selectGist(gistId: string): Promise<void> {
+		const trimmed = gistId.trim();
+		if (!GIST_ID_REGEX.test(trimmed)) {
+			this.updateChangeGist({ message: "Invalid gist id — expected 32 hex characters." });
+			return;
+		}
+		if (trimmed === this.gistId) {
+			await this.cancelChangeGist();
+			return;
+		}
+		this.updateChangeGist({ busy: true, message: undefined });
+		const gist = await this.client.fetchGist(trimmed);
+		if (!gist.success) {
+			this.updateChangeGist({
+				busy: false,
+				message: gist.error?.message ?? "Could not open that gist.",
+			});
+			return;
+		}
+		await this.useGist(trimmed);
+	}
+
+	/**
+	 * Creates a fresh secret sync gist and switches to it. The description must stay
+	 * {@link SYNC_GIST_DESCRIPTION} — that is how the extension discovers the gist, so a
+	 * differently-described one would never be found on the VS Code side.
+	 */
+	async createSyncGist(): Promise<void> {
+		this.updateChangeGist({ busy: true, message: undefined });
+		const seed: GlobalGistData = { userTodos: [] };
+		const created = await this.client.createGist(
+			SYNC_GIST_DESCRIPTION,
+			{ [DefaultFileNames.user]: JSON.stringify(seed, null, 2) },
+			false
+		);
+		if (!created.success || !created.data) {
+			this.updateChangeGist({
+				busy: false,
+				message: created.error?.message ?? "Could not create the gist.",
+			});
+			return;
+		}
+		await this.useGist(created.data.id);
+	}
+
+	/** Patches the current change-gist state; ignored if the user has already moved on. */
+	private updateChangeGist(patch: Partial<Extract<GistConnectionState, { phase: "change-gist" }>>): void {
+		const state = this._connection.value;
+		if (state.phase !== "change-gist") {
+			return;
+		}
+		this._connection.next({ ...state, ...patch });
 	}
 
 	/**
@@ -651,6 +792,7 @@ export class GistGateway implements DataGateway {
 
 	async disconnectGitHub(): Promise<void> {
 		this.connectAbort?.abort();
+		this.cancelPendingPushes();
 		this.token = undefined;
 		this.gistId = undefined;
 		this.userFile = undefined;
@@ -660,6 +802,9 @@ export class GistGateway implements DataGateway {
 		await this.cacheStore.clear();
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
+		this.filesData = {};
+		this.filesDataPaths = {};
+		this.currentFile = newCurrentFileSlice();
 		this._connection.next({ phase: "disconnected" });
 		this.emitReload();
 		this.emitGitHubStatus();
@@ -673,7 +818,9 @@ export class GistGateway implements DataGateway {
 		/* see above */
 	}
 	openGistIdSettings(): void {
-		/* No VS Code settings in the PWA; the connection UI owns gist selection. */
+		// No VS Code settings in the PWA — the header's "Gist: Set ID" action opens the picker,
+		// which is the only way to change a gist once one has been persisted.
+		void this.changeGist();
 	}
 	viewGistOnGitHub(): void {
 		if (this.gistId) {

@@ -32,6 +32,8 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	userFileChoice = "";
 	workspaceFileChoice = "";
 	gistIdInput = "";
+	/** change-gist form state: the gist chosen in the list, or "" while none is picked. */
+	gistChoice = "";
 
 	readonly newUserFileValue = "__new__";
 	readonly defaultUserFileName = DefaultFileNames.user;
@@ -71,6 +73,10 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 				this.userFileChoice = state.userFiles[0]?.fullPath ?? this.newUserFileValue;
 				this.workspaceFileChoice = state.workspaceFiles[0]?.fullPath ?? "";
 			}
+			if (state.phase === "change-gist") {
+				this.gistChoice = state.currentGistId;
+				this.gistIdInput = "";
+			}
 			this.cdRef.detectChanges();
 		});
 
@@ -95,6 +101,34 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 
 	submitGistId(): void {
 		void this.gateway?.submitGistId(this.gistIdInput);
+	}
+
+	/**
+	 * The picker is entered from the connected app, so it overlays the running UI rather than
+	 * replacing it — the app stays mounted and simply comes back when the picker is dismissed.
+	 * Switching to a different gist lands in `needs-files`, which must overlay too: the app is
+	 * still mounted but its data belongs to the gist we just left.
+	 */
+	get showConnectScreen(): boolean {
+		return !this.showApp || this.state.phase !== "connected";
+	}
+
+	changeGist(): void {
+		void this.gateway?.changeGist();
+	}
+
+	cancelChangeGist(): void {
+		void this.gateway?.cancelChangeGist();
+	}
+
+	/** Uses the pasted id when one is typed, otherwise the gist selected in the list. */
+	confirmGistChoice(): void {
+		const gistId = this.gistIdInput.trim() || this.gistChoice;
+		void this.gateway?.selectGist(gistId);
+	}
+
+	createSyncGist(): void {
+		void this.gateway?.createSyncGist();
 	}
 
 	confirmFiles(): void {

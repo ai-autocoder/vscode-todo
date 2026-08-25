@@ -1,6 +1,6 @@
 <app-root *ngIf="showApp"></app-root>
 
-<div class="connect-screen" *ngIf="!showApp" [ngSwitch]="state.phase">
+<div class="connect-screen" *ngIf="showConnectScreen" [ngSwitch]="state.phase">
 	<div class="card">
 		<h1>Agent Plans</h1>
 		<p class="subtitle">Sync your todos with the VS Code Todo extension via a GitHub Gist.</p>
@@ -53,8 +53,54 @@
 			/>
 			<div class="row">
 				<button class="primary" (click)="submitGistId()">Use this gist</button>
+				<button (click)="changeGist()">Browse / create</button>
 				<button (click)="disconnect()">Disconnect</button>
 			</div>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'change-gist'">
+			<ng-container *ngIf="state.phase === 'change-gist'">
+				<p>Sync gist</p>
+				<p class="hint" *ngIf="state.current">
+					Currently <strong>{{ state.current.description || "(no description)" }}</strong> —
+					{{ state.current.filesCount }} file(s).
+				</p>
+				<p class="hint" *ngIf="!state.current">Currently {{ state.currentGistId }}.</p>
+				<p class="error" *ngIf="state.descriptionMismatch">
+					This gist isn't described "VS Code Todo Sync", so the VS Code extension won't find
+					it by discovery.
+				</p>
+
+				<label>Pick one of your gists</label>
+				<select [(ngModel)]="gistChoice" [disabled]="!!state.busy">
+					<option value="">Select a gist…</option>
+					<option *ngFor="let gist of state.gists" [value]="gist.id">
+						{{ gist.description || "(no description)" }} — {{ gist.filesCount }} file(s)
+					</option>
+				</select>
+
+				<label>…or paste a gist id</label>
+				<input
+					type="text"
+					[(ngModel)]="gistIdInput"
+					placeholder="0123456789abcdef0123456789abcdef"
+					spellcheck="false"
+					[disabled]="!!state.busy"
+				/>
+
+				<p class="error" *ngIf="state.message">{{ state.message }}</p>
+				<p class="hint">
+					Switching gists clears the locally cached sync state for the old one. Creating a
+					new gist makes a secret gist described "VS Code Todo Sync", so VS Code can find it.
+				</p>
+				<div class="row">
+					<button class="primary" (click)="confirmGistChoice()" [disabled]="!!state.busy">
+						Use this gist
+					</button>
+					<button (click)="createSyncGist()" [disabled]="!!state.busy">Create new</button>
+					<button (click)="cancelChangeGist()" [disabled]="!!state.busy">Cancel</button>
+				</div>
+			</ng-container>
 		</ng-container>
 
 		<ng-container *ngSwitchCase="'needs-files'">
