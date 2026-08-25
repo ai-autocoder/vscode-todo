@@ -110,7 +110,9 @@
 								"src/favicon.ico",
 								"src/assets",
 								"src/manifest.webmanifest",
-								"src/icons"
+								"src/icons",
+								"src/_redirects",
+								"src/_headers"
 							],
 							"styles": [
 								"src/pwa/vscode-theme.css",

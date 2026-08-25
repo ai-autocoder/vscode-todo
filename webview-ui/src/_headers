@@ -1,0 +1,10 @@
+# The service worker and its manifest must never be served stale, or clients pin to an old
+# build forever. Hashed assets are immutable and can be cached hard.
+/ngsw-worker.js
+  Cache-Control: no-cache
+/ngsw.json
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
