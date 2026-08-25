@@ -180,3 +180,82 @@ function sortType2(todos: Todo[]): Todo[] {
 
 	return sortedMappedTodos.map((mappedItem) => mappedItem.todo);
 }
+
+// ---------------------------------------------------------------------------
+// Display labels for per-file todo lists. The keys of `filesData` are raw absolute paths
+// from whichever machine wrote them, so they mix `\` and `/` separators, come from several
+// machines, and are occasionally not paths at all. On a phone the full path is unreadable,
+// so the UI shows a basename and keeps the full key in the tooltip.
+// ---------------------------------------------------------------------------
+
+/** Matches either separator — the gist can hold paths written by a Windows or a POSIX machine. */
+const PATH_SEPARATOR = /[\\/]/;
+
+function splitPathSegments(filePath: string): string[] {
+	return filePath.split(PATH_SEPARATOR).filter((segment) => segment.length > 0);
+}
+
+/**
+ * Last path segment of `filePath`, treating both `\` and `/` as separators. Trailing
+ * separators are ignored; a string with no separator (or no usable segment) is returned
+ * unchanged, so non-path keys such as a bare log name still render as themselves.
+ */
+export function getPathBasename(filePath: string): string {
+	const segments = splitPathSegments(filePath);
+	return segments.length > 0 ? segments[segments.length - 1] : filePath;
+}
+
+/**
+ * Labels a set of file keys for display: the basename when it is unique, otherwise as many
+ * trailing segments as it takes to tell the colliding keys apart (`todo/store.ts` vs
+ * `sync/store.ts`). Keys that remain identical after exhausting their segments fall back to
+ * the full key. Returns a map keyed by the original path.
+ */
+export function buildFileLabels(filePaths: string[]): Record<string, string> {
+	const segmentsByPath = new Map<string, string[]>();
+	for (const filePath of filePaths) {
+		segmentsByPath.set(filePath, splitPathSegments(filePath));
+	}
+
+	const labels: Record<string, string> = {};
+	const suffix = (segments: string[], depth: number) =>
+		segments.slice(Math.max(0, segments.length - depth)).join("/");
+
+	// Group by basename; only colliding groups need deeper suffixes.
+	const groups = new Map<string, string[]>();
+	for (const filePath of segmentsByPath.keys()) {
+		const base = getPathBasename(filePath);
+		const group = groups.get(base);
+		if (group) {
+			group.push(filePath);
+		} else {
+			groups.set(base, [filePath]);
+		}
+	}
+
+	for (const group of groups.values()) {
+		if (group.length === 1) {
+			labels[group[0]] = getPathBasename(group[0]);
+			continue;
+		}
+
+		const maxDepth = Math.max(...group.map((filePath) => segmentsByPath.get(filePath)!.length));
+		let depth = 1;
+		for (; depth <= maxDepth; depth++) {
+			const seen = new Set(
+				group.map((filePath) => suffix(segmentsByPath.get(filePath)!, depth))
+			);
+			if (seen.size === group.length) {
+				break;
+			}
+		}
+
+		for (const filePath of group) {
+			const segments = segmentsByPath.get(filePath)!;
+			labels[filePath] =
+				depth > maxDepth ? filePath : suffix(segments, depth) || getPathBasename(filePath);
+		}
+	}
+
+	return labels;
+}

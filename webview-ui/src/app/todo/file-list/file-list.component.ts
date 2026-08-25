@@ -2,9 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, inject } from "@angular/c
 import { toSignal } from "@angular/core/rxjs-interop";
 import { TodoService } from "../todo.service";
 import { TodoFilesDataPaths } from "../../../../../src/todo/todoTypes";
+import { buildFileLabels } from "@vsc-todo/core";
 
 type FileListEntry = {
 	filePath: string;
+	label: string;
 	todoNumber: number;
 	tooltip: string;
 	isActive: boolean;
@@ -35,11 +37,19 @@ export class FileList {
 		const currentFilePath = this.currentFilePath();
 		const pathsMap = this.filesDataPaths();
 
-		return files.map((file) => ({
-			...file,
-			isActive: file.filePath === currentFilePath,
-			tooltip: buildFileTooltip(file.filePath, pathsMap),
-		}));
+		// The gist's per-file keys are raw absolute paths from whichever machine wrote them, so
+		// on a phone the full path is unreadable. Show a basename (widened only where two keys
+		// would otherwise collide) and keep every known path in the tooltip.
+		const labels = buildFileLabels(files.map((file) => file.filePath));
+
+		return files
+			.map((file) => ({
+				...file,
+				label: labels[file.filePath] ?? file.filePath,
+				isActive: file.filePath === currentFilePath,
+				tooltip: buildFileTooltip(file.filePath, pathsMap),
+			}))
+			.sort((a, b) => a.label.localeCompare(b.label));
 	});
 
 	setCurrentFile(filePath: string) {

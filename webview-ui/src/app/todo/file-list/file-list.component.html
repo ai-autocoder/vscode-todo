@@ -7,7 +7,7 @@
       [attr.title]="file.tooltip"
       aria-label="Show records for this file"
       >
-      <div class="file-name">{{ file.filePath | fileName }}</div>
+      <div class="file-name">{{ file.label }}</div>
       <vscode-badge [ngStyle]="{ display: file.todoNumber ? 'inline-block' : 'none' }">{{
         file.todoNumber
       }}</vscode-badge>
