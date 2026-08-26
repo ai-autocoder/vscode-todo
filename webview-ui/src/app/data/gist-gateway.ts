@@ -75,7 +75,8 @@ export interface GistGatewayConfig {
  * The connection flow as a state machine, driven by {@link GistGateway.connectGitHub} /
  * {@link GistGateway.submitGistId} / {@link GistGateway.chooseFiles} and observed by the PWA's
  * connect screen. Phases advance: disconnected → requesting-code → awaiting-authorization
- * (user enters the code on GitHub) → discovering → (needs-gist →) needs-files → connected.
+ * (user enters the code on GitHub) → change-gist (the user always picks the gist) →
+ * needs-files → connected.
  */
 export type GistConnectionState =
 	| { phase: "disconnected" }
@@ -86,20 +87,17 @@ export type GistConnectionState =
 			verificationUri: string;
 			expiresIn: number;
 	  }
-	| { phase: "discovering" }
 	| { phase: "needs-gist" }
 	| {
 			/**
-			 * Reached from the *connected* state so a persisted gist can be changed. Without it
-			 * `restoreSession` reads the stored id and skips discovery forever, leaving no way to
-			 * switch gists or create one.
+			 * The gist chooser. Reached right after login (the user always picks — nothing is
+			 * auto-adopted), from the file picker, and from the connected state so a persisted
+			 * gist can be changed later.
 			 */
 			phase: "change-gist";
 			currentGistId: string;
 			current?: GistSummary;
 			gists: GistSummary[];
-			/** True when the connected gist's description isn't the one the extension discovers by. */
-			descriptionMismatch: boolean;
 			busy?: boolean;
 			message?: string;
 	  }
@@ -172,6 +170,10 @@ export class GistGateway implements DataGateway {
 	});
 	/** Connection flow state for the PWA's connect screen. */
 	readonly connection: Observable<GistConnectionState> = this._connection.asObservable();
+	/** The gist currently in use, for screens that need to show which one is selected. */
+	get currentGistId(): string | undefined {
+		return this.gistId;
+	}
 	private connectAbort: AbortController | undefined;
 
 	private user = newUserSlice();
@@ -543,8 +545,8 @@ export class GistGateway implements DataGateway {
 	/**
 	 * Runs the GitHub Device Flow, advancing {@link connection} through the phases the connect
 	 * screen renders: requesting-code → awaiting-authorization (shows `user_code` +
-	 * verification URL) → discovering → needs-gist | needs-files. Errors land in the "error"
-	 * phase instead of throwing, so the UI can offer a retry.
+	 * verification URL) → change-gist, where the user picks or creates the sync gist. Errors
+	 * land in the "error" phase instead of throwing, so the UI can offer a retry.
 	 */
 	async connectGitHub(): Promise<void> {
 		this.connectAbort?.abort();
@@ -566,13 +568,8 @@ export class GistGateway implements DataGateway {
 			await this.tokenStore.setToken(token);
 			this.emitGitHubStatus();
 
-			this._connection.next({ phase: "discovering" });
-			const found = await this.client.findGistByDescription(SYNC_GIST_DESCRIPTION);
-			if (found.success && found.data) {
-				await this.useGist(found.data.id);
-			} else {
-				this._connection.next({ phase: "needs-gist" });
-			}
+			// The user always picks the gist; the PWA never discovers or infers one.
+			await this.changeGist();
 		} catch (error) {
 			if (error instanceof DeviceFlowError && error.code === "cancelled") {
 				this._connection.next({ phase: "disconnected" });
@@ -652,8 +649,9 @@ export class GistGateway implements DataGateway {
 	}
 
 	/**
-	 * Enters the gist picker from the connected state, listing the account's gists so the user
-	 * can switch or create one. Listing failures are non-fatal — paste-an-id still works.
+	 * Enters the gist picker, listing the account's gists so the user can choose or create one.
+	 * Every gist is offered regardless of its description — the PWA never infers which gist to
+	 * use. Listing failures are non-fatal: pasting an id still works.
 	 */
 	async changeGist(): Promise<void> {
 		const currentGistId = this.gistId ?? "";
@@ -661,7 +659,6 @@ export class GistGateway implements DataGateway {
 			phase: "change-gist",
 			currentGistId,
 			gists: [],
-			descriptionMismatch: false,
 			busy: true,
 		});
 		const listed = await this.client.listGists();
@@ -672,7 +669,6 @@ export class GistGateway implements DataGateway {
 			currentGistId,
 			current,
 			gists,
-			descriptionMismatch: !!current && current.description !== SYNC_GIST_DESCRIPTION,
 			message: listed.success ? undefined : listed.error?.message,
 		});
 	}
@@ -710,9 +706,12 @@ export class GistGateway implements DataGateway {
 	}
 
 	/**
-	 * Creates a fresh secret sync gist and switches to it. The description must stay
-	 * {@link SYNC_GIST_DESCRIPTION} — that is how the extension discovers the gist, so a
-	 * differently-described one would never be found on the VS Code side.
+	 * Creates a fresh secret sync gist and switches to it.
+	 *
+	 * The new gist is stamped with {@link SYNC_GIST_DESCRIPTION} purely for interop: the VS Code
+	 * extension still finds its gist by description, so a differently-described one could never
+	 * be picked up on that side. The PWA itself never reads the description — it only ever uses
+	 * the gist the user selected.
 	 */
 	async createSyncGist(): Promise<void> {
 		this.updateChangeGist({ busy: true, message: undefined });

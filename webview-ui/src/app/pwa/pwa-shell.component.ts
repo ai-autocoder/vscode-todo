@@ -113,6 +113,11 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		return !this.showApp || this.state.phase !== "connected";
 	}
 
+	/** The gist in use, shown on the file picker so it is clear which one the files came from. */
+	get currentGistId(): string | undefined {
+		return this.gateway?.currentGistId;
+	}
+
 	changeGist(): void {
 		void this.gateway?.changeGist();
 	}

@@ -35,15 +35,11 @@
 			<button (click)="cancel()">Cancel</button>
 		</ng-container>
 
-		<ng-container *ngSwitchCase="'discovering'">
-			<p>Looking for your "VS Code Todo Sync" gist…</p>
-		</ng-container>
-
 		<ng-container *ngSwitchCase="'needs-gist'">
-			<p>No sync gist found on your account.</p>
+			<p>Choose a gist to sync with.</p>
 			<p class="hint">
-				Paste the id of your sync gist (the 32-character part of its URL). Set one up first in
-				VS Code via <em>Todo: Connect GitHub</em> if you haven't yet.
+				Paste a gist id (the 32-character part of its URL), or browse your gists to pick or
+				create one.
 			</p>
 			<input
 				type="text"
@@ -61,21 +57,21 @@
 		<ng-container *ngSwitchCase="'change-gist'">
 			<ng-container *ngIf="state.phase === 'change-gist'">
 				<p>Sync gist</p>
-				<p class="hint" *ngIf="state.current">
-					Currently <strong>{{ state.current.description || "(no description)" }}</strong> —
-					{{ state.current.filesCount }} file(s).
-				</p>
-				<p class="hint" *ngIf="!state.current">Currently {{ state.currentGistId }}.</p>
-				<p class="error" *ngIf="state.descriptionMismatch">
-					This gist isn't described "VS Code Todo Sync", so the VS Code extension won't find
-					it by discovery.
-				</p>
-
+				<div class="current-gist" *ngIf="state.currentGistId">
+					<span class="hint">Currently syncing with</span>
+					<strong>{{ state.current ? (state.current.description || "Untitled gist") : "Unknown gist" }}</strong>
+					<span class="hint">
+						{{ state.currentGistId }}<ng-container *ngIf="state.current">
+							&middot; {{ state.current.filesCount }}
+							{{ state.current.filesCount === 1 ? "file" : "files" }}</ng-container>
+					</span>
+				</div>
 				<label>Pick one of your gists</label>
 				<select [(ngModel)]="gistChoice" [disabled]="!!state.busy">
 					<option value="">Select a gist…</option>
 					<option *ngFor="let gist of state.gists" [value]="gist.id">
-						{{ gist.description || "(no description)" }} — {{ gist.filesCount }} file(s)
+						{{ gist.description || "Untitled gist" }} ({{ gist.filesCount }}
+						{{ gist.filesCount === 1 ? "file" : "files" }})
 					</option>
 				</select>
 
@@ -90,8 +86,8 @@
 
 				<p class="error" *ngIf="state.message">{{ state.message }}</p>
 				<p class="hint">
-					Switching gists clears the locally cached sync state for the old one. Creating a
-					new gist makes a secret gist described "VS Code Todo Sync", so VS Code can find it.
+					Switching gists clears the locally cached sync state for the old one. "Create new"
+					makes a secret gist that the VS Code extension can also pick up.
 				</p>
 				<div class="row">
 					<button class="primary" (click)="confirmGistChoice()" [disabled]="!!state.busy">
@@ -121,8 +117,10 @@
 					</option>
 				</select>
 			</ng-container>
+			<p class="hint" *ngIf="currentGistId">Gist {{ currentGistId }}</p>
 			<div class="row">
 				<button class="primary" (click)="confirmFiles()">Start syncing</button>
+				<button (click)="changeGist()">Change gist</button>
 				<button (click)="disconnect()">Disconnect</button>
 			</div>
 		</ng-container>
