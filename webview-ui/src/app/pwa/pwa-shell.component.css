@@ -44,6 +44,16 @@ h1 {
 	color: var(--vscode-errorForeground);
 }
 
+/* Summary of the gist currently in use, shown above the picker. */
+.current-gist {
+	display: flex;
+	flex-direction: column;
+	padding: 8px 10px;
+	border-left: 2px solid var(--vscode-focusBorder);
+	background: var(--vscode-editorWidget-background);
+	word-break: break-all;
+}
+
 .user-code {
 	align-self: center;
 	padding: 10px 18px;
