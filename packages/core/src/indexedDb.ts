@@ -54,18 +54,62 @@ export class KeyValueStore {
 		return new KeyValueStore(dbName, storeName, env);
 	}
 
+	/** Opens `dbName`, creating `storeName` if the upgrade transaction runs. */
+	private openAt(version?: number): Promise<IDBDatabase> {
+		return new Promise<IDBDatabase>((resolve, reject) => {
+			const request =
+				version === undefined
+					? this.env.indexedDB.open(this.dbName)
+					: this.env.indexedDB.open(this.dbName, version);
+			request.onupgradeneeded = () => {
+				const db = request.result;
+				if (!db.objectStoreNames.contains(this.storeName)) {
+					db.createObjectStore(this.storeName);
+				}
+			};
+			request.onsuccess = () => {
+				const db = request.result;
+				// Another KeyValueStore on this database may need to add its own store, which
+				// requires a version bump. Without this, our open connection blocks that upgrade
+				// indefinitely and the other store hangs on its first operation.
+				db.onversionchange = () => {
+					db.close();
+					this.dbPromise = undefined;
+				};
+				resolve(db);
+			};
+			request.onerror = () => reject(request.error ?? new Error("Failed to open IndexedDB"));
+			request.onblocked = () =>
+				reject(new Error(`IndexedDB upgrade for '${this.dbName}' is blocked by another tab.`));
+		});
+	}
+
+	/**
+	 * Opens the database, guaranteeing `storeName` exists.
+	 *
+	 * Several stores share one database (the sync cache and the auth token), each opened
+	 * through its own {@link KeyValueStore}. Whichever opens first runs `onupgradeneeded` and
+	 * creates only *its* store, so a later store would find the database already at that
+	 * version, never get an upgrade transaction, and fail with `NotFoundError` on first use.
+	 * Opening with no version first tells us the current version; if our store is missing we
+	 * reopen at version+1 to add it. This also repairs databases created before the fix.
+	 */
 	private getDb(): Promise<IDBDatabase> {
 		if (!this.dbPromise) {
-			this.dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-				const request = this.env.indexedDB.open(this.dbName, 1);
-				request.onupgradeneeded = () => {
-					const db = request.result;
-					if (!db.objectStoreNames.contains(this.storeName)) {
-						db.createObjectStore(this.storeName);
-					}
-				};
-				request.onsuccess = () => resolve(request.result);
-				request.onerror = () => reject(request.error ?? new Error("Failed to open IndexedDB"));
+			this.dbPromise = (async () => {
+				// No version: opens the existing database at whatever version it has, or creates
+				// it at version 1 (running onupgradeneeded, which makes our store).
+				let db = await this.openAt();
+				if (!db.objectStoreNames.contains(this.storeName)) {
+					const next = db.version + 1;
+					db.close();
+					db = await this.openAt(next);
+				}
+				return db;
+			})();
+			// Don't cache a rejected promise — a retry should be able to reopen.
+			this.dbPromise.catch(() => {
+				this.dbPromise = undefined;
 			});
 		}
 		return this.dbPromise;

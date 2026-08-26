@@ -172,3 +172,52 @@ describe("IndexedDbTokenStore", () => {
 		expect(await second.getToken()).toBe("gho_persisted");
 	});
 });
+
+describe("multiple stores sharing one database", () => {
+	// Regression: the cache store and the token store both live in `vsc-todo-pwa`. When each
+	// opened at a hard-coded version 1, whichever ran first created only its own store; the
+	// second found the database already at version 1, never got an upgrade transaction, and
+	// threw NotFoundError ("One of the specified object stores was not found") on first use.
+	it("creates a second store in a database another store already made", async () => {
+		const first = KeyValueStore.open("shared", "store-a", env);
+		await first.set("a", 1);
+
+		const second = KeyValueStore.open("shared", "store-b", env);
+		await second.set("b", 2);
+
+		expect(await first.get("a")).toBe(1);
+		expect(await second.get("b")).toBe(2);
+	});
+
+	it("lets the cache and token stores coexist in the default database", async () => {
+		const cache = new IndexedDbCacheStore(env);
+		const tokens = new IndexedDbTokenStore(env);
+
+		await tokens.setToken("gho_example");
+		await cache.save("gistCache_user_user-todos.json", {
+			data: { userTodos: [] },
+			lastCleanRemoteData: { userTodos: [] },
+			lastSynced: "2020-01-01T00:00:00.000Z",
+			isDirty: false,
+		});
+
+		expect(await tokens.getToken()).toBe("gho_example");
+		expect(await cache.load("gistCache_user_user-todos.json")).toBeDefined();
+	});
+
+	it("works regardless of which store is opened first", async () => {
+		const tokens = new IndexedDbTokenStore(env);
+		await tokens.setGistId("0123456789abcdef0123456789abcdef");
+
+		const cache = new IndexedDbCacheStore(env);
+		await cache.save("k", {
+			data: { userTodos: [] },
+			lastCleanRemoteData: { userTodos: [] },
+			lastSynced: "2020-01-01T00:00:00.000Z",
+			isDirty: false,
+		});
+
+		expect(await tokens.getGistId()).toBe("0123456789abcdef0123456789abcdef");
+		expect(await cache.load("k")).toBeDefined();
+	});
+});
