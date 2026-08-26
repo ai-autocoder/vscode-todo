@@ -294,3 +294,99 @@ describe("GistSyncEngine.reconcileWorkspace", () => {
 		expect(gist.writes).toBe(writesAfterSeed);
 	});
 });
+
+describe("cold cache bootstrap (data-loss regression)", () => {
+	// A cold cache has no `lastCleanRemoteData`, so there is no observed baseline to diff
+	// against. Falling back to the remote as the baseline made `remoteChanged` false while an
+	// empty local slice made `localChanged` true, so the engine took the "only local changed"
+	// branch and PUSHED the empty slice over populated remote content, destroying it.
+	//
+	// Reachable in the PWA whenever the cache is cleared while the slices are empty: switching
+	// gists (resetForNewGist), disconnect + reconnect, a fresh install, or cleared storage.
+	it("does not wipe a populated remote when the local slice is empty and the cache is cold", async () => {
+		const gist = new FakeGist();
+		gist.setRemote({ userTodos: [todo(1, "written from VS Code"), todo(2, "keep me")] });
+
+		const engine = makeEngine(gist);
+		const res = await engine.reconcileUser(FILE, { userTodos: [] });
+
+		expect(res.success).toBe(true);
+		expect(gist.writes).toBe(0);
+		expect(res.data!.pushed).toBe(false);
+		// The remote wins the bootstrap and is handed back to the caller.
+		expect(res.data!.data.userTodos.map((t) => t.text)).toEqual([
+			"written from VS Code",
+			"keep me",
+		]);
+		expect(res.data!.changedRemotely).toBe(true);
+	});
+
+	it("adopts the remote as the baseline so the next reconcile is a no-op", async () => {
+		const gist = new FakeGist();
+		gist.setRemote({ userTodos: [todo(1, "remote")] });
+		const engine = makeEngine(gist);
+
+		const first = await engine.reconcileUser(FILE, { userTodos: [] });
+		const second = await engine.reconcileUser(FILE, first.data!.data);
+
+		expect(gist.writes).toBe(0);
+		expect(second.data!.pushed).toBe(false);
+		expect(second.data!.changedRemotely).toBe(false);
+	});
+
+	it("still pushes a genuine local edit made after the bootstrap", async () => {
+		const gist = new FakeGist();
+		gist.setRemote({ userTodos: [todo(1, "remote")] });
+		const engine = makeEngine(gist);
+
+		const boot = await engine.reconcileUser(FILE, { userTodos: [] });
+		const edited = { userTodos: [...boot.data!.data.userTodos, todo(2, "from phone")] };
+		const res = await engine.reconcileUser(FILE, edited);
+
+		expect(res.data!.pushed).toBe(true);
+		expect(gist.writes).toBe(1);
+		expect(JSON.parse(gist.files.get(FILE)!).userTodos).toHaveLength(2);
+	});
+
+	it("a cold cache with non-empty local still does not clobber a populated remote", async () => {
+		// Both sides have content and no shared baseline: this must merge, never overwrite.
+		const gist = new FakeGist();
+		gist.setRemote({ userTodos: [todo(1, "remote only")] });
+		const engine = makeEngine(gist);
+
+		const res = await engine.reconcileUser(FILE, { userTodos: [todo(2, "local only")] });
+
+		expect(res.success).toBe(true);
+		const texts = res.data!.data.userTodos.map((t) => t.text).sort();
+		expect(texts).toContain("remote only");
+		expect(texts).toContain("local only");
+	});
+});
+
+describe("cold cache bootstrap: workspace filesData", () => {
+	// The workspace file carries per-file todo lists in `filesData`. A cold cache with an empty
+	// local slice must not read as "the user deleted every per-file list".
+	it("preserves remote filesData when bootstrapping with an empty local workspace", async () => {
+		const gist = new FakeGist();
+		// Computed key: a literal file-path property trips the camelCase lint rule.
+		const readmePath = "c:\\repo\\README.md";
+		const remote: WorkspaceGistData = {
+			workspaceTodos: [todo(1, "ws task")],
+			filesData: { [readmePath]: [todo(2, "per-file task")] },
+			filesDataPaths: {},
+		};
+		gist.files.set(WS_FILE, serialize(remote));
+
+		const engine = makeEngine(gist);
+		const res = await engine.reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			filesData: {},
+			filesDataPaths: {},
+		});
+
+		expect(gist.writes).toBe(0);
+		expect(res.data!.pushed).toBe(false);
+		expect(Object.keys(res.data!.data.filesData)).toEqual([readmePath]);
+		expect(res.data!.data.workspaceTodos).toHaveLength(1);
+	});
+});

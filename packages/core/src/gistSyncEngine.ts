@@ -213,7 +213,16 @@ export class GistSyncEngine {
 			return this.ok({ data: localData, changedRemotely: false, pushed: true, conflicts: [], fileConflicts: [] });
 		}
 
-		const base = cache.lastCleanRemoteData ?? remoteData;
+		// No baseline means we have never seen this file before on this device (fresh install,
+		// cleared storage, or a cache reset after switching gists). There is no evidence that a
+		// local/remote difference is a local *edit*, so a push here would destroy remote content
+		// the user never touched. Bootstrap instead: adopt the remote, and merge rather than
+		// overwrite if we happen to be holding local data too.
+		if (cache.lastCleanRemoteData === undefined) {
+			return this.bootstrap(key, fileName, remoteData, localData, strategy);
+		}
+
+		const base = cache.lastCleanRemoteData;
 		const remoteChanged = !isEqual(remoteData, base);
 		const localChanged = !isEqual(localData, base);
 
@@ -241,6 +250,48 @@ export class GistSyncEngine {
 
 		// 3d. Both changed → three-way merge, then push the merged result.
 		const { merged, conflicts, fileConflicts } = strategy.merge(base, localData, remoteData);
+		const write = await this.client.writeFile(this.gistId, fileName, serialize(merged));
+		if (!write.success) {
+			return { success: false, error: write.error };
+		}
+		await this.saveCache(key, merged, merged);
+		return this.ok({ data: merged, changedRemotely: true, pushed: true, conflicts, fileConflicts });
+	}
+
+	/**
+	 * First reconcile of a file on this device, with no baseline to diff against.
+	 *
+	 * Never treats the local state as authoritative: without a baseline we cannot tell a local
+	 * edit from simply not having pulled yet, and guessing wrong destroys remote data. If local
+	 * is empty (the common case: fresh install, or the cache was reset when switching gists) the
+	 * remote is adopted verbatim and nothing is written. If we do hold local data, it is merged
+	 * against an *empty* base so both sides read as additions and neither is deleted.
+	 */
+	private async bootstrap<T extends object>(
+		key: string,
+		fileName: string,
+		remoteData: T,
+		localData: T,
+		strategy: {
+			empty: () => T;
+			merge: (base: T, local: T, remote: T) => { merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] };
+		}
+	): Promise<SyncResult<ReconcileResult<T>>> {
+		const empty = strategy.empty();
+
+		// Nothing of our own to contribute → pull, seeding the baseline for later reconciles.
+		if (isEqual(localData, empty) || isEqual(localData, remoteData)) {
+			await this.saveCache(key, remoteData, remoteData);
+			return this.ok({
+				data: remoteData,
+				changedRemotely: !isEqual(localData, remoteData),
+				pushed: false,
+				conflicts: [],
+				fileConflicts: [],
+			});
+		}
+
+		const { merged, conflicts, fileConflicts } = strategy.merge(empty, localData, remoteData);
 		const write = await this.client.writeFile(this.gistId, fileName, serialize(merged));
 		if (!write.success) {
 			return { success: false, error: write.error };
