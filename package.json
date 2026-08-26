@@ -329,7 +329,11 @@
 	"scripts": {
 		"install:all": "npm install && cd webview-ui && npm install",
 		"start:webview": "cd webview-ui && npm run start",
+		"start:webview:pwa": "cd webview-ui && npm run start:pwa",
+		"start:webview:pwa:host": "cd webview-ui && npm run start:pwa:host",
+		"start:webview:prod": "cd webview-ui && npm run start:prod",
 		"build:webview": "cd webview-ui && npm run build",
+		"build:webview:pwa": "cd webview-ui && npm run build:pwa",
 		"mcp:inspector": "mcp-inspector",
 		"vscode:prepublish": "npm run compile",
 		"compile": "tsc -p ./",

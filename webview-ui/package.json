@@ -5,7 +5,11 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "start:pwa": "ng serve --configuration pwa",
+    "start:pwa:host": "ng serve --configuration pwa --host 0.0.0.0",
+    "start:prod": "ng serve --configuration production",
     "build": "ng build --output-hashing=none",
+    "build:pwa": "ng build --configuration pwa",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:ci": "ng test --watch=false --browsers=ChromeHeadlessCI",
