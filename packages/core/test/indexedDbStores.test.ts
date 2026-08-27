@@ -221,3 +221,77 @@ describe("multiple stores sharing one database", () => {
 		expect(await cache.load("k")).toBeDefined();
 	});
 });
+
+describe("workspace file selection semantics", () => {
+	/**
+	 * Three distinct states must survive a reload, because the file picker branches on them:
+	 * never asked (undefined), explicitly chose none (""), and chose a file (the name).
+	 * Conflating the first two left the PWA permanently connected with no workspace file and
+	 * no way back to the picker, so the workspace scope silently never synced.
+	 */
+	it("returns undefined when the user has never been asked", async () => {
+		const store = new IndexedDbTokenStore(env);
+		expect(await store.getWorkspaceFile()).toBeUndefined();
+	});
+
+	it("distinguishes an explicit 'none' from never having been asked", async () => {
+		const store = new IndexedDbTokenStore(env);
+		await store.setWorkspaceFile("");
+		const stored = await store.getWorkspaceFile();
+
+		expect(stored).toBe("");
+		expect(stored).not.toBeUndefined();
+		// Falsy either way, so guards keep working; only the undefined check tells them apart.
+		expect(!!stored).toBe(false);
+	});
+
+	it("round-trips a chosen workspace file", async () => {
+		const store = new IndexedDbTokenStore(env);
+		await store.setWorkspaceFile("workspace-vscode-todo.json");
+		expect(await store.getWorkspaceFile()).toBe("workspace-vscode-todo.json");
+	});
+
+	it("overwrites a previous selection when the user picks 'none'", async () => {
+		const store = new IndexedDbTokenStore(env);
+		await store.setWorkspaceFile("workspace-old.json");
+		await store.setWorkspaceFile("");
+
+		// Persisting unconditionally is what makes this work; writing only non-empty values
+		// left the old file behind and kept syncing a list the user had deselected.
+		expect(await store.getWorkspaceFile()).toBe("");
+	});
+
+	it("clearFileSelections forgets the files but keeps token and gist id", async () => {
+		const store = new IndexedDbTokenStore(env);
+		await store.setToken("gho_test");
+		await store.setGistId("0123456789abcdef0123456789abcdef");
+		await store.setUserFile("user-a.json");
+		await store.setWorkspaceFile("workspace-a.json");
+
+		await store.clearFileSelections();
+
+		expect(await store.getToken()).toBe("gho_test");
+		expect(await store.getGistId()).toBe("0123456789abcdef0123456789abcdef");
+		expect(await store.getUserFile()).toBeUndefined();
+		expect(await store.getWorkspaceFile()).toBeUndefined();
+	});
+
+	it("clearFileSelections resets 'chose none' back to never-asked", async () => {
+		const store = new IndexedDbTokenStore(env);
+		await store.setWorkspaceFile("");
+		expect(await store.getWorkspaceFile()).toBe("");
+
+		await store.clearFileSelections();
+
+		// Must be undefined, not "": after switching gists the user has to be asked again,
+		// since the previous gist's answer says nothing about the new one.
+		expect(await store.getWorkspaceFile()).toBeUndefined();
+	});
+
+	it("clear() also resets the workspace selection to never-asked", async () => {
+		const store = new IndexedDbTokenStore(env);
+		await store.setWorkspaceFile("");
+		await store.clear();
+		expect(await store.getWorkspaceFile()).toBeUndefined();
+	});
+});

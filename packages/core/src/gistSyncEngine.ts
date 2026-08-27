@@ -102,6 +102,23 @@ export class GistSyncEngine {
 		return `gistCache_${scope}_${fileName}`;
 	}
 
+	/**
+	 * Last known good data for a file, or undefined if this device has never synced it.
+	 *
+	 * A caller that keeps its own copy of the data between sessions MUST restore it from here
+	 * before the first reconcile. The persisted cache also holds the merge baseline, so starting
+	 * with empty local state against a populated baseline makes the reconcile read a deletion
+	 * and push the empty state over the remote.
+	 */
+	public async loadCachedUser(fileName: string): Promise<GlobalGistData | undefined> {
+		return (await this.store.load<GlobalGistData>(this.cacheKey("global", fileName)))?.data;
+	}
+
+	/** Workspace counterpart of {@link loadCachedUser}. */
+	public async loadCachedWorkspace(fileName: string): Promise<WorkspaceGistData | undefined> {
+		return (await this.store.load<WorkspaceGistData>(this.cacheKey("workspace", fileName)))?.data;
+	}
+
 	/** Picks the winning side for each conflict per the active policy; dropped if that side deleted. */
 	private resolve(conflicts: ConflictSet[]): Todo[] {
 		const resolved: Todo[] = [];

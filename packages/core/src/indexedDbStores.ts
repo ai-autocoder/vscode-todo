@@ -99,6 +99,16 @@ export class IndexedDbTokenStore {
 		await this.kv.set<string>(WORKSPACE_FILE_KEY, fileName);
 	}
 
+	/**
+	 * Forgets the file selections while keeping the token and gist id — the "switch gists" case.
+	 * Deletes rather than blanking: a stored empty workspace file means "the user chose to sync
+	 * no workspace list", which is a different state from having never been asked.
+	 */
+	async clearFileSelections(): Promise<void> {
+		await this.kv.delete(USER_FILE_KEY);
+		await this.kv.delete(WORKSPACE_FILE_KEY);
+	}
+
 	/** Clears everything — the "Disconnect" action. */
 	async clear(): Promise<void> {
 		await this.kv.delete(TOKEN_KEY);

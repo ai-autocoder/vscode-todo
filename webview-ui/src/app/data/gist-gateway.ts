@@ -34,6 +34,7 @@ import {
 	SYNC_GIST_DESCRIPTION,
 	DefaultFileNames,
 	GIST_ID_REGEX,
+	isEqual,
 	type GistFileInfo,
 	type GistSummary,
 	type GlobalGistData,
@@ -164,6 +165,12 @@ export class GistGateway implements DataGateway {
 	private gistId: string | undefined;
 	private userFile: string | undefined;
 	private workspaceFile: string | undefined;
+	/**
+	 * Whether the user has actually been through the workspace-file choice, as opposed to simply
+	 * not having one. Without this, "I want no workspace list" is indistinguishable from "never
+	 * asked", and the file picker either re-prompts forever or silently never syncs the workspace.
+	 */
+	private workspaceFileChosen = false;
 
 	private readonly _connection = new BehaviorSubject<GistConnectionState>({
 		phase: "disconnected",
@@ -225,9 +232,14 @@ export class GistGateway implements DataGateway {
 		this.token = await this.tokenStore.getToken();
 		this.gistId = await this.tokenStore.getGistId();
 		this.userFile = await this.tokenStore.getUserFile();
-		this.workspaceFile = await this.tokenStore.getWorkspaceFile();
+		// "" means the user explicitly chose no workspace file; undefined means they never picked.
+		// The distinction decides whether enterFileSelection can resume or must re-prompt.
+		const storedWorkspaceFile = await this.tokenStore.getWorkspaceFile();
+		this.workspaceFileChosen = storedWorkspaceFile !== undefined;
+		this.workspaceFile = storedWorkspaceFile || undefined;
 		if (this.gistId) {
-			this.engine = new GistSyncEngine({ client: this.client, gistId: this.gistId });
+			this.engine = this.createEngine(this.gistId);
+			await this.rehydrateFromCache();
 		}
 
 		let state: GistConnectionState;
@@ -257,7 +269,9 @@ export class GistGateway implements DataGateway {
 
 	/** Re-pull on regaining focus (the extension polls; the PWA pulls on focus to stay cheap). */
 	async refresh(): Promise<void> {
-		if (this.token && this.gistId) {
+		// Same guard as ready(): without a chosen file there is nothing to reconcile, and the
+		// file names may still belong to a gist the user is in the middle of switching away from.
+		if (this.token && this.gistId && this.userFile) {
 			await this.pullAll();
 		}
 	}
@@ -352,14 +366,20 @@ export class GistGateway implements DataGateway {
 		if (this.userPushTimer) {
 			clearTimeout(this.userPushTimer);
 		}
-		this.userPushTimer = setTimeout(() => void this.reconcileUser(), this.pushDebounceMs);
+		this.userPushTimer = setTimeout(
+			() => void this.enqueue(() => this.reconcileUser()),
+			this.pushDebounceMs
+		);
 	}
 
 	private scheduleWorkspacePush(): void {
 		if (this.workspacePushTimer) {
 			clearTimeout(this.workspacePushTimer);
 		}
-		this.workspacePushTimer = setTimeout(() => void this.reconcileWorkspace(), this.pushDebounceMs);
+		this.workspacePushTimer = setTimeout(
+			() => void this.enqueue(() => this.reconcileWorkspace()),
+			this.pushDebounceMs
+		);
 	}
 
 	private async reconcileUser(): Promise<void> {
@@ -373,11 +393,18 @@ export class GistGateway implements DataGateway {
 			const local: GlobalGistData = { userTodos: this.user.todos };
 			const res = await engine.reconcileUser(fileName, local);
 			if (res.success && res.data) {
-				if (res.data.changedRemotely) {
-					this.user.todos = res.data.data.userTodos;
+				// Always adopt the reconciled data — it is what the engine just recorded as the
+				// merge baseline. Keeping a different local list would make the next reconcile read
+				// the difference as a local edit and push it over the gist.
+				const changed = !isEqual({ todos: this.user.todos }, { todos: res.data.data.userTodos });
+				this.user.todos = res.data.data.userTodos;
+				if (changed) {
 					this.user.lastActionType = "loadData";
 					this.recount(this.user);
 					this.emitScope(TodoScope.user);
+					// The header's counts ride on the full state payload, so a pull that changed
+					// the list has to refresh it too or the badge keeps the pre-pull number.
+					this.emitReload();
 				}
 			}
 		} finally {
@@ -402,25 +429,37 @@ export class GistGateway implements DataGateway {
 			};
 			const res = await engine.reconcileWorkspace(fileName, local);
 			if (res.success && res.data) {
-				// Always adopt the merged per-file data, even when workspaceTodos did not change
-				// remotely — it is the baseline for the next push.
-				this.filesData = res.data.data.filesData;
-				this.filesDataPaths = res.data.data.filesDataPaths ?? {};
-				if (res.data.changedRemotely) {
-					this.workspace.todos = res.data.data.workspaceTodos;
+				// Always adopt the reconciled data, even when nothing changed remotely: it is what
+				// the engine just recorded as the merge baseline, so holding anything else here
+				// would make the next reconcile read the difference as a local edit and push it.
+				const merged = res.data.data;
+				const workspaceChanged = !isEqual(
+					{ todos: this.workspace.todos },
+					{ todos: merged.workspaceTodos }
+				);
+				const filesChanged = !isEqual(this.filesData, merged.filesData);
+
+				this.filesData = merged.filesData;
+				this.filesDataPaths = merged.filesDataPaths ?? {};
+				this.workspace.todos = merged.workspaceTodos;
+
+				if (workspaceChanged) {
 					this.workspace.lastActionType = "loadData";
 					this.recount(this.workspace);
 					this.emitScope(TodoScope.workspace);
-					// Re-project the open file from the merged data so a remote edit to it shows up.
-					if (this.currentFile.filePath) {
-						this.currentFile = {
-							...this.currentFile,
-							todos: [...(this.filesData[this.currentFile.filePath] ?? [])],
-							lastActionType: "loadData",
-						};
-						this.recount(this.currentFile);
-						this.emitScope(TodoScope.currentFile);
-					}
+				}
+				// Per-file todos live in `filesData` and change independently of `workspaceTodos`,
+				// so the open file is re-projected off its own comparison.
+				if (filesChanged && this.currentFile.filePath) {
+					this.currentFile = {
+						...this.currentFile,
+						todos: [...(this.filesData[this.currentFile.filePath] ?? [])],
+						lastActionType: "loadData",
+					};
+					this.recount(this.currentFile);
+					this.emitScope(TodoScope.currentFile);
+				}
+				if (workspaceChanged || filesChanged) {
 					// File list / counts may have changed too.
 					this.emitReload();
 				}
@@ -430,9 +469,66 @@ export class GistGateway implements DataGateway {
 		}
 	}
 
+	/**
+	 * Restores the todos from the persisted sync cache before anything can reconcile.
+	 *
+	 * Not optional. The cache holds both the last known good data and the merge baseline, but
+	 * only the connection settings were being restored on reload — so local state came up empty
+	 * against a populated baseline, the reconcile read that as the user having deleted
+	 * everything, and it pushed the empty state over the gist. Rehydrating keeps the two halves
+	 * in step. Reconciles still run afterwards, so anything stale here is corrected by the pull.
+	 */
+	private async rehydrateFromCache(): Promise<void> {
+		const engine = this.engine;
+		if (!engine) {
+			return;
+		}
+		if (this.userFile) {
+			const cached = await engine.loadCachedUser(this.userFile);
+			if (cached) {
+				this.user.todos = cached.userTodos;
+				this.recount(this.user);
+			}
+		}
+		if (this.workspaceFile) {
+			const cached = await engine.loadCachedWorkspace(this.workspaceFile);
+			if (cached) {
+				this.workspace.todos = cached.workspaceTodos;
+				this.filesData = cached.filesData ?? {};
+				this.filesDataPaths = cached.filesDataPaths ?? {};
+				this.recount(this.workspace);
+			}
+		}
+	}
+
+	/**
+	 * Builds the sync engine for a gist. Always goes through here so the IndexedDB-backed
+	 * {@link cacheStore} is attached: without it the engine silently falls back to an in-memory
+	 * store, every session starts with no merge baseline, and remote changes can never be told
+	 * apart from local ones.
+	 */
+	private createEngine(gistId: string): GistSyncEngine {
+		return new GistSyncEngine({ client: this.client, gistId, cacheStore: this.cacheStore });
+	}
+
+	/**
+	 * Serializes every reconcile. The engine reads a file's cache, diffs, then writes it back;
+	 * two overlapping runs would both read the same baseline and the later write would push
+	 * against stale state. `ready()`, the focus handler and the debounced pushes can all fire at
+	 * once, so the queue is not optional.
+	 */
+	private syncQueue: Promise<void> = Promise.resolve();
+
+	private enqueue(work: () => Promise<void>): Promise<void> {
+		this.syncQueue = this.syncQueue.then(work, work);
+		return this.syncQueue;
+	}
+
 	private async pullAll(): Promise<void> {
-		await this.reconcileUser();
-		await this.reconcileWorkspace();
+		await this.enqueue(async () => {
+			await this.reconcileUser();
+			await this.reconcileWorkspace();
+		});
 	}
 
 	private recount(slice: TodoSlice): void {
@@ -610,7 +706,7 @@ export class GistGateway implements DataGateway {
 		}
 		this.gistId = gistId;
 		await this.tokenStore.setGistId(gistId);
-		this.engine = new GistSyncEngine({ client: this.client, gistId });
+		this.engine = this.createEngine(gistId);
 		this.emitGitHubStatus();
 		this._connection.next(await this.enterFileSelection());
 		this.emitSyncInfo();
@@ -624,11 +720,16 @@ export class GistGateway implements DataGateway {
 	 */
 	private async resetForNewGist(): Promise<void> {
 		this.cancelPendingPushes();
-		await this.cacheStore.clear();
+		// Wait for any in-flight reconcile before clearing. Cache keys carry only the file name,
+		// so a late write from the old gist would otherwise land in the cleared store and be read
+		// back as the new gist's baseline — the exact corruption this reset exists to prevent.
+		await this.enqueue(async () => {
+			await this.cacheStore.clear();
+		});
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
-		await this.tokenStore.setUserFile("");
-		await this.tokenStore.setWorkspaceFile("");
+		this.workspaceFileChosen = false;
+		await this.tokenStore.clearFileSelections();
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
 		this.filesData = {};
@@ -761,8 +862,16 @@ export class GistGateway implements DataGateway {
 		}
 		const users = userFiles.data ?? [];
 		const workspaces = workspaceFiles.data ?? [];
-		if (this.userFile && users.some((f) => f.fullPath === this.userFile)) {
-			return { phase: "connected", userFile: this.userFile, workspaceFile: this.workspaceFile };
+		// Resume only when the stored selection still matches the gist. A workspace file that is
+		// no longer there (or was never chosen while the gist offers one) has to go back to the
+		// picker: skipping it on the strength of the user file alone left the session permanently
+		// connected with no workspace file, and no way to reach the picker to choose one.
+		const userFileValid = !!this.userFile && users.some((f) => f.fullPath === this.userFile);
+		const workspaceFileValid = this.workspaceFile
+			? workspaces.some((f) => f.fullPath === this.workspaceFile)
+			: this.workspaceFileChosen || workspaces.length === 0;
+		if (userFileValid && workspaceFileValid) {
+			return { phase: "connected", userFile: this.userFile!, workspaceFile: this.workspaceFile };
 		}
 		return { phase: "needs-files", userFiles: users, workspaceFiles: workspaces };
 	}
@@ -776,9 +885,14 @@ export class GistGateway implements DataGateway {
 		this.userFile = userFile || DefaultFileNames.user;
 		await this.tokenStore.setUserFile(this.userFile);
 		this.workspaceFile = workspaceFile || undefined;
-		if (this.workspaceFile) {
-			await this.tokenStore.setWorkspaceFile(this.workspaceFile);
-		}
+		// Persist unconditionally, including the empty string: writing only when a file was chosen
+		// left a previous selection behind when the user picked "None", and left nothing stored at
+		// all on the first run, so the workspace file never survived a reload.
+		await this.tokenStore.setWorkspaceFile(this.workspaceFile ?? "");
+		this.workspaceFileChosen = true;
+		// A newly chosen workspace file has no cached baseline or todos on this device yet, so
+		// load whatever a previous session stored for it before the first reconcile runs.
+		await this.rehydrateFromCache();
 		this._connection.next({
 			phase: "connected",
 			userFile: this.userFile,
@@ -796,9 +910,13 @@ export class GistGateway implements DataGateway {
 		this.gistId = undefined;
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
+		this.workspaceFileChosen = false;
 		this.engine = undefined;
 		await this.tokenStore.clear();
-		await this.cacheStore.clear();
+		// Same ordering hazard as resetForNewGist: let any in-flight reconcile finish first.
+		await this.enqueue(async () => {
+			await this.cacheStore.clear();
+		});
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
 		this.filesData = {};

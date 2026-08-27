@@ -39,6 +39,7 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	readonly defaultUserFileName = DefaultFileNames.user;
 
 	private gateway: GistGateway | undefined;
+	private onFocus: (() => void) | undefined;
 	private connectionSub: Subscription | undefined;
 	private messagesSub: Subscription | undefined;
 
@@ -79,6 +80,24 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 			}
 			this.cdRef.detectChanges();
 		});
+
+		// The extension polls; the PWA pulls when it regains focus, which is when a phone user
+		// comes back to the app. Without this nothing re-syncs after the initial load.
+		// `focus` and `visibilitychange` both fire on a single tab return, so the refresh is
+		// coalesced into one pull per return rather than two full reconciles.
+		let refreshQueued = false;
+		this.onFocus = () => {
+			if (document.visibilityState !== "visible" || refreshQueued) {
+				return;
+			}
+			refreshQueued = true;
+			queueMicrotask(() => {
+				refreshQueued = false;
+				void gateway.refresh();
+			});
+		};
+		window.addEventListener("focus", this.onFocus);
+		document.addEventListener("visibilitychange", this.onFocus);
 
 		await gateway.restoreSession();
 	}
@@ -145,5 +164,9 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	ngOnDestroy(): void {
 		this.connectionSub?.unsubscribe();
 		this.messagesSub?.unsubscribe();
+		if (this.onFocus) {
+			window.removeEventListener("focus", this.onFocus);
+			document.removeEventListener("visibilitychange", this.onFocus);
+		}
 	}
 }
