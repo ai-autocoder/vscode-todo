@@ -3,10 +3,14 @@
 	height: 100%;
 }
 
+/* Fixed, not static: the picker overlays the still-mounted app. In normal flow it landed below
+   a full-height <app-root>, off-screen, so opening it looked like nothing happened. */
 .connect-screen {
-	min-height: 100dvh;
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	overflow-y: auto;
 	display: flex;
-	align-items: center;
 	justify-content: center;
 	padding: 16px;
 	background-color: var(--vscode-editor-background);
@@ -17,6 +21,9 @@
 .card {
 	width: 100%;
 	max-width: 420px;
+	/* Centers vertically, but degrades to top-aligned scrolling when taller than the viewport;
+	   `align-items: center` would clip the card's top out of reach instead. */
+	margin: auto;
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
