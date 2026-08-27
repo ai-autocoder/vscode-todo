@@ -12,11 +12,31 @@ import { Todo } from "./todoTypes";
 export type TaskSortOption = "sortType1" | "sortType2" | "disabled";
 
 /**
- * Structural equality via JSON serialization — the exact predicate the extension's merge
- * uses to decide whether a todo (or list) changed. Order-sensitive by design.
+ * Structural equality via JSON serialization — the predicate the merge uses to decide whether a
+ * todo (or list) changed.
+ *
+ * Array order is significant (todo order is user-visible), but object *key* order is not: the
+ * same todo reaches us with different key ordering depending on whether it was parsed from the
+ * gist or built in code, and treating that as a change made every reconcile report false
+ * modifications on both sides, producing phantom conflicts and needless pushes.
  */
 export function isEqual(a: object, b: object): boolean {
-	return JSON.stringify(a) === JSON.stringify(b);
+	return canonicalJson(a) === canonicalJson(b);
+}
+
+/** JSON with object keys emitted in sorted order; array order is preserved. */
+function canonicalJson(value: unknown): string {
+	return JSON.stringify(value, (_key, val) => {
+		if (val === null || typeof val !== "object" || Array.isArray(val)) {
+			return val;
+		}
+		const source = val as Record<string, unknown>;
+		const sorted: Record<string, unknown> = {};
+		for (const key of Object.keys(source).sort()) {
+			sorted[key] = source[key];
+		}
+		return sorted;
+	});
 }
 
 /**

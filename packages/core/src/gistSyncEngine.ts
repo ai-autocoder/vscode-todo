@@ -337,7 +337,23 @@ export class GistSyncEngine {
 
 /** Serializes gist data exactly as the extension does (pretty-printed, 2-space). */
 export function serialize(data: unknown): string {
-	return JSON.stringify(data, null, 2);
+	// Keys are written in sorted order so identical content always produces identical bytes,
+	// matching how the extension writes filesData (sortByFileName) and keeping gist revisions
+	// free of diffs that are pure key reordering. Array order is preserved — it is meaningful.
+	return JSON.stringify(data, (_key, value) => sortObjectKeys(value), 2);
+}
+
+/** Returns plain objects with keys in sorted order; arrays and primitives pass through. */
+function sortObjectKeys(value: unknown): unknown {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return value;
+	}
+	const source = value as Record<string, unknown>;
+	const sorted: Record<string, unknown> = {};
+	for (const key of Object.keys(source).sort()) {
+		sorted[key] = source[key];
+	}
+	return sorted;
 }
 
 function parseGlobal(raw: string): GlobalGistData {

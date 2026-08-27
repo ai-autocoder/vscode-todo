@@ -345,11 +345,27 @@ describe("remote edits from the VS Code extension", () => {
 	});
 });
 
-describe("isEqual is key-order sensitive (why the gateway must not hand-build compared objects)", () => {
-	it("treats the same workspace data with different key order as different", () => {
+describe("isEqual compares content, not key order", () => {
+	it("treats the same workspace data with different key order as equal", () => {
 		const a = { workspaceTodos: [], filesData: {}, filesDataPaths: {} };
 		const b = { filesData: {}, filesDataPaths: {}, workspaceTodos: [] };
-		expect(isEqual(a, b)).toBe(false);
+		expect(isEqual(a, b)).toBe(true);
+	});
+
+	it("treats the same todo built two ways as equal", () => {
+		const parsed = JSON.parse('{"text":"a","id":1,"completed":false}') as object;
+		const built = { id: 1, text: "a", completed: false };
+		expect(isEqual(parsed, built)).toBe(true);
+	});
+
+	it("still distinguishes different content", () => {
+		expect(isEqual({ id: 1, text: "a" }, { id: 1, text: "b" })).toBe(false);
+	});
+
+	it("keeps array order significant, since todo order is user-visible", () => {
+		expect(isEqual({ todos: [todo(1, "a"), todo(2, "b")] }, { todos: [todo(2, "b"), todo(1, "a")] })).toBe(
+			false
+		);
 	});
 
 	it("survives a JSON round-trip of the reconciled workspace data", async () => {
@@ -637,5 +653,79 @@ describe("workspace scope syncs once a file is selected", () => {
 		await newEngine(gist, store).reconcileWorkspace(WS_FILE, local);
 
 		expect(gist.workspace().filesData[FILE_PATH]).toHaveLength(1);
+	});
+});
+
+describe("no spurious writes from key ordering", () => {
+	const OTHER_PATH = "c:/repo/b.ts";
+
+	/**
+	 * The extension sorts filesData by file name; the merge rebuilds it in
+	 * base-then-local-then-remote insertion order. isEqual is JSON.stringify based, so identical
+	 * content in a different key order reads as a change and the PWA pushes on every reconcile,
+	 * racing the extension's own writes for no reason.
+	 */
+	it("does not rewrite the workspace file when only filesData key order differs", async () => {
+		const gist = new FakeGist();
+		// Remote written the way the extension writes it: keys sorted by file name.
+		gist.seed(WS_FILE, {
+			workspaceTodos: [],
+			filesData: { [FILE_PATH]: [todo(1, "in a")], [OTHER_PATH]: [todo(2, "in b")] },
+			filesDataPaths: {},
+		});
+		const store = new PersistentCacheStore();
+
+		const pulled = await newEngine(gist, store).reconcileWorkspace(WS_FILE, emptyWorkspace());
+
+		// Same content, opposite key order — what an unsorted local merge would produce.
+		const reordered: WorkspaceGistData = {
+			workspaceTodos: pulled.data!.data.workspaceTodos,
+			filesData: {
+				[OTHER_PATH]: pulled.data!.data.filesData[OTHER_PATH],
+				[FILE_PATH]: pulled.data!.data.filesData[FILE_PATH],
+			},
+			filesDataPaths: pulled.data!.data.filesDataPaths,
+		};
+
+		const res = await newEngine(gist, store).reconcileWorkspace(WS_FILE, reordered);
+
+		expect(res.data?.pushed).toBe(false);
+		expect(gist.writeLog).toHaveLength(0);
+	});
+
+	it("still detects a real change to a file's todos", async () => {
+		const gist = new FakeGist();
+		gist.seed(WS_FILE, {
+			workspaceTodos: [],
+			filesData: { [FILE_PATH]: [todo(1, "in a")] },
+			filesDataPaths: {},
+		});
+		const store = new PersistentCacheStore();
+
+		const pulled = await newEngine(gist, store).reconcileWorkspace(WS_FILE, emptyWorkspace());
+		const edited: WorkspaceGistData = {
+			...pulled.data!.data,
+			filesData: { [FILE_PATH]: [todo(1, "in a"), todo(3, "added")] },
+		};
+
+		const res = await newEngine(gist, store).reconcileWorkspace(WS_FILE, edited);
+
+		expect(res.data?.pushed).toBe(true);
+		expect(gist.workspace().filesData[FILE_PATH]).toHaveLength(2);
+	});
+
+	it("writes filesData in sorted key order so the extension sees no churn either", async () => {
+		const gist = new FakeGist();
+		const store = new PersistentCacheStore();
+
+		await newEngine(gist, store).reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			// Deliberately unsorted going in.
+			filesData: { [OTHER_PATH]: [todo(2, "in b")], [FILE_PATH]: [todo(1, "in a")] },
+			filesDataPaths: {},
+		});
+
+		const written = Object.keys(gist.workspace().filesData);
+		expect(written).toEqual([...written].sort());
 	});
 });

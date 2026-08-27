@@ -384,11 +384,13 @@ export function mergeFilesData(
 	local: TodoFilesData,
 	remote: TodoFilesData
 ): { autoMerged: TodoFilesData; conflicts: FileConflictSet[] } {
-	const allFilePaths = new Set([
-		...Object.keys(base),
-		...Object.keys(local),
-		...Object.keys(remote),
-	]);
+	// Sorted so the merged object's key order depends only on which paths are present, never on
+	// which side contributed them. `isEqual` compares serialized JSON, so an insertion-order
+	// difference would otherwise read as a change and push identical content on every reconcile.
+	// Sorting also matches how the extension writes this map (see sortByFileName).
+	const allFilePaths = [
+		...new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(remote)]),
+	].sort();
 
 	const autoMerged: TodoFilesData = {};
 	const conflicts: FileConflictSet[] = [];
@@ -507,7 +509,8 @@ export function mergeFilesDataPaths(
 	remote: TodoFilesDataPaths
 ): TodoFilesDataPaths {
 	const merged: TodoFilesDataPaths = {};
-	const allKeys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+	// Sorted for the same reason as mergeFilesData: stable key order, no spurious pushes.
+	const allKeys = [...new Set([...Object.keys(local), ...Object.keys(remote)])].sort();
 
 	const addUnique = (list: string[], value: string, normalize: (value: string) => string) => {
 		const normalizedValue = normalize(value);
