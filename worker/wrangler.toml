@@ -2,10 +2,12 @@ name = "agent-plans-auth-proxy"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
-# CORS allowlist. Use "*" for local dev; set to your PWA origin(s) in production, e.g.
-#   ALLOWED_ORIGINS = "https://agent-plans.pages.dev"
+# CORS allowlist, comma-separated. Only these origins can use the proxy to run the device flow.
+# Add http://localhost:4200 here (or override with `wrangler dev --var`) when working locally.
+# Note: Pages gives each deployment its own <hash>.plans-app.pages.dev origin, which is NOT
+# covered by this entry — sign-in only works on the production domain unless one is added.
 [vars]
-ALLOWED_ORIGINS = "*"
+ALLOWED_ORIGINS = "https://plans-app.pages.dev"
 
 # Optional hardening: uncomment and set to your GitHub OAuth App client id so the proxy only
 # forwards requests for your app.
