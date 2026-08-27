@@ -33,8 +33,13 @@
 	background-color: var(--vscode-editorWidget-background);
 }
 
-h1 {
+h1,
+p,
+label {
 	margin: 0;
+}
+
+h1 {
 	font-size: 1.4em;
 	color: var(--vscode-settings-headerForeground);
 }
@@ -42,13 +47,11 @@ h1 {
 .subtitle,
 .hint,
 label {
-	margin: 0;
 	color: var(--vscode-descriptionForeground);
 	font-size: 0.9em;
 }
 
 .error {
-	margin: 0;
 	color: var(--vscode-errorForeground);
 }
 
@@ -99,17 +102,27 @@ button.primary:hover,
 
 .row {
 	display: flex;
+	align-items: center;
 	gap: 8px;
 }
 
-/* Gist id with its "Change gist" action: the id takes the space, the button stays its own size. */
-.gist-row {
-	align-items: center;
-	word-break: break-all;
+/* Gist id truncated to one line — `min-width: 0` is what lets a flex item shrink below its
+   content so the ellipsis appears at all. */
+.gist-row .hint {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
+/* A link, not a button: it modifies the value beside it and must stay lighter than Cancel. */
 .gist-row button {
 	flex: none;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	text-decoration: underline;
 }
 
 .row > * {

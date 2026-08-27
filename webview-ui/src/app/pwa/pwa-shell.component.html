@@ -102,7 +102,7 @@
 		<ng-container *ngSwitchCase="'needs-files'">
 			<p>Choose which lists to sync:</p>
 			<div class="row gist-row" *ngIf="currentGistId">
-				<span class="hint">Gist {{ currentGistId }}</span>
+				<span class="hint" [title]="currentGistId">Gist {{ currentGistId }}</span>
 				<button (click)="changeGist()">Change gist</button>
 			</div>
 			<ng-container *ngIf="state.phase === 'needs-files'">
