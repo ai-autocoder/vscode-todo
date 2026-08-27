@@ -181,6 +181,13 @@ export class GistGateway implements DataGateway {
 	get currentGistId(): string | undefined {
 		return this.gistId;
 	}
+	/** The files in use, so the picker can preselect them rather than defaulting to the first. */
+	get currentUserFile(): string | undefined {
+		return this.userFile;
+	}
+	get currentWorkspaceFile(): string | undefined {
+		return this.workspaceFile;
+	}
 	private connectAbort: AbortController | undefined;
 
 	private user = newUserSlice();
@@ -781,6 +788,25 @@ export class GistGateway implements DataGateway {
 				? { phase: "connected", userFile: this.userFile, workspaceFile: this.workspaceFile }
 				: await this.enterFileSelection()
 		);
+	}
+
+	/**
+	 * Dismisses the file picker, keeping the current selection. Only meaningful once a session
+	 * exists — during first-time setup there is nothing to go back to, so the picker stays.
+	 */
+	cancelFileSelection(): void {
+		if (this.gistId && this.userFile) {
+			this._connection.next({
+				phase: "connected",
+				userFile: this.userFile,
+				workspaceFile: this.workspaceFile,
+			});
+		}
+	}
+
+	/** True once a session exists, so the picker can offer Cancel rather than trapping the user. */
+	get canCancelFileSelection(): boolean {
+		return !!this.gistId && !!this.userFile;
 	}
 
 	/** Switches to an existing gist (from the list or a pasted id). */

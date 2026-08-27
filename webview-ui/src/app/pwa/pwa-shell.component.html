@@ -101,6 +101,10 @@
 
 		<ng-container *ngSwitchCase="'needs-files'">
 			<p>Choose which lists to sync:</p>
+			<div class="row gist-row" *ngIf="currentGistId">
+				<span class="hint">Gist {{ currentGistId }}</span>
+				<button (click)="changeGist()">Change gist</button>
+			</div>
 			<ng-container *ngIf="state.phase === 'needs-files'">
 				<label>User list</label>
 				<select [(ngModel)]="userFileChoice">
@@ -117,11 +121,11 @@
 					</option>
 				</select>
 			</ng-container>
-			<p class="hint" *ngIf="currentGistId">Gist {{ currentGistId }}</p>
 			<div class="row">
-				<button class="primary" (click)="confirmFiles()">Start syncing</button>
-				<button (click)="changeGist()">Change gist</button>
-				<button (click)="disconnect()">Disconnect</button>
+				<button class="primary" (click)="confirmFiles()">Ok</button>
+				<!-- No session to return to during first-time setup, so offer the way out instead. -->
+				<button *ngIf="canCancelFileSelection" (click)="cancelFileSelection()">Cancel</button>
+				<button *ngIf="!canCancelFileSelection" (click)="disconnect()">Disconnect</button>
 			</div>
 		</ng-container>
 

@@ -40,7 +40,8 @@ h1 {
 }
 
 .subtitle,
-.hint {
+.hint,
+label {
 	margin: 0;
 	color: var(--vscode-descriptionForeground);
 	font-size: 0.9em;
@@ -57,7 +58,6 @@ h1 {
 	flex-direction: column;
 	padding: 8px 10px;
 	border-left: 2px solid var(--vscode-focusBorder);
-	background: var(--vscode-editorWidget-background);
 	word-break: break-all;
 }
 
@@ -102,13 +102,18 @@ button.primary:hover,
 	gap: 8px;
 }
 
-.row > * {
-	flex: 1;
+/* Gist id with its "Change gist" action: the id takes the space, the button stays its own size. */
+.gist-row {
+	align-items: center;
+	word-break: break-all;
 }
 
-label {
-	font-size: 0.85em;
-	color: var(--vscode-descriptionForeground);
+.gist-row button {
+	flex: none;
+}
+
+.row > * {
+	flex: 1;
 }
 
 input,

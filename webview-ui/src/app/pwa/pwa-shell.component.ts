@@ -71,8 +71,18 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 				this.showApp = false;
 			}
 			if (state.phase === "needs-files") {
-				this.userFileChoice = state.userFiles[0]?.fullPath ?? this.newUserFileValue;
-				this.workspaceFileChoice = state.workspaceFiles[0]?.fullPath ?? "";
+				// Preselect what is actually in use; the first entry is only a fallback for a
+				// first-time setup, where there is no current selection to show.
+				const currentUser = gateway.currentUserFile;
+				this.userFileChoice =
+					currentUser && state.userFiles.some((f) => f.fullPath === currentUser)
+						? currentUser
+						: (state.userFiles[0]?.fullPath ?? this.newUserFileValue);
+				const currentWorkspace = gateway.currentWorkspaceFile;
+				this.workspaceFileChoice =
+					currentWorkspace && state.workspaceFiles.some((f) => f.fullPath === currentWorkspace)
+						? currentWorkspace
+						: "";
 			}
 			if (state.phase === "change-gist") {
 				this.gistChoice = state.currentGistId;
@@ -135,6 +145,18 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	/** The gist in use, shown on the file picker so it is clear which one the files came from. */
 	get currentGistId(): string | undefined {
 		return this.gateway?.currentGistId;
+	}
+
+	/**
+	 * Whether the picker can be dismissed. During first-time setup it cannot: there is no
+	 * session to return to, so the only ways out are choosing files or disconnecting.
+	 */
+	get canCancelFileSelection(): boolean {
+		return this.gateway?.canCancelFileSelection ?? false;
+	}
+
+	cancelFileSelection(): void {
+		this.gateway?.cancelFileSelection();
 	}
 
 	changeGist(): void {
