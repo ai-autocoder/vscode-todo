@@ -928,11 +928,45 @@ export class GistGateway implements DataGateway {
 		this.emitSyncInfo();
 	}
 
+	/**
+	 * The header's "Change GitHub Gist list..." action, for both scopes.
+	 *
+	 * The extension opens a VS Code quick-pick per scope; the PWA has no host dialogs, so both
+	 * route to the file picker that the connection flow already uses, which chooses the user and
+	 * workspace files together. These were no-ops, so the menu item looked broken.
+	 */
 	setUserFile(): void {
-		/* File picker UI is part of the connection flow (next sub-step). */
+		void this.enterFileSelectionFromApp();
 	}
 	setWorkspaceFile(): void {
-		/* see above */
+		void this.enterFileSelectionFromApp();
+	}
+
+	/** Reopens the file picker from the connected app, surfacing any listing failure. */
+	private async enterFileSelectionFromApp(): Promise<void> {
+		const gistId = this.gistId;
+		if (!gistId) {
+			// No gist yet — the gist chooser is the right screen, and it leads to the file picker.
+			await this.changeGist();
+			return;
+		}
+		const [userFiles, workspaceFiles] = await Promise.all([
+			this.client.listFiles(gistId, "user"),
+			this.client.listFiles(gistId, "workspace"),
+		]);
+		if (!userFiles.success || !workspaceFiles.success) {
+			this._connection.next({
+				phase: "error",
+				message:
+					userFiles.error?.message ?? workspaceFiles.error?.message ?? "Failed to list gist files.",
+			});
+			return;
+		}
+		this._connection.next({
+			phase: "needs-files",
+			userFiles: userFiles.data ?? [],
+			workspaceFiles: workspaceFiles.data ?? [],
+		});
 	}
 	openGistIdSettings(): void {
 		// No VS Code settings in the PWA — the header's "Gist: Set ID" action opens the picker,
