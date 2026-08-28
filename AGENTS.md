@@ -31,6 +31,29 @@
 - Before opening a PR: run `npm run lint`, `npm test`, and (if changed) `npm run build:webview`.
 - PRs should include: clear description, linked issues, and screenshots/GIFs for UI changes.
 
+## Deployment
+
+Two independent targets. Match the command to what you changed — deploying the wrong one
+looks like it succeeded while shipping nothing.
+
+| Change | Target | Command |
+| --- | --- | --- |
+| `webview-ui/**`, `packages/**` (the PWA) | Cloudflare **Pages** → https://plans-app.pages.dev | `npm run deploy:pwa` |
+| `worker/**` (GitHub device-flow CORS proxy) | Cloudflare **Workers** | `npm run deploy:worker` |
+| `src/**` (the extension) | VS Code Marketplace / Open VSX | `vsce publish` (maintainer only) |
+
+- Nothing deploys the PWA automatically — the Pages project has no Git provider connected,
+  so a release means running `npm run deploy:pwa` yourself.
+- The PWA is a **static Pages site**; `wrangler deploy` (no `pages`) publishes the *worker*
+  and never touches the UI.
+- The Angular build emits to `webview-ui/build/browser` (not `build/`) — that nested dir is
+  what gets uploaded.
+- Pages routes the apex domain to its **production branch, `main`**. Deploying with any
+  other `--branch` lands as a preview on a hash subdomain and leaves `plans-app.pages.dev`
+  untouched, so always pass `--branch main` for a real release.
+- Verify a release against the apex, not the deployment URL wrangler prints — the latter can
+  serve the new build while the apex still serves the old one.
+
 ## Security & Configuration Tips
 - Webview: keep strict CSP; use the provided `getNonce`/`getUri` helpers; avoid `eval`/inline scripts.
 - Settings keys are under `vscodeTodo.*` (see `package.json`). Validate and document new settings.

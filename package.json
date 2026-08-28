@@ -334,6 +334,8 @@
 		"start:webview:prod": "cd webview-ui && npm run start:prod",
 		"build:webview": "cd webview-ui && npm run build",
 		"build:webview:pwa": "cd webview-ui && npm run build:pwa",
+		"deploy:pwa": "npm run build:webview:pwa && cd webview-ui && npx wrangler pages deploy build/browser --project-name plans-app --branch main",
+		"deploy:worker": "cd worker && npm run deploy",
 		"mcp:inspector": "mcp-inspector",
 		"vscode:prepublish": "npm run compile",
 		"compile": "tsc -p ./",
