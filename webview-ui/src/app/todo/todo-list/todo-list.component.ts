@@ -275,6 +275,17 @@ export class TodoList implements OnInit, AfterViewInit {
 		if (event.button !== 0) return;
 		if (this.isDragging || this.shouldIgnoreSelection(event)) return;
 
+		// Touch has no Ctrl/Shift, so the modifier-based paths below are unreachable with a
+		// finger. Once a selection exists, a plain tap extends or shrinks it — the standard
+		// mobile pattern. Starting the selection is the checkbox's long-press (see
+		// onSelectionLongPress), which is why entering the mode is not handled here.
+		if (event.pointerType === "touch" && this.hasSelection) {
+			this.toggleSelection(todo);
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
+
 		const isRangeSelection = event.shiftKey;
 		const isToggleSelection = event.ctrlKey || event.metaKey;
 
@@ -335,6 +346,34 @@ export class TodoList implements OnInit, AfterViewInit {
 
 		this.cdRef.markForCheck();
 		this.publishSelectionState();
+	}
+
+	/**
+	 * Adds or removes one item, and clears the anchor when the last one goes. Used by the touch
+	 * tap path; the pointer paths keep their own anchor bookkeeping for shift-ranges.
+	 */
+	private toggleSelection(todo: Todo): void {
+		const nextSelection = new Set(this.selectedTodoIds);
+		if (nextSelection.has(todo.id)) {
+			nextSelection.delete(todo.id);
+		} else {
+			nextSelection.add(todo.id);
+		}
+
+		this.selectedTodoIds = nextSelection;
+		this.selectionAnchorId = nextSelection.size ? todo.id : null;
+		this.cdRef.markForCheck();
+		this.publishSelectionState();
+	}
+
+	/**
+	 * Enters selection mode from the item menu's "Select" action. Touch has no Ctrl/Shift and
+	 * the row's long press is taken by drag-to-reorder, so the menu is the entry point: it is
+	 * visible rather than a hidden gesture, and costs no new interaction on the row itself.
+	 * Once the mode is active, plain taps extend the selection.
+	 */
+	handleSelectRequest(todo: Todo): void {
+		this.toggleSelection(todo);
 	}
 
 	selectAll(): void {

@@ -18,7 +18,7 @@
           [attr.data-id]="todo.id"
           cdkDrag
           [cdkDragData]="todo"
-          [cdkDragDisabled]="isFilterActive"
+          [cdkDragDisabled]="isFilterActive || hasSelection"
           [cdkDragStartDelay]="dragStartDelay"
           (cdkDragStarted)="dragStarted()"
           (cdkDragEnded)="dragEnded()"
@@ -34,6 +34,7 @@
               [selectionMode]="hasSelection"
               [selectionCount]="selectedCount"
               (delete)="handleDelete($event)"
+              (selectRequest)="handleSelectRequest($event)"
               [class.note]="todo.isNote"
             >
             </todo-item>

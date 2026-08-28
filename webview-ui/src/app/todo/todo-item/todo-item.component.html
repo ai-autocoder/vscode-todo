@@ -255,6 +255,15 @@
 				</button>
 			</fieldset>
 			<mat-divider></mat-divider>
+			@if (!selectionMode) {
+				<button mat-menu-item (click)="onSelect(todo)" aria-label="Select item">
+					<div class="menu-row">
+						<span class="menu-left"><app-icon name="check"></app-icon></span>
+						<span class="menu-label">Select</span>
+						<span class="menu-right"></span>
+					</div>
+				</button>
+			}
 			<button mat-menu-item class="danger" (click)="onDelete(todo)" aria-label="Delete item">
 				<div class="menu-row">
 					<span class="menu-left"><app-icon name="trash"></app-icon></span>

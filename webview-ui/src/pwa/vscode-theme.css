@@ -15,6 +15,12 @@
 :root {
 	color-scheme: dark;
 
+	/* The toolkit defines --design-unit on its own components, never on the document root, so
+	   app-level `calc(var(--design-unit) * Npx)` (icon sizing, button margins) resolved to an
+	   invalid length in the PWA and collapsed those icons to the SVG default. 4 is the toolkit's
+	   own value, which is what the extension webview inherits from VS Code. */
+	--design-unit: 4;
+
 	/* Base */
 	--vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui,
 		"Ubuntu", "Droid Sans", sans-serif;
@@ -228,10 +234,14 @@ body {
 		min-height: var(--touch-target-size);
 	}
 
-	/* Per-item action icons are revealed on hover, which never fires on touch — a finger user
-	   would otherwise have no way to reach the item menu. Keep them always visible here. */
+	/* Per-item action icons (copy, item menu) are revealed on hover, which never fires on touch —
+	   a finger user would otherwise have no way to reach them at all.
+	   `!important` is load-bearing: the component's own `opacity: 0` is written inside
+	   todo-item.component.scss, so Angular's emulated encapsulation compiles it to
+	   `.todo-container[_ngcontent-x] .icon-button-container[_ngcontent-x]` — two extra attribute
+	   selectors, specificity (0,4,0). A global rule cannot outrank that on specificity alone. */
 	.todo-container .icon-button-container {
-		opacity: 1;
+		opacity: 1 !important;
 	}
 
 	/* Momentum scrolling for the item list, and room to reach the last row past the composer. */
