@@ -69,6 +69,12 @@ export class TodoList implements OnInit, AfterViewInit {
 		ElementRef<HTMLElement>
 	>;
 	isDragging = false;
+	/**
+	 * Touch drag only begins after a long press, so a plain swipe scrolls the list instead of
+	 * picking an item up. Mouse drag stays instant — pointer devices can't scroll by dragging,
+	 * so there is nothing to disambiguate there.
+	 */
+	readonly dragStartDelay = { touch: 300, mouse: 0 };
 	private readonly reorderAnimationExcludedActions = new Set<string>(["editTodo"]);
 
 	selectedTodoIds = new Set<number>();

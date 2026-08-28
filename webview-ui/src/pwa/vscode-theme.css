@@ -158,3 +158,116 @@ body {
 	background-color: var(--vscode-editor-background);
 	color: var(--vscode-foreground);
 }
+
+/**
+ * Touch ergonomics (PWA only).
+ *
+ * `pointer: coarse` matches finger input regardless of viewport width, so a phone in landscape
+ * and a large tablet both get the bigger targets while a narrow desktop window does not. All of
+ * it lives in this file, which `angular.json` includes only in the `pwa` configuration — the
+ * extension webview never loads it.
+ *
+ * 44px is the minimum comfortable touch target (Apple HIG / WCAG 2.1 AA target size).
+ */
+@media (pointer: coarse) {
+	:root {
+		--touch-target-size: 44px;
+	}
+
+	/* Icon buttons (item menu, copy, expand, header actions) — the toolkit sizes these off the
+	   icon, which lands near 22px and is well under a fingertip. Grow the hit area without
+	   scaling the glyph, so the UI keeps its density. */
+	vscode-button[appearance="icon"]::part(control) {
+		min-width: var(--touch-target-size);
+		min-height: var(--touch-target-size);
+	}
+
+	/* Text buttons (Save / Cancel in the editor, connect-screen actions). */
+	vscode-button:not([appearance="icon"])::part(control) {
+		min-height: var(--touch-target-size);
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+
+	/* The completed checkbox is the most-tapped control in the app. Unlike the icon buttons,
+	   the box itself grows: at the toolkit's ~16px it is both hard to hit and hard to read as
+	   checked at arm's length. The label part below supplies the remaining hit area. */
+	vscode-checkbox::part(control) {
+		width: 24px;
+		height: 24px;
+	}
+
+	vscode-checkbox::part(label) {
+		min-height: var(--touch-target-size);
+		display: flex;
+		align-items: center;
+	}
+
+	/* Menu rows: comfortable list spacing rather than the desktop-dense 30px. */
+	.mat-mdc-menu-item {
+		min-height: var(--touch-target-size) !important;
+	}
+
+	/* Tag chips double as filter buttons, so they need a real hit area too. */
+	.tag-chip {
+		height: 2em;
+		padding: 0 0.7rem;
+		line-height: 2em;
+	}
+
+	.tag-remove {
+		min-width: 1.75em;
+		min-height: 1.75em;
+	}
+
+	/* Search field and tag input: 16px avoids iOS Safari's zoom-on-focus. */
+	input[type="search"],
+	input[type="text"],
+	textarea {
+		font-size: 16px;
+		min-height: var(--touch-target-size);
+	}
+
+	/* Per-item action icons are revealed on hover, which never fires on touch — a finger user
+	   would otherwise have no way to reach the item menu. Keep them always visible here. */
+	.todo-container .icon-button-container {
+		opacity: 1;
+	}
+
+	/* Momentum scrolling for the item list, and room to reach the last row past the composer. */
+	.todo-list-scroll [cdkDropList] {
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior-y: contain;
+		padding-bottom: 1rem;
+	}
+
+	/* While a long-press drag is live, suppress the browser's text-selection callout so the
+	   gesture reads as a drag rather than a selection. */
+	.cdk-drag-preview,
+	.cdk-drop-list-dragging .cdk-drag {
+		-webkit-touch-callout: none;
+	}
+}
+
+/**
+ * Item row layout on touch. The row is a grid whose first column is a fixed 40px checkbox
+ * gutter (todo-item.component.scss); a 44px target would overflow it, so widen the gutter and
+ * give the row more vertical breathing room to match the taller controls.
+ */
+@media (pointer: coarse) {
+	.todo-container {
+		grid-template-columns: var(--touch-target-size) 1fr min-content;
+		padding-top: 0.375rem;
+		padding-bottom: 0.375rem;
+	}
+
+	/* Notes have no checkbox column, so their two-column layout is left alone. */
+	.todo-container.note {
+		grid-template-columns: 1fr min-content;
+	}
+
+	/* Separate adjacent rows a little more so a mistap is less likely to hit the wrong item. */
+	.todo-list-scroll [cdkDropList] > *:not(:last-child) {
+		margin-bottom: 4px;
+	}
+}

@@ -19,6 +19,7 @@
           cdkDrag
           [cdkDragData]="todo"
           [cdkDragDisabled]="isFilterActive"
+          [cdkDragStartDelay]="dragStartDelay"
           (cdkDragStarted)="dragStarted()"
           (cdkDragEnded)="dragEnded()"
           [class.is-selected]="isSelected(todo.id)"
