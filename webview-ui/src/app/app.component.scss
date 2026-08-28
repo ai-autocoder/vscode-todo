@@ -14,6 +14,11 @@ todo-list {
 	width: 100%;
 	height: 100%;
 	overflow-x: hidden;
+	/* `overflow-x: hidden` alone promotes the *other* axis from `visible` to `auto` (CSS
+	   Overflow 3 §3), so this element silently became a second scroller wrapping the list's
+	   own `.cdk-drop-list` — two nested scrollbars for one list. Pin Y to hidden so the
+	   inner list stays the only scroll container. */
+	overflow-y: hidden;
 	flex-grow: 1;
 }
 
