@@ -33,14 +33,34 @@
 
 ## Deployment
 
-Two independent targets. Match the command to what you changed — deploying the wrong one
-looks like it succeeded while shipping nothing.
+Three targets. Match the command to what you changed — deploying the wrong one looks like it
+succeeded while shipping nothing.
 
 | Change | Target | Command |
 | --- | --- | --- |
-| `webview-ui/**`, `packages/**` (the PWA) | Cloudflare **Pages** → https://plans-app.pages.dev | `npm run deploy:pwa` |
+| `webview-ui/**`, `packages/**` | Cloudflare **Pages** → https://plans-app.pages.dev | `npm run deploy:pwa` |
 | `worker/**` (GitHub device-flow CORS proxy) | Cloudflare **Workers** | `npm run deploy:worker` |
-| `src/**` (the extension) | VS Code Marketplace / Open VSX | `vsce publish` (maintainer only) |
+| `src/**`, **or any shared `webview-ui` file** | VS Code Marketplace / Open VSX | `vsce publish` (maintainer only) |
+
+### `webview-ui/` is shared — most edits hit both surfaces
+
+The extension webview and the PWA are **two builds of one Angular app**, not separate UIs.
+`npm run build:webview` and `build:pwa` differ only by:
+
+- `index.html` → `index.pwa.html`
+- three `fileReplacements`: `environments/environment.ts`, `bootstrap.ts`,
+  `app/data/data.providers.ts` → their `.pwa` variants
+- one extra prepended stylesheet, `src/pwa/vscode-theme.css`
+
+**PWA-only** paths (safe to change without touching the extension): `src/pwa/**`,
+`src/app/pwa/**`, `src/*.pwa.*`, `src/environments/environment.pwa.ts`.
+
+Everything else — `src/app/**`, `src/styles.css` — is **shared**. Editing it changes the
+extension webview too, and that half only ships on the next Marketplace release, so a
+"PWA fix" can quietly alter the extension for weeks before anyone sees it. When touching
+shared files, sanity-check both: the PWA against a `dvh`/mobile viewport, the extension
+webview against VS Code's own injected styles (it already sets `body { margin: 0 }` and
+supplies the `--vscode-*` theme vars that `vscode-theme.css` only *polyfills* for the PWA).
 
 - Nothing deploys the PWA automatically — the Pages project has no Git provider connected,
   so a release means running `npm run deploy:pwa` yourself.
