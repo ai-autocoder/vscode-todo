@@ -177,7 +177,21 @@ body {
  */
 @media (pointer: coarse) {
 	:root {
-		--touch-target-size: 44px;
+		--touch-target-size: 48px;
+		/* Body text at phone-comfortable size. The app sizes item text off --app-font-size,
+		   which normally tracks VS Code's editor font (13px) — too small at arm's length.
+		   `!important` because angular.json loads this file *before* styles.css, which sets the
+		   same variable on :root at equal specificity and would otherwise win on order. */
+		--app-font-size: 17px !important;
+		/* Scales every app-icon svg, which is sized as `--design-unit * 4px`. 7 puts the glyph
+		   at 28px inside the 48px target: clearly bigger without filling the whole button. */
+		--design-unit: 7;
+	}
+
+	/* --design-unit also drives some paddings/margins; keep those from inflating with it. */
+	.mat-mdc-menu-item app-icon svg {
+		width: 22px;
+		height: 22px;
 	}
 
 	/* Icon buttons (item menu, copy, expand, header actions) — the toolkit sizes these off the
@@ -265,15 +279,46 @@ body {
  * give the row more vertical breathing room to match the taller controls.
  */
 @media (pointer: coarse) {
+	/* Two columns instead of three: the action buttons move out of a cramped right-hand gutter
+	   onto their own row underneath, so the text spans the full width rather than wrapping
+	   early against the buttons. Named areas keep the note variant (no checkbox) consistent. */
 	.todo-container {
-		grid-template-columns: var(--touch-target-size) 1fr min-content;
+		/* Two tracks, replacing the component's three — the third was the button gutter, now a
+		   row of its own below. Both the columns and the areas must be restated: they are
+		   independent properties, so overriding only the areas would leave the stray track.
+		   `!important` throughout because todo-item.component.scss sets these on
+		   `.todo-container[_ngcontent-x]`, which outranks this global selector. */
+		grid-template-columns: var(--touch-target-size) 1fr !important;
+		grid-template-areas:
+			"checkbox content"
+			"checkbox actions" !important;
 		padding-top: 0.375rem;
 		padding-bottom: 0.375rem;
 	}
 
-	/* Notes have no checkbox column, so their two-column layout is left alone. */
+	.todo-container > .checkbox {
+		grid-area: checkbox;
+	}
+
+	.todo-container > .content {
+		grid-area: content;
+	}
+
+	/* Right-aligned under the text, matching where Save/Cancel already sit in edit mode.
+	   The component's `.todo-container > *` centres every child, hence the !important. */
+	.todo-container > .icon-button-container {
+		grid-area: actions;
+		justify-content: flex-end !important;
+		width: 100%;
+		gap: 0.25rem;
+	}
+
+	/* Notes have no checkbox, so both rows use the single content column. */
 	.todo-container.note {
-		grid-template-columns: 1fr min-content;
+		grid-template-columns: 1fr !important;
+		grid-template-areas:
+			"content"
+			"actions" !important;
 	}
 
 	/* Separate adjacent rows a little more so a mistap is less likely to hit the wrong item. */
