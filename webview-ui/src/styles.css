@@ -20,8 +20,12 @@ html {
 	height: 100%;
 }
 
+/* The extension webview gets `margin: 0` from VS Code's own injected stylesheet; the standalone
+   PWA does not, so the UA's default 8px margin stacked on a full-height layout and left a
+   scrollbar on screen even with an empty list. */
 body {
 	height: 100%;
+	margin: 0;
 	padding: 0;
 }
 

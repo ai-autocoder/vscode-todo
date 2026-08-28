@@ -2,6 +2,10 @@ main {
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
+	/* Mobile browsers resolve 100vh against the *largest* viewport (URL bar retracted), so the
+	   layout overflows by the height of the bar. `dvh` tracks the visible viewport instead;
+	   the 100vh above stays as the fallback for engines without it. */
+	height: 100dvh;
 	padding: 0.25rem 0.125rem;
 }
 
