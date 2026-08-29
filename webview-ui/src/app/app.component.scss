@@ -7,6 +7,14 @@ main {
 	   the 100vh above stays as the fallback for engines without it. */
 	height: 100dvh;
 	padding: 0.25rem 0.125rem;
+
+	/* The 4px/2px inset above reads as uneven on a phone, where the search field sits right
+	   against the left edge while the header keeps a wider gap on the right. An even gutter
+	   frames the whole app consistently. Touch only — the extension's sidebar is narrow and
+	   keeps every pixel of width. */
+	@media (pointer: coarse) {
+		padding: 8px;
+	}
 }
 
 vscode-panels,

@@ -183,9 +183,12 @@ body {
 		   `!important` because angular.json loads this file *before* styles.css, which sets the
 		   same variable on :root at equal specificity and would otherwise win on order. */
 		--app-font-size: 17px !important;
-		/* Scales every app-icon svg, which is sized as `--design-unit * 4px`. 7 puts the glyph
-		   at 28px inside the 48px target: clearly bigger without filling the whole button. */
-		--design-unit: 7;
+		/* Scales every app-icon svg, which is sized as `--design-unit * 4px`. 5 puts the glyph
+		   at 20px inside the 48px target. 7 (28px) was too heavy: four header buttons at 48px
+		   already claim 192px of a 375px screen, and the oversized glyphs squeezed the search
+		   field to 148px, truncating its placeholder to "Search todos and n". The hit area is
+		   set by --touch-target-size, not by this, so the targets stay 48px either way. */
+		--design-unit: 5;
 	}
 
 	/* --design-unit also drives some paddings/margins; keep those from inflating with it. */
@@ -200,6 +203,18 @@ body {
 	vscode-button[appearance="icon"]::part(control) {
 		min-width: var(--touch-target-size);
 		min-height: var(--touch-target-size);
+	}
+
+	/* Exception: the clear button sits *inside* the search field, so a 48px floor stretches
+	   the bar past the input's own height. header.component.css tries to cap it, but this
+	   file is prepended by angular.json and therefore loses on load order at equal
+	   specificity — the cap has to live here, after the rule it is overriding. The field
+	   itself is already a 48px target, so the surrounding input absorbs taps around it. */
+	.search-bar .search-clear::part(control) {
+		min-width: 32px;
+		min-height: 32px;
+		width: 32px;
+		height: 32px;
 	}
 
 	/* Text buttons (Save / Cancel in the editor, connect-screen actions). */
@@ -240,13 +255,34 @@ body {
 		min-height: 1.75em;
 	}
 
-	/* Search field and tag input: 16px avoids iOS Safari's zoom-on-focus. */
+	/* Search field, tag input and the new-item composer: 16px avoids iOS Safari's
+	   zoom-on-focus.
+	   The height floor is deliberately *below* --touch-target-size. That variable sizes
+	   tap-only controls, where the whole target must be reachable by a fingertip; a text field
+	   is aimed at with a caret and then typed into, and at 48px the search bar and composer
+	   stood 50px tall — heavier than anything around them and, for the composer, a visible
+	   slab across the bottom of the screen. 40px stays a comfortable target while letting both
+	   bars sit closer to the density of the list they frame. */
 	input[type="search"],
 	input[type="text"],
 	textarea {
 		font-size: 16px;
-		min-height: var(--touch-target-size);
+		min-height: 40px;
 	}
+
+	/* The Add button's touch sizing lives in new-todo.component.css, next to the composer rules
+	   it has to agree with — and its `_ngcontent` scoping outranks this file anyway. */
+
+	/* The even outer gutter lives in app.component.scss: its `main` rule is `_ngcontent`-scoped
+	   and outranks anything this file can say about the same element. */
+
+	.header-container {
+		padding: 0;
+		gap: 8px;
+	}
+
+	/* The search bar's touch padding lives in header.component.css — its `_ngcontent` scoping
+	   outranks anything this file can say about the same element. */
 
 	/* Per-item action icons (copy, item menu) are revealed on hover, which never fires on touch —
 	   a finger user would otherwise have no way to reach them at all.
@@ -273,27 +309,58 @@ body {
 	}
 }
 
+
 /**
  * Item row layout on touch. The row is a grid whose first column is a fixed 40px checkbox
- * gutter (todo-item.component.scss); a 44px target would overflow it, so widen the gutter and
- * give the row more vertical breathing room to match the taller controls.
+ * gutter (todo-item.component.scss); a 48px target would overflow it, so widen the gutter.
+ *
+ * The action buttons move out of the cramped right-hand gutter onto **their own row beneath
+ * the text**, so the text spans the full width instead of wrapping early against them. Named
+ * areas keep the note variant (no checkbox) consistent.
+ *
+ * What made this look bulky before was not the second row itself but its contents: two 48px
+ * controls plus the container's default alignment reserved a ~56px strip under every item, so
+ * a one-line todo measured 94px for 30px of text. Shrinking those controls to 40px and letting
+ * the strip size to its content brings the same layout down to ~70px without giving up any
+ * text width.
  */
 @media (pointer: coarse) {
-	/* Two columns instead of three: the action buttons move out of a cramped right-hand gutter
-	   onto their own row underneath, so the text spans the full width rather than wrapping
-	   early against the buttons. Named areas keep the note variant (no checkbox) consistent. */
 	.todo-container {
 		/* Two tracks, replacing the component's three — the third was the button gutter, now a
 		   row of its own below. Both the columns and the areas must be restated: they are
 		   independent properties, so overriding only the areas would leave the stray track.
 		   `!important` throughout because todo-item.component.scss sets these on
 		   `.todo-container[_ngcontent-x]`, which outranks this global selector. */
-		grid-template-columns: var(--touch-target-size) 1fr !important;
+		/* The gutter holds a 24px checkbox, so a full 48px track left ~24px of dead space
+		   between the box and the text. 34px keeps the checkbox's own hit area comfortable
+		   (its ::part(label) still stretches to 48px tall) while pulling the text in. */
+		grid-template-columns: 34px minmax(0, 1fr) !important;
 		grid-template-areas:
 			"checkbox content"
 			"checkbox actions" !important;
-		padding-top: 0.375rem;
-		padding-bottom: 0.375rem;
+		padding-top: 0.25rem;
+		padding-bottom: 0.25rem;
+		/* `1fr` alone is `minmax(auto, 1fr)`, whose auto floor is the text's own max-content
+		   width — that is what made the rows demand ~480px on a 375px screen and drove the
+		   overflow further up the tree. `minmax(0, ...)` lets the text column wrap instead. */
+		min-width: 0;
+	}
+
+	/* Left-align the box in its narrower gutter instead of centring it, so the gap to the text
+	   is even rather than split either side. */
+	.todo-container > .checkbox {
+		justify-content: flex-start !important;
+	}
+
+	/* The checkbox's label part is stretched to 48px for the hit area, but it is empty here
+	   (the text lives in its own column), so that width read as a gap between the box and the
+	   text. Collapse the empty label; the control keeps its own 24px box and the row's height
+	   still supplies a comfortable target. */
+	.todo-container vscode-checkbox::part(label) {
+		min-width: 0;
+		width: 0;
+		margin: 0;
+		padding: 0;
 	}
 
 	.todo-container > .checkbox {
@@ -310,7 +377,6 @@ body {
 		grid-area: actions;
 		justify-content: flex-end !important;
 		width: 100%;
-		gap: 0.25rem;
 	}
 
 	/* Notes have no checkbox, so both rows use the single content column. */
@@ -321,8 +387,98 @@ body {
 			"actions" !important;
 	}
 
-	/* Separate adjacent rows a little more so a mistap is less likely to hit the wrong item. */
+	/* Keep the action buttons compact. The 48px floor set on every icon button above is right
+	   for a standalone control, but these two sit in their own strip below the text, where the
+	   row's padding already extends the effective target — at 48px they made that strip ~56px
+	   tall for two 16px glyphs, which is what read as oversized. */
+	.todo-container .icon-button-container vscode-button[appearance="icon"]::part(control) {
+		min-width: 40px;
+		min-height: 40px;
+		width: 40px;
+		height: 40px;
+	}
+
+	/* The glyph inside those buttons is 16px while the header's is 28px (--design-unit), which
+	   read as inconsistent icon sets. Match them at a middle weight. */
+	.todo-container .icon-button-container app-icon svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	/* `align-items: flex-start` from the component leaves the 40px buttons sitting in a taller
+	   box; centring them lets the strip collapse to the buttons' own height. The negative top
+	   margin pulls the strip up against its text, so the visual gap belongs *between* items
+	   rather than splitting each one in half. */
+	.todo-container > .icon-button-container {
+		gap: 0.125rem;
+		align-items: center !important;
+		margin-top: -4px;
+	}
+
+	/* Row rhythm: a touch more separation between items than within one, so each todo reads as
+	   a single block. Pairs with the negative margin above. */
 	.todo-list-scroll [cdkDropList] > *:not(:last-child) {
-		margin-bottom: 4px;
+		margin-bottom: 6px;
+	}
+
+	/* The list's own gutter, so rows are not flush against the app's edge. */
+	.todo-container {
+		padding-left: 2px;
+		padding-right: 2px;
+		border-radius: 4px;
+	}
+
+	/* Per-item action icons are revealed on hover, which never fires on touch — a finger user
+	   would otherwise have no way to reach them at all.
+	   `!important` is load-bearing: the component's own `opacity: 0` is written inside
+	   todo-item.component.scss, so Angular's emulated encapsulation compiles it to
+	   `.todo-container[_ngcontent-x] .icon-button-container[_ngcontent-x]` — two extra
+	   attribute selectors, specificity (0,4,0). A global rule cannot outrank that. */
+	.todo-container .icon-button-container {
+		opacity: 1 !important;
+	}
+
+}
+
+/**
+ * Scope tabs (User / Workspace / File) need no rule here: styles.css's vertical stacking is
+ * gated to `pointer: fine`, so touch already gets the toolkit's default horizontal row. A
+ * `pointer: coarse` override in this file would not have worked anyway — angular.json prepends
+ * it, so it loses to styles.css on load order at equal specificity.
+ */
+
+/* Let the tabs scroll rather than squash if a future scope name makes the row overflow. */
+@media (pointer: coarse) {
+	vscode-panels::part(tablist) {
+		overflow-x: auto;
+	}
+
+	/* The toolkit lays its panels out as a grid, and a grid item's default `min-width: auto`
+	   refuses to shrink below its content. On a 375px screen the panel view stayed 423px wide
+	   inside a 371px host, so every row inherited that width and the last action button sat
+	   ~47px off-screen — unreachable, since the horizontal overflow is clipped further up.
+	   Only the touch build is affected: the desktop sidebar is never narrow enough for the
+	   content to exceed the host. */
+	/* The toolkit lays the panels out as a grid whose column track sizes to its content, so the
+	   panel view kept the rows' natural width (480px inside a 359px host) and the last action
+	   button ended up off-screen, unreachable behind the clipped overflow. `min-width: 0` on
+	   the item is not enough — the *track* has to be pinned too. The app's `todo-list` /
+	   `.todo-list-scroll` need the same floor removed, but those rules live in their
+	   components, where `_ngcontent` scoping outranks this file. */
+	/* The toolkit's `:host` sets `grid-template-columns: auto 1fr auto`, and a `:host` rule in
+	   the shadow DOM outranks anything from here — even `!important` — so the track itself
+	   cannot be pinned from outside. Its `1fr` then sizes to the panel's content, which left
+	   the panel 480px wide inside a 359px host and pushed the last action button off-screen,
+	   unreachable behind the clipped overflow.
+	   Capping the *slotted* panel to the host's width is the part that is reachable: a slotted
+	   element is styled by the outer document, so this wins where a ::part rule does not. */
+	/* `max-width: 100%` resolves against the grid *area*, which the toolkit had already sized to
+	   the content, so it never bit. `100vw` minus the gutter `main` adds on both sides pins the
+	   panel to what is actually visible instead. */
+	vscode-panel-view {
+		min-width: 0;
+		max-width: calc(100vw - 16px);
+		box-sizing: border-box;
+		overflow-x: hidden;
 	}
 }

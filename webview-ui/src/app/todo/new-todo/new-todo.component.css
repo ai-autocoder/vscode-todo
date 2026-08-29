@@ -13,6 +13,20 @@
 	padding: 0 5px;
 }
 
+/*
+ * Touch: the 3px vertical margin stacks on the app's 8px outer gutter, so the composer sat
+ * 11px from the bottom edge while every other side kept 8px — the gap read as uneven. Let the
+ * gutter be the only thing spacing it, and match the list rows' 2px side padding instead of
+ * the desktop 5px so the composer lines up with the items above it.
+ */
+@media (pointer: coarse) {
+	.new-todo-container {
+		margin: 0;
+		padding: 0 2px;
+	}
+
+}
+
 autosize-text-area {
 	display: flex;
 	width: 100%;
@@ -26,6 +40,24 @@ vscode-button {
 
 vscode-button::part(content) {
 	font-size: var(--vscode-editor-font-size);
+}
+
+/*
+ * Touch sizing for the Add button. Must come *after* the two rules above: all three are the
+ * same specificity, so a media query placed earlier in the file would silently lose to them.
+ */
+@media (pointer: coarse) {
+	/* The label is pinned to the editor font (13px), set for dense desktop UI, which reads as
+	   undersized beside the composer's own 16px text right next to it. */
+	vscode-button::part(content) {
+		font-size: var(--app-font-size);
+	}
+
+	/* Match the field's height rather than the 48px tap-target floor that standalone text
+	   buttons get, so the button and the textarea form one bar. */
+	vscode-button::part(control) {
+		min-height: 40px;
+	}
 }
 
 .selection-toolbar {

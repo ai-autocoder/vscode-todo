@@ -33,6 +33,35 @@
 	justify-content: center;
 }
 
+/*
+ * Touch: match the app-wide target size. The rule above pins width/height outright, so the
+ * `min-*` floor the PWA sets on `vscode-button[appearance="icon"]` globally cannot reach here
+ * — that selector is (0,1,1) against this one's (0,2,1), and a fixed width/height would
+ * absorb any padding anyway. Growing the custom property instead keeps a single sizing
+ * mechanism, so header actions and the item-row buttons come out the same size.
+ *
+ * `pointer: coarse` (not a width query) means the extension webview on a desktop keeps 22px;
+ * only finger input gets the bigger target. --touch-target-size comes from the PWA's
+ * vscode-theme.css; the fallback repeats its value for the extension, which never loads it.
+ */
+@media (pointer: coarse) {
+	.header-container {
+		--header-icon-button-size: var(--touch-target-size, 48px);
+	}
+
+	/* The clear button sits *inside* the search field, so a full-size target would stretch the
+	   bar past the input's own height and squeeze the input further on a narrow screen. Override
+	   the custom property rather than the ::part rule: the sizing rule above pins all four
+	   dimensions from this one variable, so re-pointing it here is what actually wins — a
+	   competing `::part(control)` rule (here or in vscode-theme.css) is outranked by that rule's
+	   own `_ngcontent` attribute scoping. The field itself is already a 48px target, so the
+	   surrounding input absorbs taps around the glyph. */
+	.search-bar .search-clear {
+		--header-icon-button-size: 32px;
+	}
+
+}
+
 .search-bar {
 	display: flex;
 	align-items: center;
@@ -78,6 +107,19 @@
 
 .search-bar input::placeholder {
 	color: var(--vscode-input-placeholderForeground);
+}
+
+/*
+ * Touch: the bar wraps a 40px input, and its own 2px padding plus a 1px border each side pushed
+ * the control to 46px — taller than the 42px composer it visually pairs with at the other end
+ * of the screen. The input already fills the bar, so that inset only adds height.
+ * Placed after the base `.search-bar` rule on purpose: both are (0,1,0), so the later one wins
+ * and a media query earlier in the file would silently lose.
+ */
+@media (pointer: coarse) {
+	.search-bar {
+		padding: 0;
+	}
 }
 
 .search-actions {

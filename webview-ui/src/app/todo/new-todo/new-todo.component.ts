@@ -76,11 +76,23 @@ export class NewTodoComponent implements OnChanges, OnDestroy {
 		return "";
 	}
 
+	/**
+	 * The keyboard hint is both meaningless and harmful on touch: there is no Shift+Enter on a
+	 * phone, and at 41 characters it wraps the composer to a second line on a narrow screen
+	 * (measured 72px of text in a ~50px box at 375px wide). Coarse pointers get a short label
+	 * instead; `aria-label` on the textarea carries the accessible name either way.
+	 *
+	 * Read once at construction rather than via a listener — switching pointer type mid-session
+	 * does not happen on a real device, and the composer is rebuilt on scope changes anyway.
+	 */
+	private readonly isCoarsePointer =
+		typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+
 	get placeholderText(): string {
 		if (this.isWorkspaceAddBlocked) {
 			return this.workspaceAddBlockedMessage;
 		}
-		return "New todo: Enter | Line break: Shift+Enter";
+		return this.isCoarsePointer ? "New todo" : "New todo: Enter | Line break: Shift+Enter";
 	}
 
 	addTodo($event: Event): void {

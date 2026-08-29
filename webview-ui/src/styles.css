@@ -320,12 +320,14 @@ span.menu-label {
 	white-space: nowrap;
 }
 
-@media screen and (max-width: 500px) {
-	main {
-		height: 100%;
-		min-height: 100%;
-	}
-
+/*
+ * Narrow *and* mouse-driven — i.e. the extension's tall, thin sidebar. Stacking the three scope
+ * tabs vertically suits that shape, but on a phone it costs ~130px of vertical space before the
+ * list starts, so `pointer: fine` keeps this off touch devices, which get a horizontal row.
+ * The PWA's vscode-theme.css cannot override it from there: angular.json prepends that file, so
+ * it loses on load order at equal specificity — the exclusion has to live on this rule.
+ */
+@media screen and (max-width: 500px) and (pointer: fine) {
 	vscode-panels::part(tablist) {
 		width: 100%;
 		display: flex;
@@ -338,6 +340,13 @@ span.menu-label {
 		width: 100%;
 		justify-content: start;
 		padding: calc(var(--design-unit) * 1px);
+	}
+}
+
+@media screen and (max-width: 500px) {
+	main {
+		height: 100%;
+		min-height: 100%;
 	}
 
 	vscode-panel-tab:hover {
