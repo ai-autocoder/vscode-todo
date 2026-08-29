@@ -11,8 +11,23 @@
 - Build extension: `npm run compile` (emits to `out/`). Watch: `npm run watch`.
 - Lint extension: `npm run lint`.
 - Test extension: `npm test`.
-- Webview dev server: `npm run start:webview` (equivalent to `cd webview-ui && ng serve`).
-- Webview build: `npm run build:webview` (Angular build, no output hashing).
+- Webview dev server: `npm run start:webview` (equivalent to `npm --prefix webview-ui run start`).
+- **PWA** dev server: `npm run start:webview:pwa`. Use this — not `start:webview` — for any mobile
+  or touch work. Only the `pwa` configuration prepends `src/pwa/vscode-theme.css`, and every
+  mobile rule (`@media (pointer: coarse)`: 48px touch targets, larger body text, the two-row item
+  layout, always-visible row actions) lives in that one file. Under plain `start:webview` none of
+  it is in the page, so no amount of device emulation will show the mobile layout.
+  - Quick check for which configuration a running server is serving — in the browser console,
+    `getComputedStyle(document.documentElement).getPropertyValue('--touch-target-size')`.
+    Empty means non-PWA; `48px` means the `pwa` config is live.
+  - DevTools must be in **device emulation** (pick a device preset). Merely narrowing the window
+    leaves `pointer: fine`, so the coarse-pointer rules stay inactive.
+  - Angular fails with `Port 4200 is already in use` if another dev server is up, and prints it
+    below the build output where it is easy to miss — the browser then keeps talking to the old
+    server. Stop the previous one, or pass a port:
+    `npm --prefix webview-ui run start:pwa -- --port 4300`. Extra flags must go through the
+    `--prefix` form; they do not survive the root wrapper's `npm run`.
+- Webview build: `npm run build:webview` (Angular build, no output hashing). PWA: `npm run build:webview:pwa`.
 
 ## Coding Style & Naming Conventions
 - Linting: ESLint for `src/**` (webview is ignored by root ESLint). Fix lint warnings before PR.
@@ -22,7 +37,7 @@
 
 ## Testing Guidelines
 - Extension: write Mocha tests in `src/test/` and run `npm test`.
-- Webview (Angular): run `cd webview-ui && npm test` (Karma/Jasmine). Prefer small, focused specs per component/service.
+- Webview (Angular): run `npm --prefix webview-ui test` (Karma/Jasmine). Prefer small, focused specs per component/service.
 - Add regression tests for bugs. Keep test names descriptive (e.g., "should persist todo on save").
 
 ## Commit & Pull Request Guidelines
