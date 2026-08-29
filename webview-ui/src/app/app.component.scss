@@ -13,6 +13,10 @@ vscode-panels,
 todo-list {
 	width: 100%;
 	height: 100%;
+	/* Both are flex items; without this their `min-width: auto` floor keeps the list at its
+	   content width on a narrow screen, so `overflow-x: hidden` below clips the overhang
+	   instead of the layout adapting to it. */
+	min-width: 0;
 	overflow-x: hidden;
 	/* `overflow-x: hidden` alone promotes the *other* axis from `visible` to `auto` (CSS
 	   Overflow 3 §3), so this element silently became a second scroller wrapping the list's
