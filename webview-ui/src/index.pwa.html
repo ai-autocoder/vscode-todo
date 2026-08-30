@@ -3,7 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <base href="/" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- `interactive-widget=resizes-content` makes the soft keyboard shrink the *layout*
+         viewport, so `main`'s `100dvh` recomputes to the space above it and the flex column
+         relayouts. Chrome's default (`resizes-visual`) instead keeps the layout viewport at full
+         height and pans the *visual* viewport: with nothing on the page scrollable, that pushed
+         the header off the top with no way to reach it and left the composer behind the keyboard. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/png" href="icons/favicon-32.png" sizes="32x32" />
     <!-- Standalone PWA shell. The extension webview uses index.html instead. -->
