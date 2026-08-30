@@ -165,12 +165,6 @@ export class GistGateway implements DataGateway {
 	private gistId: string | undefined;
 	private userFile: string | undefined;
 	private workspaceFile: string | undefined;
-	/**
-	 * Whether the user has actually been through the workspace-file choice, as opposed to simply
-	 * not having one. Without this, "I want no workspace list" is indistinguishable from "never
-	 * asked", and the file picker either re-prompts forever or silently never syncs the workspace.
-	 */
-	private workspaceFileChosen = false;
 
 	private readonly _connection = new BehaviorSubject<GistConnectionState>({
 		phase: "disconnected",
@@ -239,10 +233,7 @@ export class GistGateway implements DataGateway {
 		this.token = await this.tokenStore.getToken();
 		this.gistId = await this.tokenStore.getGistId();
 		this.userFile = await this.tokenStore.getUserFile();
-		// "" means the user explicitly chose no workspace file; undefined means they never picked.
-		// The distinction decides whether enterFileSelection can resume or must re-prompt.
 		const storedWorkspaceFile = await this.tokenStore.getWorkspaceFile();
-		this.workspaceFileChosen = storedWorkspaceFile !== undefined;
 		this.workspaceFile = storedWorkspaceFile || undefined;
 		if (this.gistId) {
 			this.engine = this.createEngine(this.gistId);
@@ -735,7 +726,6 @@ export class GistGateway implements DataGateway {
 		});
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
-		this.workspaceFileChosen = false;
 		await this.tokenStore.clearFileSelections();
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
@@ -888,14 +878,13 @@ export class GistGateway implements DataGateway {
 		}
 		const users = userFiles.data ?? [];
 		const workspaces = workspaceFiles.data ?? [];
-		// Resume only when the stored selection still matches the gist. A workspace file that is
-		// no longer there (or was never chosen while the gist offers one) has to go back to the
-		// picker: skipping it on the strength of the user file alone left the session permanently
-		// connected with no workspace file, and no way to reach the picker to choose one.
+		// Resume only when the stored selection still matches the gist. Both files are mandatory,
+		// so a missing or stale one goes back to the picker rather than resuming a session whose
+		// scope has nowhere to store its todos.
 		const userFileValid = !!this.userFile && users.some((f) => f.fullPath === this.userFile);
-		const workspaceFileValid = this.workspaceFile
-			? workspaces.some((f) => f.fullPath === this.workspaceFile)
-			: this.workspaceFileChosen || workspaces.length === 0;
+		// A file that is not in the gist yet is still valid: the sync engine seeds it on the first
+		// reconcile, which is what "New file" in the picker relies on.
+		const workspaceFileValid = !!this.workspaceFile;
 		if (userFileValid && workspaceFileValid) {
 			return { phase: "connected", userFile: this.userFile!, workspaceFile: this.workspaceFile };
 		}
@@ -903,19 +892,16 @@ export class GistGateway implements DataGateway {
 	}
 
 	/**
-	 * Persists the chosen files and completes the connection. A user file that doesn't exist
-	 * yet is fine — the sync engine seeds missing files on first reconcile. Pass an empty
-	 * workspace file to sync the user list only.
+	 * Persists the chosen files and completes the connection. A file that doesn't exist yet is
+	 * fine — the sync engine seeds missing files on first reconcile. Both files are required:
+	 * the PWA has no local storage, so a scope with no gist file behind it would accept edits
+	 * and silently drop them.
 	 */
-	async chooseFiles(userFile: string, workspaceFile?: string): Promise<void> {
+	async chooseFiles(userFile: string, workspaceFile: string): Promise<void> {
 		this.userFile = userFile || DefaultFileNames.user;
 		await this.tokenStore.setUserFile(this.userFile);
-		this.workspaceFile = workspaceFile || undefined;
-		// Persist unconditionally, including the empty string: writing only when a file was chosen
-		// left a previous selection behind when the user picked "None", and left nothing stored at
-		// all on the first run, so the workspace file never survived a reload.
-		await this.tokenStore.setWorkspaceFile(this.workspaceFile ?? "");
-		this.workspaceFileChosen = true;
+		this.workspaceFile = workspaceFile || DefaultFileNames.workspace("default");
+		await this.tokenStore.setWorkspaceFile(this.workspaceFile);
 		// A newly chosen workspace file has no cached baseline or todos on this device yet, so
 		// load whatever a previous session stored for it before the first reconcile runs.
 		await this.rehydrateFromCache();
@@ -936,7 +922,6 @@ export class GistGateway implements DataGateway {
 		this.gistId = undefined;
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
-		this.workspaceFileChosen = false;
 		this.engine = undefined;
 		await this.tokenStore.clear();
 		// Same ordering hazard as resetForNewGist: let any in-flight reconcile finish first.

@@ -113,11 +113,13 @@
 					</option>
 					<option [value]="newUserFileValue">New file ({{ defaultUserFileName }})</option>
 				</select>
-				<label>Workspace list (optional)</label>
+				<label>Workspace list</label>
 				<select [(ngModel)]="workspaceFileChoice">
-					<option value="">None</option>
 					<option *ngFor="let file of state.workspaceFiles" [value]="file.fullPath">
 						{{ file.fullPath }}
+					</option>
+					<option [value]="newWorkspaceFileValue">
+						New file ({{ defaultWorkspaceFileName }})
 					</option>
 				</select>
 			</ng-container>

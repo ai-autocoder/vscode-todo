@@ -37,6 +37,13 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 
 	readonly newUserFileValue = "__new__";
 	readonly defaultUserFileName = DefaultFileNames.user;
+	readonly newWorkspaceFileValue = "__new_workspace__";
+	/**
+	 * The PWA has no workspace on disk to name the file after, so a newly created workspace list
+	 * uses a fixed name. The extension picks its own name from the open workspace; both sides
+	 * just need to agree on the file that is actually selected in the gist.
+	 */
+	readonly defaultWorkspaceFileName = DefaultFileNames.workspace("default");
 
 	private gateway: GistGateway | undefined;
 	private onFocus: (() => void) | undefined;
@@ -79,10 +86,12 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 						? currentUser
 						: (state.userFiles[0]?.fullPath ?? this.newUserFileValue);
 				const currentWorkspace = gateway.currentWorkspaceFile;
+				// Mirrors the user list: fall back to the first existing file, then to creating one,
+				// so the mandatory select is never left blank.
 				this.workspaceFileChoice =
 					currentWorkspace && state.workspaceFiles.some((f) => f.fullPath === currentWorkspace)
 						? currentWorkspace
-						: "";
+						: (state.workspaceFiles[0]?.fullPath ?? this.newWorkspaceFileValue);
 			}
 			if (state.phase === "change-gist") {
 				this.gistChoice = state.currentGistId;
@@ -180,7 +189,13 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	confirmFiles(): void {
 		const userFile =
 			this.userFileChoice === this.newUserFileValue ? this.defaultUserFileName : this.userFileChoice;
-		void this.gateway?.chooseFiles(userFile, this.workspaceFileChoice || undefined);
+		// Both lists are mandatory: the PWA has no local storage, so a scope without a gist file
+		// behind it would accept edits and silently drop them on the next reconcile.
+		const workspaceFile =
+			this.workspaceFileChoice === this.newWorkspaceFileValue
+				? this.defaultWorkspaceFileName
+				: this.workspaceFileChoice;
+		void this.gateway?.chooseFiles(userFile, workspaceFile);
 	}
 
 	ngOnDestroy(): void {
