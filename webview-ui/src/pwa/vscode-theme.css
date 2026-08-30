@@ -469,6 +469,19 @@ body {
 		   never bites (the same trap documented for vscode-panel-view below), so pin the row to
 		   the visible width instead. */
 		max-width: calc(100vw - 16px);
+		/* `overflow-x` on its own promotes the *other* axis from `visible` to `auto` (CSS
+		   Overflow 3 §3) — the same promotion app.component.scss guards against on `vscode-panels`.
+		   That made the tab row scroll vertically under a finger, which is not a thing tabs should
+		   do. Nothing actually overflows it (the tabs end 5.7px inside the box and the active
+		   indicator 3.7px), so pinning the axis clips nothing — the scrollHeight it reports is
+		   phantom. */
+		overflow-y: hidden;
+		/* The toolkit's 32px inter-tab gap alone accounted for 64px of the row's 424px, which is
+		   what pushed the pin button inside tab-3 off the right edge. At 12px the whole row lands
+		   at 384px and fits without scrolling at all, so the pin is simply visible rather than
+		   merely reachable. The width cap and nowrap above stay as the safety net for a long
+		   filename. */
+		column-gap: 12px;
 	}
 
 	/* With the row pinned, the tabs' default `white-space: normal` made them wrap to fit rather
