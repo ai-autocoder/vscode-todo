@@ -1,5 +1,6 @@
 import { Component, ElementRef, Input, OnInit, ViewChild, inject } from "@angular/core";
 import { TodoService } from "../todo/todo.service";
+import { environment } from "../../environments/environment";
 import { ExportFormats, ImportFormats, TodoScope } from "../../../../src/todo/todoTypes";
 import { BehaviorSubject, combineLatest, map, Observable } from "rxjs";
 import {
@@ -56,6 +57,11 @@ export class HeaderComponent implements OnInit {
 	syncTooltip!: Observable<string>;
 	syncModeInfo!: Observable<SyncModeInfo>;
 	mcpControlInfo!: Observable<McpControlInfo>;
+	/**
+	 * The MCP server lives in the extension host, which the standalone PWA does not have, so
+	 * the control is hidden there rather than shown permanently disabled.
+	 */
+	readonly isMcpSupported = !environment.pwa;
 	private wideViewDelayHandle: number | null = null;
 	private currentScopeSource = new BehaviorSubject<TodoScope>(TodoScope.user);
 	private currentScopeValue: TodoScope = TodoScope.user;
