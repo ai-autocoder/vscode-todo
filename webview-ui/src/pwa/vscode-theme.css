@@ -451,6 +451,22 @@ body {
 @media (pointer: coarse) {
 	vscode-panels::part(tablist) {
 		overflow-x: auto;
+		/* `overflow-x: auto` alone did nothing. The tablist is a grid item that sizes to its
+		   content (424px inside a 395px host), so scrollWidth equalled clientWidth and there was
+		   nothing to scroll — the row was just clipped by the `overflow-x: hidden` that
+		   app.component.scss puts on `vscode-panels`, taking the pin button at the right end of
+		   tab-3 with it. `max-width: 100%` resolves against that content-sized grid area and so
+		   never bites (the same trap documented for vscode-panel-view below), so pin the row to
+		   the visible width instead. */
+		max-width: calc(100vw - 16px);
+	}
+
+	/* With the row pinned, the tabs' default `white-space: normal` made them wrap to fit rather
+	   than overflow: "File - No File Selected" became two lines and the row grew taller, which is
+	   the squashing this section set out to avoid. Holding the labels on one line is what turns
+	   the constrained width into actual horizontal scrolling. */
+	vscode-panel-tab {
+		white-space: nowrap;
 	}
 
 	/* The toolkit lays its panels out as a grid, and a grid item's default `min-width: auto`
