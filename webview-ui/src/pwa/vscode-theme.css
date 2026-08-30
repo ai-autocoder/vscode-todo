@@ -533,3 +533,22 @@ body {
 		overflow-x: hidden;
 	}
 }
+
+
+/**
+ * Samsung Internet paints its collapsed address bar over the bottom of the layout viewport
+ * while the soft keyboard is open. Unlike Chrome's gesture bar there is no inset to read:
+ * the browser reports `env(safe-area-inset-bottom): 0`, while `innerHeight` and
+ * `visualViewport.height` both describe the region the strip covers. The page's own metrics
+ * therefore report the composer fully visible while ~16px of it sits behind the bar
+ * (measured on Samsung Internet 30). The UA class is set in bootstrap.pwa.ts.
+ *
+ * Scoped to `:focus-within` because the strip only appears with the keyboard — at rest
+ * Samsung excludes its full toolbar from the viewport correctly, and the gap would be waste.
+ * The 16px is the measured strip; the rest restates app.component.scss's own bottom padding,
+ * which this replaces rather than adds to. Specificity (0,2,2) clears that component rule's
+ * `main[_ngcontent-*]` (0,1,1).
+ */
+html.samsung-internet main:focus-within {
+	padding-bottom: calc(16px + max(8px, env(safe-area-inset-bottom)));
+}
