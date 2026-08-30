@@ -88,6 +88,7 @@ VS Code Todo
 - [Key Features](#key-features)
   - [User, Workspace & File-specific Management](#user-workspace--file-specific-management)
   - [Sync Modes (User and Workspace)](#sync-modes-user-and-workspace)
+  - [Agent Plans (Mobile PWA Companion)](#agent-plans-mobile-pwa-companion)
   - [MCP Server (AI Agent Integration)](#mcp-server-ai-agent-integration)
   - [Markdown Support for Todos and Notes](#markdown-support-for-todos-and-notes)
   - [Syntax Highlighting](#syntax-highlighting)
@@ -140,6 +141,7 @@ Quick start:
 
 - **Todo and note scopes (profile, workspace, file)** keep personal, project, and file-linked checklists organised.
 - **Cloud sync via GitHub Gist** keeps user/workspace lists in sync across devices and profiles.
+- **Mobile PWA companion (Agent Plans)** opens the same gist-synced lists from your phone's browser or home screen.
 - **Local MCP server for AI agents** exposes your todos via the Model Context Protocol with optional read-only and scope restrictions.
 - **Markdown note-taking** with syntax highlighting, Mermaid diagrams, and KaTeX math for rich technical docs.
 - **Keyboard-first capture** with quick add, drag-and-drop ordering, and multi-select bulk actions.
@@ -280,6 +282,23 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 - The extension uses content-based detection to avoid false positives
 - True conflicts only occur when both you and another user (or device) modify the same data
 - Use the conflict wizard to resolve each conflict, or select **Keep All Local** / **Keep All Remote** / **View Gist**
+
+### Agent Plans (Mobile PWA Companion)
+
+**[Agent Plans](https://plans-app.pages.dev)** is an installable web app that opens the same lists on your phone — no VS Code required. It is the same UI as the webview with a touch layout, reading and writing the **same GitHub Gist** the extension syncs with.
+
+- **Nothing to install**: open [plans-app.pages.dev](https://plans-app.pages.dev) and "Add to Home Screen" for a standalone app.
+- **Same data**: user and workspace lists sync through your gist, so edits on either side show up on the other.
+- **Works offline**: the app shell is cached by a service worker and lists are kept in IndexedDB; changes sync when you are back online.
+- **Touch-friendly**: larger targets, bigger text, and always-visible row actions on touch devices.
+
+#### Setup
+
+1. **Connect GitHub**: tap **Connect GitHub** and enter the shown code at [github.com/login/device](https://github.com/login/device). Uses the device flow with the `gist` scope only; the token stays on your device.
+2. **Pick a gist**: paste a gist ID, or browse your gists to pick or create a secret one. Use the same gist as the extension — see [GitHub Gist Sync Mode](#github-gist-sync-mode-user--workspace).
+3. **Choose lists**: select the `user-*.json` and `workspace-*.json` files to sync.
+
+The same plaintext-storage and gist-ID cautions apply — see [Security Warnings](#security-warnings). The MCP server is VS Code-only and is not available in the PWA.
 
 ### MCP Server (AI Agent Integration)
 
