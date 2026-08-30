@@ -363,6 +363,16 @@ body {
 		padding: 0;
 	}
 
+	/* Collapsing that label also leaves the host at the control's own 28px, so the most-tapped
+	   control in the app ended up a 28px-wide target against the 44px this file aims for (its
+	   height is fine at 52px). The gutter column is 34px and holds nothing else, so letting the
+	   checkbox fill it is free: the 24px box and the text column both stay exactly where they
+	   were. A full 44px would mean widening the track, which trades against the text density
+	   that track was deliberately narrowed for. */
+	.todo-container > .checkbox vscode-checkbox {
+		width: 100%;
+	}
+
 	.todo-container > .checkbox {
 		grid-area: checkbox;
 	}
