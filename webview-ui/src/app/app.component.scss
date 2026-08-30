@@ -14,6 +14,10 @@ main {
 	   keeps every pixel of width. */
 	@media (pointer: coarse) {
 		padding: 8px;
+		/* `viewport-fit=cover` (index.pwa.html) lets the page extend under the system gesture
+		   bar, so the composer's bottom edge sat ~7px behind the pill on a gesture-nav phone.
+		   The inset is 0 in the extension webview, where `max()` collapses back to the 8px. */
+		padding-bottom: max(8px, env(safe-area-inset-bottom));
 	}
 }
 
