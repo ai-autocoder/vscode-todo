@@ -400,22 +400,34 @@ body {
 	/* Keep the action buttons compact. The 48px floor set on every icon button above is right
 	   for a standalone control, but these two sit in their own strip below the text, where the
 	   row's padding already extends the effective target — at 48px they made that strip ~56px
-	   tall for two 16px glyphs, which is what read as oversized. */
+	   tall for two 16px glyphs, which is what read as oversized.
+	   28px sits deliberately below the 44px this file targets elsewhere, matching the lighter
+	   icon buttons common in mobile apps. It is defensible here and only here: the strip's own
+	   padding and the row around it absorb a near miss, and neither action is destructive. */
 	.todo-container .icon-button-container vscode-button[appearance="icon"]::part(control) {
-		min-width: 40px;
-		min-height: 40px;
-		width: 40px;
-		height: 40px;
+		min-width: 28px;
+		min-height: 28px;
+		width: 28px;
+		height: 28px;
 	}
 
-	/* The glyph inside those buttons is 16px while the header's is 28px (--design-unit), which
-	   read as inconsistent icon sets. Match them at a middle weight. */
+	/* todo-item.component.scss gives every icon button a `--design-unit`-derived 4px block
+	   margin, left over from when the buttons sat inline beside the text. They have their own
+	   strip now, so those 8px are pure row height and buy nothing. `!important` because the
+	   component rule compiles to `.todo-container[_ngcontent-x] .icon-button[_ngcontent-x]`,
+	   specificity (0,4,0), which no global selector can outrank. */
+	.todo-container .icon-button {
+		margin: 0 !important;
+	}
+
+	/* 20px left the glyph almost edge to edge inside the 28px control; 16px keeps ~6px of
+	   padding around it. */
 	.todo-container .icon-button-container app-icon svg {
-		width: 20px;
-		height: 20px;
+		width: 16px;
+		height: 16px;
 	}
 
-	/* `align-items: flex-start` from the component leaves the 40px buttons sitting in a taller
+	/* `align-items: flex-start` from the component leaves the buttons sitting in a taller
 	   box; centring them lets the strip collapse to the buttons' own height. The negative top
 	   margin pulls the strip up against its text, so the visual gap belongs *between* items
 	   rather than splitting each one in half. */
