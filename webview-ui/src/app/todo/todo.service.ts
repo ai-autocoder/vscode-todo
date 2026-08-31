@@ -21,6 +21,7 @@ import {
 	ImportFormats,
 } from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
+import { environment } from "../../environments/environment";
 import { Config } from "../../../../src/utilities/config";
 
 export interface SelectionState {
@@ -81,8 +82,12 @@ export class TodoService {
 		isGitHubSyncEnabled: false,
 		userSyncEnabled: false,
 		workspaceSyncEnabled: false,
-		userSyncMode: "profile-local",
-		workspaceSyncMode: "local",
+		// Seed values, replaced by the host's first updateGitHubSyncInfo. The PWA has only one
+		// mode, so seeding a local one made the sync pill paint the "local" icon until
+		// GistGateway.initialize() resolved — a cold start with a slow IndexedDB read briefly
+		// showed a mode the PWA cannot be in.
+		userSyncMode: environment.pwa ? "github" : "profile-local",
+		workspaceSyncMode: environment.pwa ? "github" : "local",
 		userFile: "user-todos.json",
 		workspaceFile: "workspace-default.json",
 		isWorkspaceOpen: true,
