@@ -62,6 +62,13 @@ export class HeaderComponent implements OnInit {
 	 * the control is hidden there rather than shown permanently disabled.
 	 */
 	readonly isMcpSupported = !environment.pwa;
+	/**
+	 * The PWA is gist-backed by construction: it has no globalState/workspaceState to fall back
+	 * to and no VS Code profile to sync through, so `GistGateway` reports "github" for both
+	 * scopes and ignores the mode commands. Showing the picker there offered three choices where
+	 * only one exists, and the two dead entries silently did nothing when clicked.
+	 */
+	readonly isSyncModeSelectable = !environment.pwa;
 	private wideViewDelayHandle: number | null = null;
 	private currentScopeSource = new BehaviorSubject<TodoScope>(TodoScope.user);
 	private currentScopeValue: TodoScope = TodoScope.user;
