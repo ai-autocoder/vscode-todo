@@ -1,8 +1,9 @@
 import { ChangeDetectorRef, Component, Inject, OnDestroy, OnInit } from "@angular/core";
 import { Subscription } from "rxjs";
 import { DefaultFileNames } from "@vsc-todo/core";
+import { MarkdownImportScopes } from "../../../../src/todo/todoTypes";
 import { DATA_GATEWAY, DataGateway } from "../data/data-gateway";
-import { GistConnectionState, GistGateway } from "../data/gist-gateway";
+import { GistConnectionState, GistGateway, ImportExportState } from "../data/gist-gateway";
 import { dispatchMessageToGateway } from "../data/message-dispatcher";
 import { vscode } from "../utilities/vscode";
 
@@ -45,10 +46,18 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	 */
 	readonly defaultWorkspaceFileName = DefaultFileNames.workspace("default");
 
+	/** Import/export prompt and result notice; see {@link ImportExportState}. */
+	importExportState: ImportExportState = { phase: "idle" };
+	/** Bound to the scope radio group while `awaiting-scope`. */
+	importScopeChoice: MarkdownImportScopes = MarkdownImportScopes.user;
+	/** Exposed for the template's radio values. */
+	readonly markdownImportScopes = MarkdownImportScopes;
+
 	private gateway: GistGateway | undefined;
 	private onFocus: (() => void) | undefined;
 	private connectionSub: Subscription | undefined;
 	private messagesSub: Subscription | undefined;
+	private importExportSub: Subscription | undefined;
 
 	constructor(
 		@Inject(DATA_GATEWAY) private readonly injectedGateway: DataGateway,
@@ -68,6 +77,16 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		vscode.setPostMessageDelegate((message) => dispatchMessageToGateway(gateway, message));
 		this.messagesSub = gateway.messages.subscribe((message) => {
 			window.postMessage(message, window.location.origin);
+		});
+
+		this.importExportSub = gateway.importExport.subscribe((state) => {
+			this.importExportState = state;
+			if (state.phase === "awaiting-scope") {
+				// Default to the list the user is most likely to mean; File is only offered when
+				// one is actually open.
+				this.importScopeChoice = MarkdownImportScopes.user;
+			}
+			this.cdRef.detectChanges();
 		});
 
 		this.connectionSub = gateway.connection.subscribe((state) => {
@@ -198,9 +217,27 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		void this.gateway?.chooseFiles(userFile, workspaceFile);
 	}
 
+	/** Confirms the scope prompt, letting the parked import continue. */
+	confirmImportScope(): void {
+		this.gateway?.resolveImportScope(this.importScopeChoice);
+	}
+
+	/** Dismisses the scope prompt, abandoning the import. */
+	cancelImportScope(): void {
+		this.gateway?.resolveImportScope(undefined);
+	}
+
+	/** Dismisses a result notice. */
+	dismissImportExportStatus(): void {
+		this.gateway?.clearImportExportStatus();
+	}
+
 	ngOnDestroy(): void {
 		this.connectionSub?.unsubscribe();
 		this.messagesSub?.unsubscribe();
+		this.importExportSub?.unsubscribe();
+		// A parked import would otherwise never settle.
+		this.gateway?.resolveImportScope(undefined);
 		if (this.onFocus) {
 			window.removeEventListener("focus", this.onFocus);
 			document.removeEventListener("visibilitychange", this.onFocus);

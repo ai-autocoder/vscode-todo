@@ -19,7 +19,12 @@
  * would otherwise read a missing entry as a deletion. With no editor to follow, the selected
  * file changes only via the file list, which lists every path carrying todos in the gist.
  *
- * MCP and the VS Code-only commands (import/export dialogs, sync-mode pickers, gist-id
+ * Import/export are wired: the pure logic is shared (`@vsc-todo/core`'s `importExport`) and the
+ * host halves VS Code would supply are replaced by a file input and a download — see
+ * `../pwa/file-transfer`. Markdown carries no scope, so the extension's "Import to" quick pick
+ * becomes the `awaiting-scope` phase of {@link ImportExportState}, rendered by the PWA shell.
+ *
+ * MCP and the remaining VS Code-only commands (sync-mode pickers, file pinning, gist-id
  * settings) are no-ops or open GitHub directly, since there is no extension host.
  */
 
@@ -44,9 +49,20 @@ import {
 	type TodoFilesData,
 	type TodoFilesDataPaths,
 	todoMutations,
+	buildExportFileName,
+	buildExportObject,
+	hasImportChanges,
+	mergeImport,
+	parseImport,
+	serializeExport,
+	type ImportObject,
 } from "@vsc-todo/core";
+import { canShareFile, downloadTextFile, pickTextFile, shareTextFile } from "../pwa/file-transfer";
 import {
 	CurrentFileSlice,
+	ExportFormats,
+	ImportFormats,
+	MarkdownImportScopes,
 	StoreState,
 	Todo,
 	TodoScope,
@@ -105,6 +121,57 @@ export type GistConnectionState =
 	| { phase: "needs-files"; userFiles: GistFileInfo[]; workspaceFiles: GistFileInfo[] }
 	| { phase: "connected"; userFile: string; workspaceFile?: string }
 	| { phase: "error"; message: string };
+
+/**
+ * Import/export progress, for the PWA to render. Separate from {@link GistConnectionState}
+ * because it happens *while* connected, so it cannot share the connect screen's overlay.
+ *
+ * `awaiting-scope` is the browser's stand-in for the extension's "Import to" quick pick: a
+ * markdown file says nothing about which list it belongs in, so the user is asked.
+ */
+export type ImportExportState =
+	| { phase: "idle" }
+	| { phase: "busy"; message: string }
+	| {
+			phase: "awaiting-scope";
+			fileName: string;
+			/** Absent when no file is open, which rules out the File scope. */
+			currentFilePath?: string;
+	  }
+	| { phase: "done"; message: string }
+	| { phase: "error"; message: string };
+
+/**
+ * Message for a failure that is not one of the handled outcomes — a storage write that threw,
+ * say. Named so the notice says which operation broke rather than just "something went wrong".
+ */
+function describeUnexpected(operation: "import" | "export", error: unknown): string {
+	const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+	return `The ${operation} failed${detail}.`;
+}
+
+/** Renders which scopes an import touched, for the confirmation notice. */
+function describeImportChanges(changed: {
+	user: boolean;
+	workspace: boolean;
+	filesData: boolean;
+	filesDataPaths: boolean;
+}): string {
+	const parts: string[] = [];
+	if (changed.user) {
+		parts.push("user todos");
+	}
+	if (changed.workspace) {
+		parts.push("workspace todos");
+	}
+	if (changed.filesData || changed.filesDataPaths) {
+		parts.push("file todos");
+	}
+	if (parts.length <= 1) {
+		return parts[0] ?? "no changes";
+	}
+	return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
 
 const DEFAULT_CONFIG: Config = {
 	taskSortingOptions: "sortType1",
@@ -171,6 +238,11 @@ export class GistGateway implements DataGateway {
 	});
 	/** Connection flow state for the PWA's connect screen. */
 	readonly connection: Observable<GistConnectionState> = this._connection.asObservable();
+	private readonly _importExport = new BehaviorSubject<ImportExportState>({ phase: "idle" });
+	/** Import/export progress, for the PWA's scope prompt and its result notice. */
+	readonly importExport: Observable<ImportExportState> = this._importExport.asObservable();
+	/** Settles the `awaiting-scope` prompt. Only one import runs at a time. */
+	private pendingScopeResolver?: (scope: MarkdownImportScopes | undefined) => void;
 	/** The gist currently in use, for screens that need to show which one is selected. */
 	get currentGistId(): string | undefined {
 		return this.gistId;
@@ -760,11 +832,220 @@ export class GistGateway implements DataGateway {
 		this.emitScope(TodoScope.currentFile);
 		this.emitReload();
 	}
-	import(_format: unknown): void {
-		/* No host file dialogs in the PWA; import/export UI is out of scope for now. */
+	/**
+	 * Reads a file the user picks and merges it in.
+	 *
+	 * Markdown carries no scope of its own, so the extension asks with a `showQuickPick`
+	 * ("Import to"). The PWA has no quick pick: it parks in the `awaiting-scope` phase and
+	 * {@link pwa-shell} renders the choice, the same way the connect screen renders the gist
+	 * chooser. JSON names its own scopes and skips straight through.
+	 */
+	import(format: ImportFormats): void {
+		// An unhandled rejection here would leave the prompt parked with no way out, which is the
+		// silent-failure shape this app already had too much of.
+		void this.runImport(format).catch((error: unknown) => {
+			this.pendingScopeResolver = undefined;
+			this._importExport.next({ phase: "error", message: describeUnexpected("import", error) });
+		});
 	}
-	export(_format: unknown): void {
-		/* see import() */
+
+	/**
+	 * Exports every scope — user, workspace and all per-file lists.
+	 *
+	 * The extension offers a multi-select of scopes first; here the menu item is the whole
+	 * gesture, and a full backup is what "Export" is nearly always wanted for. A JSON export is
+	 * lossless and re-imports cleanly; markdown is text only, exactly as in the extension.
+	 */
+	export(format: ExportFormats): void {
+		void this.runExport(format).catch((error: unknown) => {
+			this._importExport.next({ phase: "error", message: describeUnexpected("export", error) });
+		});
+	}
+
+	private async runExport(format: ExportFormats): Promise<void> {
+		// Matches the extension's "No data to export, export aborted" rather than handing the
+		// user a file with nothing in it.
+		const hasAnything =
+			this.user.todos.length > 0 ||
+			this.workspace.todos.length > 0 ||
+			Object.values(this.filesData).some((todos) => todos.length > 0);
+		if (!hasAnything) {
+			this._importExport.next({ phase: "error", message: "There is nothing to export yet." });
+			return;
+		}
+
+		this._importExport.next({ phase: "busy", message: "Preparing export…" });
+
+		const data = buildExportObject(
+			{ user: true, workspace: true, files: true },
+			{
+				userTodos: this.user.todos,
+				workspaceTodos: this.workspace.todos,
+				filesData: this.filesData,
+				filesDataPaths: this.filesDataPaths,
+			}
+		);
+		const text = serializeExport(data, format);
+		const fileName = buildExportFileName(format);
+		const mimeType = format === ExportFormats.JSON ? "application/json" : "text/markdown";
+
+		if (await downloadTextFile(fileName, text, mimeType)) {
+			this._importExport.next({ phase: "done", message: `Exported ${fileName}.` });
+			return;
+		}
+
+		// A standalone-display PWA on iOS can silently drop a download. Offer the share sheet
+		// rather than reporting a success that never reached the filesystem.
+		if (canShareFile() && (await shareTextFile(fileName, text, mimeType))) {
+			this._importExport.next({ phase: "done", message: `Shared ${fileName}.` });
+			return;
+		}
+
+		this._importExport.next({
+			phase: "error",
+			message: "Could not save the export. Your browser may be blocking downloads.",
+		});
+	}
+
+	private async runImport(format: ImportFormats): Promise<void> {
+		const accept = format === ImportFormats.JSON ? ".json,application/json" : ".md,text/markdown";
+		const picked = await pickTextFile(accept);
+		if (!picked.ok) {
+			// Cancelling is not an error; say nothing rather than scolding the user.
+			this._importExport.next(
+				picked.reason === "cancelled"
+					? { phase: "idle" }
+					: { phase: "error", message: picked.message }
+			);
+			return;
+		}
+
+		let scope: MarkdownImportScopes | undefined;
+		if (format === ImportFormats.MARKDOWN) {
+			scope = await this.askImportScope(picked.name);
+			if (!scope) {
+				this._importExport.next({ phase: "idle" });
+				return;
+			}
+		}
+
+		const parsed = parseImport({
+			text: picked.text,
+			format,
+			scope,
+			currentFilePath: this.currentFile.filePath,
+		});
+
+		if (!parsed.ok) {
+			this._importExport.next({ phase: "error", message: parsed.message });
+			return;
+		}
+
+		await this.applyImport(parsed.data, picked.name);
+	}
+
+	/**
+	 * Parks in `awaiting-scope` until the shell resolves the choice. Only one import runs at a
+	 * time, so a single pending resolver is enough.
+	 */
+	private askImportScope(fileName: string): Promise<MarkdownImportScopes | undefined> {
+		return new Promise((resolve) => {
+			this.pendingScopeResolver = resolve;
+			this._importExport.next({
+				phase: "awaiting-scope",
+				fileName,
+				currentFilePath: this.currentFile.filePath || undefined,
+			});
+		});
+	}
+
+	/** Called by the shell when the user picks a scope, or dismisses the prompt with `undefined`. */
+	resolveImportScope(scope: MarkdownImportScopes | undefined): void {
+		const resolver = this.pendingScopeResolver;
+		this.pendingScopeResolver = undefined;
+		resolver?.(scope);
+	}
+
+	/** Dismisses a done/error notice. */
+	clearImportExportStatus(): void {
+		this._importExport.next({ phase: "idle" });
+	}
+
+	/**
+	 * Merges a parsed import into local state, persists, and pushes.
+	 *
+	 * Mirrors what {@link mutate} does for a single edit, but per scope: bump the generation
+	 * before anything awaits so an in-flight reconcile sees the change and declines to
+	 * overwrite it, reset the retry budget, then persist locally and schedule the push.
+	 */
+	private async applyImport(data: ImportObject, fileName: string): Promise<void> {
+		const result = mergeImport(data, {
+			userTodos: this.user.todos,
+			workspaceTodos: this.workspace.todos,
+			filesData: this.filesData,
+			filesDataPaths: this.filesDataPaths,
+		});
+
+		if (!hasImportChanges(result)) {
+			this._importExport.next({
+				phase: "done",
+				message: `${fileName} matched what you already have — nothing changed.`,
+			});
+			return;
+		}
+
+		if (result.changed.user) {
+			this.userGeneration++;
+			this.userRetries = 0;
+			this.user.todos = result.userTodos;
+			this.user.lastActionType = "loadData";
+			this.recount(this.user);
+			this.emitScope(TodoScope.user);
+			await this.persistUserLocal();
+			this.scheduleUserPush();
+		}
+
+		// Per-file todos live inside the workspace gist file, so any of these three counts as a
+		// workspace-scope edit.
+		const workspaceTouched =
+			result.changed.workspace || result.changed.filesData || result.changed.filesDataPaths;
+
+		if (workspaceTouched) {
+			this.workspaceGeneration++;
+			this.workspaceRetries = 0;
+
+			if (result.changed.workspace) {
+				this.workspace.todos = result.workspaceTodos;
+				this.workspace.lastActionType = "loadData";
+				this.recount(this.workspace);
+				this.emitScope(TodoScope.workspace);
+			}
+
+			this.filesData = result.filesData;
+			this.filesDataPaths = result.filesDataPaths;
+
+			// Re-project the open file off its own comparison — `filesData` changes independently
+			// of `workspaceTodos`.
+			if (result.changed.filesData && this.currentFile.filePath) {
+				this.currentFile = {
+					...this.currentFile,
+					todos: [...(this.filesData[this.currentFile.filePath] ?? [])],
+					lastActionType: "loadData",
+				};
+				this.recount(this.currentFile);
+				this.emitScope(TodoScope.currentFile);
+			}
+
+			await this.persistWorkspaceLocal();
+			this.scheduleWorkspacePush();
+		}
+
+		// The file list and counts may both have moved.
+		this.emitReload();
+		this._importExport.next({
+			phase: "done",
+			message: `Imported ${describeImportChanges(result.changed)} from ${fileName}.`,
+		});
 	}
 	setWideViewEnabled(isEnabled: boolean): void {
 		this.config.enableWideView = isEnabled;

@@ -140,3 +140,74 @@
 		</ng-container>
 	</div>
 </div>
+
+<!--
+	Import/export prompt and result notice. Separate from the connect screen above because these
+	happen while connected, over the running app. `awaiting-scope` is the browser's stand-in for
+	the extension's "Import to" quick pick — a markdown file says nothing about which list it
+	belongs in.
+-->
+<div
+	class="ie-overlay"
+	*ngIf="importExportState.phase === 'awaiting-scope'"
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby="ie-scope-title"
+>
+	<div class="ie-panel">
+		<h2 id="ie-scope-title">Import to</h2>
+		<p class="ie-file" *ngIf="importExportState.phase === 'awaiting-scope'">
+			{{ importExportState.fileName }}
+		</p>
+
+		<label class="ie-choice">
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.user"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>User</span>
+		</label>
+		<label class="ie-choice">
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.workspace"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>Workspace</span>
+		</label>
+		<!-- File is only a real option when one is open; there is no editor to fall back on. -->
+		<label
+			class="ie-choice"
+			*ngIf="importExportState.phase === 'awaiting-scope' && importExportState.currentFilePath"
+		>
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.currentFile"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>File — {{ importExportState.currentFilePath }}</span>
+		</label>
+
+		<div class="row">
+			<button class="primary" (click)="confirmImportScope()">Import</button>
+			<button (click)="cancelImportScope()">Cancel</button>
+		</div>
+	</div>
+</div>
+
+<div
+	class="ie-toast"
+	*ngIf="importExportState.phase === 'done' || importExportState.phase === 'error'"
+	[class.ie-toast-error]="importExportState.phase === 'error'"
+	role="status"
+	aria-live="polite"
+>
+	<span *ngIf="importExportState.phase === 'done' || importExportState.phase === 'error'">
+		{{ importExportState.message }}
+	</span>
+	<button class="ie-dismiss" (click)="dismissImportExportStatus()" aria-label="Dismiss">×</button>
+</div>
