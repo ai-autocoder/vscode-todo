@@ -126,7 +126,14 @@ export interface GistCache<T> {
 	lastCleanRemoteData?: T;
 	/** ISO timestamp of last successful sync */
 	lastSynced: string;
-	/** Whether there are unsaved local changes */
+	/**
+	 * Whether `data` holds local changes that are not yet on the remote.
+	 *
+	 * Informational in {@link GistSyncEngine} — it derives staleness by comparing `data` against
+	 * `lastCleanRemoteData` instead, so nothing in the engine branches on this flag. The VS Code
+	 * extension's own {@link SyncManager} does read its equivalent. Do not start trusting it here
+	 * without also making every writer keep it accurate.
+	 */
 	isDirty: boolean;
 }
 

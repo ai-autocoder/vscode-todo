@@ -427,14 +427,25 @@ export function mergeFilesData(
 			const remoteModified = !isEqual(baseTodos, remoteTodos);
 
 			if (localModified && remoteModified && !isEqual(localTodos, remoteTodos)) {
-				// FILE CONFLICT: Both sides modified file differently
-				conflicts.push({
-					filePath,
-					base: baseTodos,
-					local: localTodos,
-					remote: remoteTodos,
-					conflictType: "file-edit-edit",
-				});
+				// Both sides touched this file. Merge the todo arrays per item rather than treating
+				// the file as one opaque value: two people adding a todo to the same file are not
+				// in conflict, and whole-array resolution silently discarded whichever side lost.
+				// Only genuinely conflicting todos (the same id edited differently on both sides)
+				// escalate to a file conflict for the caller's policy to settle.
+				// Kept in step with packages/core/src/threeWayMerge.ts — the PWA runs that copy,
+				// and the two peers must resolve the same situation identically.
+				const itemMerge = threeWayMerge(baseTodos, localTodos, remoteTodos);
+				if (itemMerge.conflicts.length === 0) {
+					autoMerged[filePath] = itemMerge.autoMerged;
+				} else {
+					conflicts.push({
+						filePath,
+						base: baseTodos,
+						local: localTodos,
+						remote: remoteTodos,
+						conflictType: "file-edit-edit",
+					});
+				}
 			} else if (remoteModified) {
 				// Remote changed, local unchanged - use remote
 				autoMerged[filePath] = remoteTodos;

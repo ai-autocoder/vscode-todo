@@ -119,6 +119,106 @@ export class GistSyncEngine {
 		return (await this.store.load<WorkspaceGistData>(this.cacheKey("workspace", fileName)))?.data;
 	}
 
+	/**
+	 * Records local data as an unsynced edit, without touching the merge baseline.
+	 *
+	 * Callers that debounce their pushes need this. Between the edit and the reconcile the only
+	 * copy of the change lives in the caller's memory, so a reload in that window (on mobile,
+	 * merely switching apps) loses it. Persisting here means the next session rehydrates the
+	 * edit, and because `lastCleanRemoteData` is left alone the reconcile still reads it as a
+	 * genuine local change and pushes it.
+	 *
+	 * No-op before the file's first reconcile: with no cache entry there is no baseline to
+	 * preserve, and writing `data` alone would leave `lastCleanRemoteData` undefined — which the
+	 * next reconcile reads as a cold cache and bootstraps from, exactly the safe path we want.
+	 */
+	public async persistLocalUser(fileName: string, localData: GlobalGistData): Promise<void> {
+		await this.persistLocal(this.cacheKey("global", fileName), localData);
+	}
+
+	/** Workspace counterpart of {@link persistLocalUser}. */
+	public async persistLocalWorkspace(fileName: string, localData: WorkspaceGistData): Promise<void> {
+		await this.persistLocal(this.cacheKey("workspace", fileName), localData);
+	}
+
+	private async persistLocal<T extends object>(key: string, localData: T): Promise<void> {
+		const cache = await this.store.load<T>(key);
+		if (!cache) {
+			return;
+		}
+		const base = cache.lastCleanRemoteData;
+		await this.store.save<T>(key, {
+			...cache,
+			data: localData,
+			isDirty: base === undefined || !isEqual(localData, base),
+		});
+	}
+
+	/**
+	 * Folds a completed reconcile's result back into local state that has moved on since the
+	 * snapshot the reconcile was given.
+	 *
+	 * Callers debounce their pushes, so an edit can land while a reconcile is on the network. The
+	 * result that comes back is then stale in one direction (it lacks the new edit) and ahead in
+	 * the other (it carries whatever the remote contributed). Adopting it drops the edit; keeping
+	 * local wholesale drops the remote's changes — and the engine has already moved its baseline
+	 * to the reconciled data, so a dropped remote change reads as a local deletion on the next
+	 * pass and gets pushed away.
+	 *
+	 * Both sides are kept by merging with the *snapshot* as the base: relative to it, the local
+	 * edit and the remote's changes are each plain additions/edits, so the standard three-way
+	 * merge combines them. The caller adopts the return value and schedules another push.
+	 */
+	public reconcileWithLocalEdits(
+		snapshot: GlobalGistData,
+		reconciled: GlobalGistData,
+		currentLocal: GlobalGistData
+	): GlobalGistData {
+		const { autoMerged, conflicts } = threeWayMerge(
+			snapshot.userTodos,
+			currentLocal.userTodos,
+			reconciled.userTodos
+		);
+		const resolved = this.resolve(conflicts);
+		return { userTodos: mergeWithPreservedPositions(autoMerged, resolved, snapshot.userTodos) };
+	}
+
+	/** Workspace counterpart of {@link reconcileWithLocalEdits}. */
+	public reconcileWorkspaceWithLocalEdits(
+		snapshot: WorkspaceGistData,
+		reconciled: WorkspaceGistData,
+		currentLocal: WorkspaceGistData
+	): WorkspaceGistData {
+		const result = threeWayMergeWorkspace(
+			snapshot.workspaceTodos,
+			currentLocal.workspaceTodos,
+			reconciled.workspaceTodos,
+			snapshot.filesData,
+			currentLocal.filesData,
+			reconciled.filesData,
+			snapshot.filesDataPaths ?? {},
+			currentLocal.filesDataPaths ?? {},
+			reconciled.filesDataPaths ?? {}
+		);
+		const resolvedWs = this.resolve(result.workspaceConflicts);
+		const finalFilesData: TodoFilesData = { ...result.autoMergedFilesData };
+		for (const fc of result.fileConflicts) {
+			const pick = this.policy === "prefer-remote" ? fc.remote : fc.local;
+			if (pick) {
+				finalFilesData[fc.filePath] = pick;
+			}
+		}
+		return {
+			workspaceTodos: mergeWithPreservedPositions(
+				result.autoMergedWorkspaceTodos,
+				resolvedWs,
+				snapshot.workspaceTodos
+			),
+			filesData: finalFilesData,
+			filesDataPaths: result.autoMergedFilesDataPaths,
+		};
+	}
+
 	/** Picks the winning side for each conflict per the active policy; dropped if that side deleted. */
 	private resolve(conflicts: ConflictSet[]): Todo[] {
 		const resolved: Todo[] = [];
@@ -220,8 +320,22 @@ export class GistSyncEngine {
 			return { success: false, error: remoteRead.error };
 		}
 
-		// 2. Remote file doesn't exist yet → seed it with our local data.
+		// 2. Remote file doesn't exist yet → seed it with our local data. Re-read first: if the
+		// other peer created the same file in the meantime (both sides picking "new file" for the
+		// same scope), writing our local data straight out would replace their content and record
+		// the clobbered state as the clean baseline, so it would never be pulled back. Merging
+		// against an *empty* base makes both sides read as additions, so neither is deleted.
 		if (remoteData === null) {
+			const recheck = await this.client.readFile(this.gistId, fileName);
+			if (recheck.success) {
+				const created = strategy.parse(recheck.data ?? "");
+				const { merged, conflicts, fileConflicts } = strategy.merge(
+					strategy.empty(),
+					localData,
+					created
+				);
+				return this.pushVerified(key, fileName, created, merged, true, conflicts, fileConflicts, strategy);
+			}
 			const write = await this.client.writeFile(this.gistId, fileName, serialize(localData));
 			if (!write.success) {
 				return { success: false, error: write.error };
@@ -257,22 +371,90 @@ export class GistSyncEngine {
 
 		// 3c. Only local changed → push.
 		if (!remoteChanged && localChanged) {
-			const write = await this.client.writeFile(this.gistId, fileName, serialize(localData));
-			if (!write.success) {
-				return { success: false, error: write.error };
-			}
-			await this.saveCache(key, localData, localData);
-			return this.ok({ data: localData, changedRemotely: false, pushed: true, conflicts: [], fileConflicts: [] });
+			return this.pushVerified(key, fileName, remoteData, localData, false, [], [], strategy);
 		}
 
 		// 3d. Both changed → three-way merge, then push the merged result.
 		const { merged, conflicts, fileConflicts } = strategy.merge(base, localData, remoteData);
-		const write = await this.client.writeFile(this.gistId, fileName, serialize(merged));
-		if (!write.success) {
-			return { success: false, error: write.error };
+		return this.pushVerified(key, fileName, remoteData, merged, true, conflicts, fileConflicts, strategy);
+	}
+
+	/**
+	 * Writes `outgoing`, but first re-reads the file to make sure the remote has not moved since
+	 * the read this reconcile started from.
+	 *
+	 * The gist API has no compare-and-swap, so the read→merge→write sequence is a TOCTOU window:
+	 * a push from another peer (typically the VS Code extension) that lands inside it used to be
+	 * overwritten wholesale, and `saveCache` then recorded our stale result as the clean
+	 * baseline — so the next reconcile saw remote == base and the lost change was never pulled
+	 * back. Silent, permanent loss of an edit the user made in the extension.
+	 *
+	 * On detecting a moved remote we merge our outgoing data against the fresh remote, using the
+	 * remote we originally read as the base (it is a genuine common ancestor of both sides), and
+	 * retry. Bounded so a busy file cannot spin forever; giving up leaves the remote intact and
+	 * the baseline untouched, so the next reconcile simply tries again.
+	 */
+	private async pushVerified<T extends object>(
+		key: string,
+		fileName: string,
+		readRemote: T,
+		outgoing: T,
+		changedRemotely: boolean,
+		conflicts: ConflictSet[],
+		fileConflicts: FileConflictSet[],
+		strategy: {
+			parse: (raw: string) => T;
+			merge: (base: T, local: T, remote: T) => { merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] };
 		}
-		await this.saveCache(key, merged, merged);
-		return this.ok({ data: merged, changedRemotely: true, pushed: true, conflicts, fileConflicts });
+	): Promise<SyncResult<ReconcileResult<T>>> {
+		let base = readRemote;
+		let data = outgoing;
+		let allConflicts = conflicts;
+		let allFileConflicts = fileConflicts;
+		let pulledConcurrent = changedRemotely;
+
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const recheck = await this.client.readFile(this.gistId, fileName);
+			// A file that vanished mid-flight is not a concurrent edit to merge with; fall through
+			// and let the write recreate it.
+			const current = recheck.success ? strategy.parse(recheck.data ?? "") : undefined;
+
+			if (current !== undefined && !isEqual(current, base)) {
+				this.logger?.(
+					`[GistSyncEngine] remote moved during reconcile of ${fileName}; re-merging (attempt ${attempt + 1})`
+				);
+				const remerged = strategy.merge(base, data, current);
+				data = remerged.merged;
+				allConflicts = [...allConflicts, ...remerged.conflicts];
+				allFileConflicts = [...allFileConflicts, ...remerged.fileConflicts];
+				base = current;
+				pulledConcurrent = true;
+				continue;
+			}
+
+			const write = await this.client.writeFile(this.gistId, fileName, serialize(data));
+			if (!write.success) {
+				return { success: false, error: write.error };
+			}
+			await this.saveCache(key, data, data);
+			return this.ok({
+				data,
+				changedRemotely: pulledConcurrent,
+				pushed: true,
+				conflicts: allConflicts,
+				fileConflicts: allFileConflicts,
+			});
+		}
+
+		return {
+			success: false,
+			error: {
+				type: SyncErrorType.ConflictError,
+				message: `Remote ${fileName} kept changing during reconcile; will retry on the next sync.`,
+				timestamp: new Date().toISOString(),
+				retryable: true,
+			},
+		};
 	}
 
 	/**
@@ -291,6 +473,7 @@ export class GistSyncEngine {
 		localData: T,
 		strategy: {
 			empty: () => T;
+			parse: (raw: string) => T;
 			merge: (base: T, local: T, remote: T) => { merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] };
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
@@ -309,12 +492,8 @@ export class GistSyncEngine {
 		}
 
 		const { merged, conflicts, fileConflicts } = strategy.merge(empty, localData, remoteData);
-		const write = await this.client.writeFile(this.gistId, fileName, serialize(merged));
-		if (!write.success) {
-			return { success: false, error: write.error };
-		}
-		await this.saveCache(key, merged, merged);
-		return this.ok({ data: merged, changedRemotely: true, pushed: true, conflicts, fileConflicts });
+		// Same TOCTOU window as the ordinary push paths, so the same verified write.
+		return this.pushVerified(key, fileName, remoteData, merged, true, conflicts, fileConflicts, strategy);
 	}
 
 	private async saveCache<T>(key: string, data: T, lastCleanRemoteData: T): Promise<void> {

@@ -206,6 +206,20 @@ export class GistGateway implements DataGateway {
 	private userPushTimer: ReturnType<typeof setTimeout> | undefined;
 	private workspacePushTimer: ReturnType<typeof setTimeout> | undefined;
 
+	/**
+	 * Bumped by {@link mutate} on every local edit, per gist file (the workspace counter covers
+	 * `workspaceTodos` *and* `filesData`, since both live in the workspace file).
+	 *
+	 * A reconcile captures the counter alongside the local snapshot it sends, then compares on
+	 * resolve. This is what makes a mid-flight edit detectable: the reconcile `await`s two HTTP
+	 * round-trips, the UI keeps dispatching during that window, and the merged result it comes
+	 * back with was computed from state that is already stale. Adopting it blindly overwrote the
+	 * edit in memory, and because the engine had recorded the merged data as the new baseline,
+	 * the next reconcile saw local == base and pushed nothing — the edit was gone for good.
+	 */
+	private userGeneration = 0;
+	private workspaceGeneration = 0;
+
 	constructor(private readonly opts: GistGatewayConfig) {
 		this.config = { ...DEFAULT_CONFIG, ...opts.config };
 		this.reducerConfig = {
@@ -270,6 +284,10 @@ export class GistGateway implements DataGateway {
 		// Same guard as ready(): without a chosen file there is nothing to reconcile, and the
 		// file names may still belong to a gist the user is in the middle of switching away from.
 		if (this.token && this.gistId && this.userFile) {
+			// Coming back to the app is the natural moment to give up on a stale failure streak:
+			// a device that failed while offline and then idled would otherwise never retry.
+			this.userRetries = 0;
+			this.workspaceRetries = 0;
 			await this.pullAll();
 		}
 	}
@@ -364,6 +382,11 @@ export class GistGateway implements DataGateway {
 		if (this.userPushTimer) {
 			clearTimeout(this.userPushTimer);
 		}
+		// Persist the edit now rather than only when the push lands. The debounce means the change
+		// would otherwise exist solely in memory for `pushDebounceMs`, and on a phone that window
+		// routinely ends in the app being backgrounded and torn down. Fire-and-forget: this is a
+		// durability backstop, and nothing downstream waits on it.
+		void this.persistUserLocal();
 		this.userPushTimer = setTimeout(
 			() => void this.enqueue(() => this.reconcileUser()),
 			this.pushDebounceMs
@@ -374,10 +397,78 @@ export class GistGateway implements DataGateway {
 		if (this.workspacePushTimer) {
 			clearTimeout(this.workspacePushTimer);
 		}
+		void this.persistWorkspaceLocal();
 		this.workspacePushTimer = setTimeout(
 			() => void this.enqueue(() => this.reconcileWorkspace()),
 			this.pushDebounceMs
 		);
+	}
+
+	/**
+	 * Backoff retries for *retryable* reconcile failures (a remote that would not settle, a
+	 * transient network error). Bounded so a persistently failing file cannot retry forever.
+	 *
+	 * The attempt counters reset on a successful reconcile and on any local edit: a run of
+	 * failures while the phone was offline must not leave the budget exhausted, or a device that
+	 * fails mid-flight and then sits idle would never retry at all.
+	 *
+	 * These keep their **own** timers rather than borrowing the debounce ones. Sharing meant a
+	 * retry cancelled a pending edit's push and replaced it with a backoff delay the user's fresh
+	 * edit had not earned (up to 24s at the default 3s debounce).
+	 */
+	private userRetries = 0;
+	private workspaceRetries = 0;
+	private userRetryTimer: ReturnType<typeof setTimeout> | undefined;
+	private workspaceRetryTimer: ReturnType<typeof setTimeout> | undefined;
+
+	private static readonly MAX_SYNC_RETRIES = 3;
+
+	private scheduleUserRetry(): void {
+		if (this.userRetries >= GistGateway.MAX_SYNC_RETRIES) {
+			return;
+		}
+		const attempt = ++this.userRetries;
+		if (this.userRetryTimer) {
+			clearTimeout(this.userRetryTimer);
+		}
+		this.userRetryTimer = setTimeout(() => {
+			this.userRetryTimer = undefined;
+			void this.enqueue(() => this.reconcileUser());
+		}, this.pushDebounceMs * 2 ** attempt);
+	}
+
+	private scheduleWorkspaceRetry(): void {
+		if (this.workspaceRetries >= GistGateway.MAX_SYNC_RETRIES) {
+			return;
+		}
+		const attempt = ++this.workspaceRetries;
+		if (this.workspaceRetryTimer) {
+			clearTimeout(this.workspaceRetryTimer);
+		}
+		this.workspaceRetryTimer = setTimeout(() => {
+			this.workspaceRetryTimer = undefined;
+			void this.enqueue(() => this.reconcileWorkspace());
+		}, this.pushDebounceMs * 2 ** attempt);
+	}
+
+	private async persistUserLocal(): Promise<void> {
+		const fileName = this.userFile;
+		if (!this.engine || !fileName) {
+			return;
+		}
+		await this.engine.persistLocalUser(fileName, { userTodos: this.user.todos });
+	}
+
+	private async persistWorkspaceLocal(): Promise<void> {
+		const fileName = this.workspaceFile;
+		if (!this.engine || !fileName) {
+			return;
+		}
+		await this.engine.persistLocalWorkspace(fileName, {
+			workspaceTodos: this.workspace.todos,
+			filesData: this.filesData,
+			filesDataPaths: this.filesDataPaths,
+		});
 	}
 
 	private async reconcileUser(): Promise<void> {
@@ -389,13 +480,33 @@ export class GistGateway implements DataGateway {
 		this.emitSyncing(true);
 		try {
 			const local: GlobalGistData = { userTodos: this.user.todos };
+			const generation = this.userGeneration;
 			const res = await engine.reconcileUser(fileName, local);
 			if (res.success && res.data) {
-				// Always adopt the reconciled data — it is what the engine just recorded as the
-				// merge baseline. Keeping a different local list would make the next reconcile read
-				// the difference as a local edit and push it over the gist.
-				const changed = !isEqual({ todos: this.user.todos }, { todos: res.data.data.userTodos });
-				this.user.todos = res.data.data.userTodos;
+				this.userRetries = 0;
+				// An edit landed while we were on the network, so `res.data.data` was merged from
+				// a snapshot that no longer reflects local state. Neither side can just win here:
+				// adopting the result drops the edit, and keeping local drops whatever the remote
+				// contributed — and since the engine has already moved its baseline to the
+				// reconciled data, a dropped remote change reads as a local deletion next pass and
+				// gets pushed away. Merge the two against the snapshot instead, then push again.
+				const reconciled =
+					this.userGeneration === generation
+						? res.data.data
+						: engine.reconcileWithLocalEdits(local, res.data.data, {
+								userTodos: this.user.todos,
+							});
+				const changed = !isEqual({ todos: this.user.todos }, { todos: reconciled.userTodos });
+				this.user.todos = reconciled.userTodos;
+				if (this.userGeneration !== generation) {
+					// Re-persist *after* adopting. The reconcile's own `saveCache` has just replaced
+					// the cache entry wholesale, discarding the `persistLocal` that ran when the
+					// mid-flight edit arrived — so without this the edit is durable only in memory
+					// and a background-kill before the re-armed push loses it. Awaited, unlike the
+					// fire-and-forget call in `scheduleUserPush`, to order it after `saveCache`.
+					await this.persistUserLocal();
+					this.scheduleUserPush();
+				}
 				if (changed) {
 					this.user.lastActionType = "loadData";
 					this.recount(this.user);
@@ -404,6 +515,12 @@ export class GistGateway implements DataGateway {
 					// the list has to refresh it too or the badge keeps the pre-pull number.
 					this.emitReload();
 				}
+			} else if (res.error?.retryable) {
+				// A retryable failure (a remote that would not settle, a transient network error)
+				// leaves the edit unpushed. Nothing else re-arms the push — the stale branch above
+				// is inside the success path — so without this the change waits for an unrelated
+				// trigger. The edit is still in local state and the cache, so a retry is safe.
+				this.scheduleUserRetry();
 			}
 		} finally {
 			this.emitSyncing(false);
@@ -425,12 +542,20 @@ export class GistGateway implements DataGateway {
 				filesData: this.filesData,
 				filesDataPaths: this.filesDataPaths,
 			};
+			const generation = this.workspaceGeneration;
 			const res = await engine.reconcileWorkspace(fileName, local);
 			if (res.success && res.data) {
-				// Always adopt the reconciled data, even when nothing changed remotely: it is what
-				// the engine just recorded as the merge baseline, so holding anything else here
-				// would make the next reconcile read the difference as a local edit and push it.
-				const merged = res.data.data;
+				this.workspaceRetries = 0;
+				// See reconcileUser. The workspace counter also covers `filesData`, so this keeps
+				// per-file lists as well as `workspaceTodos`.
+				const stale = this.workspaceGeneration !== generation;
+				const merged = stale
+					? engine.reconcileWorkspaceWithLocalEdits(local, res.data.data, {
+							workspaceTodos: this.workspace.todos,
+							filesData: this.filesData,
+							filesDataPaths: this.filesDataPaths,
+						})
+					: res.data.data;
 				const workspaceChanged = !isEqual(
 					{ todos: this.workspace.todos },
 					{ todos: merged.workspaceTodos }
@@ -440,6 +565,13 @@ export class GistGateway implements DataGateway {
 				this.filesData = merged.filesData;
 				this.filesDataPaths = merged.filesDataPaths ?? {};
 				this.workspace.todos = merged.workspaceTodos;
+
+				if (stale) {
+					// See reconcileUser: re-persist after adopting, because the reconcile's own
+					// `saveCache` has already discarded the mid-flight `persistLocal`.
+					await this.persistWorkspaceLocal();
+					this.scheduleWorkspacePush();
+				}
 
 				if (workspaceChanged) {
 					this.workspace.lastActionType = "loadData";
@@ -461,6 +593,9 @@ export class GistGateway implements DataGateway {
 					// File list / counts may have changed too.
 					this.emitReload();
 				}
+			} else if (res.error?.retryable) {
+				// See reconcileUser.
+				this.scheduleWorkspaceRetry();
 			}
 		} finally {
 			this.emitSyncing(false);
@@ -534,17 +669,34 @@ export class GistGateway implements DataGateway {
 		slice.numberOfNotes = slice.todos.filter((t) => t.isNote).length;
 	}
 
-	/** Apply a mutation to the right scope's slice, echo to the UI, and schedule a push. */
+	/**
+	 * Apply a mutation to the right scope's slice, echo to the UI, and schedule a push.
+	 *
+	 * Bumps the scope's generation counter *before* anything can await, so a reconcile that is
+	 * currently on the network sees the change and declines to overwrite it. See
+	 * {@link userGeneration}.
+	 */
 	private mutate(scope: TodoScope, fn: (state: TodoSliceState) => void): void {
 		if (scope === TodoScope.user) {
+			this.userGeneration++;
+			// Fresh user activity earns a fresh retry budget. Reset here rather than in
+			// `scheduleUserPush`, which the stale re-arm path also calls — refilling on a retry
+			// would defeat the bound.
+			this.userRetries = 0;
 			fn(this.asSliceState(this.user));
 			this.emitScope(TodoScope.user);
 			this.scheduleUserPush();
 		} else if (scope === TodoScope.workspace) {
+			this.workspaceGeneration++;
+			this.workspaceRetries = 0;
 			fn(this.asSliceState(this.workspace));
 			this.emitScope(TodoScope.workspace);
 			this.scheduleWorkspacePush();
 		} else if (scope === TodoScope.currentFile && this.currentFile.filePath) {
+			// Per-file todos are written into `filesData`, which lives in the workspace gist file,
+			// so this counts as a workspace-scope edit for staleness purposes.
+			this.workspaceGeneration++;
+			this.workspaceRetries = 0;
 			fn(this.asSliceState(this.currentFile));
 			// Per-file todos live inside the workspace gist file, so a currentFile edit is
 			// written back into filesData and pushed on the workspace timer.
@@ -744,6 +896,18 @@ export class GistGateway implements DataGateway {
 			clearTimeout(this.workspacePushTimer);
 			this.workspacePushTimer = undefined;
 		}
+		// Retries keep their own timers, so they need cancelling too — a backoff surviving a
+		// disconnect or gist switch would reconcile against file names that no longer apply.
+		if (this.userRetryTimer) {
+			clearTimeout(this.userRetryTimer);
+			this.userRetryTimer = undefined;
+		}
+		if (this.workspaceRetryTimer) {
+			clearTimeout(this.workspaceRetryTimer);
+			this.workspaceRetryTimer = undefined;
+		}
+		this.userRetries = 0;
+		this.workspaceRetries = 0;
 	}
 
 	/**
