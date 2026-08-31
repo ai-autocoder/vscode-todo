@@ -168,19 +168,26 @@ export class GistSyncEngine {
 	 * Both sides are kept by merging with the *snapshot* as the base: relative to it, the local
 	 * edit and the remote's changes are each plain additions/edits, so the standard three-way
 	 * merge combines them. The caller adopts the return value and schedules another push.
+	 *
+	 * Conflicts this second merge resolves are returned alongside the data: they are real
+	 * conflicts between the user and the remote, and a caller that surfaces the first merge's
+	 * conflicts must surface these too or the mid-flight path stays silent.
 	 */
 	public reconcileWithLocalEdits(
 		snapshot: GlobalGistData,
 		reconciled: GlobalGistData,
 		currentLocal: GlobalGistData
-	): GlobalGistData {
+	): { data: GlobalGistData; conflicts: ConflictSet[] } {
 		const { autoMerged, conflicts } = threeWayMerge(
 			snapshot.userTodos,
 			currentLocal.userTodos,
 			reconciled.userTodos
 		);
 		const resolved = this.resolve(conflicts);
-		return { userTodos: mergeWithPreservedPositions(autoMerged, resolved, snapshot.userTodos) };
+		return {
+			data: { userTodos: mergeWithPreservedPositions(autoMerged, resolved, snapshot.userTodos) },
+			conflicts,
+		};
 	}
 
 	/** Workspace counterpart of {@link reconcileWithLocalEdits}. */
@@ -188,7 +195,11 @@ export class GistSyncEngine {
 		snapshot: WorkspaceGistData,
 		reconciled: WorkspaceGistData,
 		currentLocal: WorkspaceGistData
-	): WorkspaceGistData {
+	): {
+		data: WorkspaceGistData;
+		conflicts: ConflictSet[];
+		fileConflicts: FileConflictSet[];
+	} {
 		const result = threeWayMergeWorkspace(
 			snapshot.workspaceTodos,
 			currentLocal.workspaceTodos,
@@ -209,13 +220,17 @@ export class GistSyncEngine {
 			}
 		}
 		return {
-			workspaceTodos: mergeWithPreservedPositions(
-				result.autoMergedWorkspaceTodos,
-				resolvedWs,
-				snapshot.workspaceTodos
-			),
-			filesData: finalFilesData,
-			filesDataPaths: result.autoMergedFilesDataPaths,
+			data: {
+				workspaceTodos: mergeWithPreservedPositions(
+					result.autoMergedWorkspaceTodos,
+					resolvedWs,
+					snapshot.workspaceTodos
+				),
+				filesData: finalFilesData,
+				filesDataPaths: result.autoMergedFilesDataPaths,
+			},
+			conflicts: result.workspaceConflicts,
+			fileConflicts: result.fileConflicts,
 		};
 	}
 

@@ -1,3 +1,21 @@
+@if (showConflictBanner) {
+	<button class="conflict-banner" (click)="openConflictReview()">
+		<span class="conflict-count">{{ conflictViews.length }}</span>
+		<span class="conflict-text">
+			{{ conflictViews.length === 1 ? "change" : "changes" }} resolved automatically during sync
+		</span>
+		<span class="conflict-cta">Review</span>
+	</button>
+}
+
+@if (showConflictReview && gateway) {
+	<app-conflict-review
+		[gateway]="gateway"
+		[views]="conflictViews"
+		(closed)="closeConflictReview()"
+	></app-conflict-review>
+}
+
 <app-root *ngIf="showApp"></app-root>
 
 <div class="connect-screen" *ngIf="showConnectScreen" [ngSwitch]="state.phase">

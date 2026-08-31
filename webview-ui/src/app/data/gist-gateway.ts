@@ -44,6 +44,10 @@ import {
 	type TodoFilesData,
 	type TodoFilesDataPaths,
 	todoMutations,
+	generateUniqueId,
+	recountTodos,
+	type ConflictSet,
+	type FileConflictSet,
 } from "@vsc-todo/core";
 import {
 	CurrentFileSlice,
@@ -59,6 +63,19 @@ import {
 } from "../../../../src/panels/message";
 import { Config } from "../../../../src/utilities/config";
 import type { DataGateway, InboundMessage } from "./data-gateway";
+import { isValueStale } from "../pwa/conflicts/conflict-diff";
+import {
+	MAX_PENDING_CONFLICTS,
+	PendingConflictStore,
+} from "../pwa/conflicts/pending-conflicts.store";
+import {
+	fileConflictKey,
+	todoConflictKey,
+	type ConflictScope,
+	type PendingConflict,
+	type PendingConflictView,
+	type ConflictApplyResult,
+} from "../pwa/conflicts/conflict-types";
 
 /** Runtime configuration for the PWA's GitHub access (supplied by the PWA environment). */
 export interface GistGatewayConfig {
@@ -157,6 +174,7 @@ export class GistGateway implements DataGateway {
 
 	private readonly tokenStore = new IndexedDbTokenStore();
 	private readonly cacheStore = new IndexedDbCacheStore();
+	private readonly conflictStore = new PendingConflictStore();
 	private readonly client: GistClient;
 	private readonly deviceFlow: DeviceFlowClient;
 	private engine: GistSyncEngine | undefined;
@@ -171,6 +189,16 @@ export class GistGateway implements DataGateway {
 	});
 	/** Connection flow state for the PWA's connect screen. */
 	readonly connection: Observable<GistConnectionState> = this._connection.asObservable();
+
+	/**
+	 * Conflicts the engine already resolved (prefer-local) and pushed, kept so the user can see
+	 * and reverse those decisions. Newest first; persisted, because sync usually runs on the
+	 * focus event just before a phone backgrounds the app.
+	 */
+	private pendingConflicts: PendingConflict[] = [];
+	private readonly _conflicts = new BehaviorSubject<PendingConflictView[]>([]);
+	/** Pending conflicts, each paired with whether local state has moved on since the sync. */
+	readonly conflicts: Observable<PendingConflictView[]> = this._conflicts.asObservable();
 	/** The gist currently in use, for screens that need to show which one is selected. */
 	get currentGistId(): string | undefined {
 		return this.gistId;
@@ -252,6 +280,10 @@ export class GistGateway implements DataGateway {
 		if (this.gistId) {
 			this.engine = this.createEngine(this.gistId);
 			await this.rehydrateFromCache();
+			// Conflicts belong to the gist that produced them and are cleared when it changes, so
+			// they load alongside the cache rather than on their own.
+			this.pendingConflicts = await this.conflictStore.load();
+			this.publishConflicts();
 		}
 
 		let state: GistConnectionState;
@@ -490,24 +522,36 @@ export class GistGateway implements DataGateway {
 				// contributed — and since the engine has already moved its baseline to the
 				// reconciled data, a dropped remote change reads as a local deletion next pass and
 				// gets pushed away. Merge the two against the snapshot instead, then push again.
-				const reconciled =
+				// Kept as the whole result, not just the data: the re-merge resolves conflicts of
+				// its own — a todo the user edited mid-flight that the reconcile was also changing
+				// — and dropping those would leave exactly the silent overwrite this records.
+				const remerge =
 					this.userGeneration === generation
-						? res.data.data
+						? null
 						: engine.reconcileWithLocalEdits(local, res.data.data, {
 								userTodos: this.user.todos,
 							});
+				const reconciled = remerge?.data ?? res.data.data;
 				const changed = !isEqual({ todos: this.user.todos }, { todos: reconciled.userTodos });
 				this.user.todos = reconciled.userTodos;
-				if (this.userGeneration !== generation) {
+				// Surface what the engine settled on its own. Runs before anything is emitted or
+				// persisted below, because keep-both adds a todo to the slice.
+				const keptBoth = this.captureTodoConflicts("user", [
+					...res.data.conflicts,
+					...(remerge?.conflicts ?? []),
+				]);
+				if (this.userGeneration !== generation || keptBoth) {
 					// Re-persist *after* adopting. The reconcile's own `saveCache` has just replaced
 					// the cache entry wholesale, discarding the `persistLocal` that ran when the
 					// mid-flight edit arrived — so without this the edit is durable only in memory
 					// and a background-kill before the re-armed push loses it. Awaited, unlike the
 					// fire-and-forget call in `scheduleUserPush`, to order it after `saveCache`.
+					// Keep-both takes the same path: the copy it adds exists only in memory until
+					// a push carries it to the gist.
 					await this.persistUserLocal();
 					this.scheduleUserPush();
 				}
-				if (changed) {
+				if (changed || keptBoth) {
 					this.user.lastActionType = "loadData";
 					this.recount(this.user);
 					this.emitScope(TodoScope.user);
@@ -549,13 +593,16 @@ export class GistGateway implements DataGateway {
 				// See reconcileUser. The workspace counter also covers `filesData`, so this keeps
 				// per-file lists as well as `workspaceTodos`.
 				const stale = this.workspaceGeneration !== generation;
-				const merged = stale
+				// See reconcileUser: the whole result is kept so the re-merge's own conflicts can
+				// be recorded rather than silently resolved.
+				const remerge = stale
 					? engine.reconcileWorkspaceWithLocalEdits(local, res.data.data, {
 							workspaceTodos: this.workspace.todos,
 							filesData: this.filesData,
 							filesDataPaths: this.filesDataPaths,
 						})
-					: res.data.data;
+					: null;
+				const merged = remerge?.data ?? res.data.data;
 				const workspaceChanged = !isEqual(
 					{ todos: this.workspace.todos },
 					{ todos: merged.workspaceTodos }
@@ -566,14 +613,22 @@ export class GistGateway implements DataGateway {
 				this.filesDataPaths = merged.filesDataPaths ?? {};
 				this.workspace.todos = merged.workspaceTodos;
 
-				if (stale) {
+				// See reconcileUser. File-level conflicts are recorded too: the PWA never renders
+				// those per-file lists, but it is the side that just overwrote one.
+				const keptBoth = this.captureTodoConflicts("workspace", [
+					...res.data.conflicts,
+					...(remerge?.conflicts ?? []),
+				]);
+				this.captureFileConflicts([...res.data.fileConflicts, ...(remerge?.fileConflicts ?? [])]);
+
+				if (stale || keptBoth) {
 					// See reconcileUser: re-persist after adopting, because the reconcile's own
 					// `saveCache` has already discarded the mid-flight `persistLocal`.
 					await this.persistWorkspaceLocal();
 					this.scheduleWorkspacePush();
 				}
 
-				if (workspaceChanged) {
+				if (workspaceChanged || keptBoth) {
 					this.workspace.lastActionType = "loadData";
 					this.recount(this.workspace);
 					this.emitScope(TodoScope.workspace);
@@ -589,7 +644,7 @@ export class GistGateway implements DataGateway {
 					this.recount(this.currentFile);
 					this.emitScope(TodoScope.currentFile);
 				}
-				if (workspaceChanged || filesChanged) {
+				if (workspaceChanged || filesChanged || keptBoth) {
 					// File list / counts may have changed too.
 					this.emitReload();
 				}
@@ -704,6 +759,11 @@ export class GistGateway implements DataGateway {
 			this.recount(this.currentFile);
 			this.emitScope(TodoScope.currentFile);
 			this.scheduleWorkspacePush();
+		}
+		if (this.pendingConflicts.length > 0) {
+			// A pending conflict is stale once the user edits the item it refers to, so the flag
+			// the review screen shows has to be recomputed on every edit, not only on sync.
+			this.publishConflicts();
 		}
 	}
 
@@ -875,6 +935,9 @@ export class GistGateway implements DataGateway {
 		// back as the new gist's baseline — the exact corruption this reset exists to prevent.
 		await this.enqueue(async () => {
 			await this.cacheStore.clear();
+			// Same queue, same reason: a reconcile still on the network would otherwise record the
+			// old gist's conflicts into the store we just cleared.
+			await this.clearConflicts();
 		});
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
@@ -1091,6 +1154,9 @@ export class GistGateway implements DataGateway {
 		// Same ordering hazard as resetForNewGist: let any in-flight reconcile finish first.
 		await this.enqueue(async () => {
 			await this.cacheStore.clear();
+			// Same queue, same reason: a reconcile still on the network would otherwise record the
+			// old gist's conflicts into the store we just cleared.
+			await this.clearConflicts();
 		});
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
@@ -1163,5 +1229,305 @@ export class GistGateway implements DataGateway {
 	}
 	stopMcpServer(): void {
 		/* not applicable in the PWA */
+	}
+
+	// --- conflicts ---
+
+	/**
+	 * Records the conflicts a reconcile just resolved, and settles id collisions by keeping both.
+	 *
+	 * By the time we get here the engine has already picked the local side of every conflict and
+	 * pushed the result, so nothing is pending in the sync sense — these records exist purely so
+	 * the user can see what was decided and reverse it. The exception is `id-collision`: the two
+	 * todos were created independently and merely drew the same random id, so they are not
+	 * versions of each other and picking a side would destroy a real item. Those are settled here
+	 * by re-adding the other device's todo under a fresh id.
+	 *
+	 * Returns true when keep-both added a todo, so the caller re-emits and schedules a push.
+	 */
+	private captureTodoConflicts(scope: ConflictScope, conflicts: ConflictSet[]): boolean {
+		if (conflicts.length === 0) {
+			return false;
+		}
+		// One reconcile can report the same todo twice: once from the initial merge and again
+		// from the re-merge against an edit that landed mid-flight. Keep the later report — its
+		// baseline is the one that matches what actually ended up in the list.
+		const latest = new Map<number, ConflictSet>();
+		for (const conflict of conflicts) {
+			latest.set(conflict.todoId, conflict);
+		}
+
+		const slice = this.sliceFor(scope);
+		const syncedAt = new Date().toISOString();
+		const records: PendingConflict[] = [];
+		let added = false;
+
+		for (const conflict of latest.values()) {
+			if (conflict.conflictType === "id-collision") {
+				if (!conflict.local || !conflict.remote) {
+					// Both sides are populated by definition for a collision; guard anyway rather
+					// than write a half-formed record.
+					continue;
+				}
+				const newId = generateUniqueId(slice.todos);
+				slice.todos = [...slice.todos, { ...conflict.remote, id: newId }];
+				added = true;
+				records.push({
+					kind: "kept-both",
+					key: todoConflictKey(scope, conflict.todoId),
+					scope,
+					todoId: conflict.todoId,
+					local: conflict.local,
+					remote: conflict.remote,
+					newId,
+					syncedAt,
+				});
+				continue;
+			}
+			records.push({
+				kind: "todo",
+				key: todoConflictKey(scope, conflict.todoId),
+				scope,
+				todoId: conflict.todoId,
+				conflictType: conflict.conflictType,
+				base: conflict.base,
+				local: conflict.local,
+				remote: conflict.remote,
+				// The engine's policy is prefer-local, so the local side is what it applied and
+				// pushed. A null here means the item is simply absent from the list.
+				resolvedValue: conflict.local,
+				syncedAt,
+			});
+		}
+
+		if (added) {
+			this.recount(slice);
+		}
+		this.upsertConflicts(records);
+		return added;
+	}
+
+	/**
+	 * Records whole-list conflicts on the per-file todos inside the workspace gist file. The
+	 * merge reports these as entire `Todo[]` values for a path rather than per todo, so the only
+	 * choices the review screen can offer are the two lists.
+	 */
+	private captureFileConflicts(fileConflicts: FileConflictSet[]): void {
+		if (fileConflicts.length === 0) {
+			return;
+		}
+		// Deduped like the todo conflicts: the same path can be reported by both merge passes.
+		const latest = new Map<string, FileConflictSet>();
+		for (const conflict of fileConflicts) {
+			latest.set(conflict.filePath, conflict);
+		}
+		const syncedAt = new Date().toISOString();
+		this.upsertConflicts(
+			[...latest.values()].map((conflict) => ({
+				kind: "file" as const,
+				key: fileConflictKey(conflict.filePath),
+				filePath: conflict.filePath,
+				conflictType: conflict.conflictType,
+				base: conflict.base,
+				local: conflict.local,
+				remote: conflict.remote,
+				resolvedValue: conflict.local,
+				syncedAt,
+			}))
+		);
+	}
+
+	/**
+	 * Adds records, replacing any unreviewed record for the same todo or file: a second conflict
+	 * on one item supersedes the first, and showing both would offer the user a choice against a
+	 * baseline that no longer exists.
+	 */
+	private upsertConflicts(records: PendingConflict[]): void {
+		if (records.length === 0) {
+			return;
+		}
+		const superseded = new Set(records.map((record) => record.key));
+		this.pendingConflicts = [
+			...records,
+			...this.pendingConflicts.filter((conflict) => !superseded.has(conflict.key)),
+		].slice(0, MAX_PENDING_CONFLICTS);
+		void this.conflictStore.save(this.pendingConflicts);
+		this.publishConflicts();
+	}
+
+	/** Republishes the list, recomputing each record's staleness against current local state. */
+	private publishConflicts(): void {
+		this._conflicts.next(
+			this.pendingConflicts.map((conflict) => ({ conflict, stale: this.isStale(conflict) }))
+		);
+	}
+
+	/**
+	 * Whether local state has moved on since the sync resolved this conflict. Applying the other
+	 * device's version would then discard whatever the user did afterwards, so the review screen
+	 * warns and `applyConflictChoice` refuses until told to go ahead.
+	 */
+	private isStale(conflict: PendingConflict): boolean {
+		if (conflict.kind === "kept-both") {
+			// Nothing here can be overwritten — the only action is removing the added copy, which
+			// is moot once the user has deleted it themselves.
+			return !this.sliceFor(conflict.scope).todos.some((todo) => todo.id === conflict.newId);
+		}
+		if (conflict.kind === "file") {
+			return isValueStale(conflict.resolvedValue, this.filesData[conflict.filePath] ?? null);
+		}
+		return isValueStale(
+			conflict.resolvedValue,
+			this.sliceFor(conflict.scope).todos.find((todo) => todo.id === conflict.todoId) ?? null
+		);
+	}
+
+	private sliceFor(scope: ConflictScope): TodoSlice {
+		return scope === "user" ? this.user : this.workspace;
+	}
+
+	/**
+	 * Applies the other device's version of a conflict — or `merged`, when the user assigned
+	 * individual fields to each side — and clears the record.
+	 *
+	 * Returns `"stale"` without changing anything when local state has moved on since the sync;
+	 * the caller confirms and calls again with `force`. Returns `"missing"` when the record has
+	 * already gone.
+	 */
+	async applyConflictChoice(
+		key: string,
+		merged?: Todo,
+		force = false
+	): Promise<ConflictApplyResult> {
+		const conflict = this.pendingConflicts.find((candidate) => candidate.key === key);
+		if (!conflict || conflict.kind === "kept-both") {
+			return "missing";
+		}
+		if (!force && this.isStale(conflict)) {
+			return "stale";
+		}
+		if (conflict.kind === "file") {
+			this.applyFileValue(conflict.filePath, conflict.remote);
+		} else {
+			this.applyTodoValue(conflict.scope, conflict.todoId, merged ?? conflict.remote);
+		}
+		this.forgetConflict(key);
+		return "applied";
+	}
+
+	/** Removes the copy an id collision added, undoing the automatic keep-both. */
+	async undoKeptBoth(key: string): Promise<ConflictApplyResult> {
+		const conflict = this.pendingConflicts.find((candidate) => candidate.key === key);
+		if (!conflict || conflict.kind !== "kept-both") {
+			return "missing";
+		}
+		this.applyTodoValue(conflict.scope, conflict.newId, null);
+		this.forgetConflict(key);
+		return "applied";
+	}
+
+	/** "Keep this device" — already what happened, so this only clears the record. */
+	dismissConflict(key: string): void {
+		this.forgetConflict(key);
+	}
+
+	dismissAllConflicts(): void {
+		this.pendingConflicts = [];
+		void this.conflictStore.save([]);
+		this.publishConflicts();
+	}
+
+	/**
+	 * Bulk "keep everything from the other device".
+	 *
+	 * Records whose item has been edited since the sync are left in the list rather than
+	 * force-applied: a blanket choice should not quietly discard an edit made afterwards, which
+	 * is exactly what the per-item flow stops to confirm. The counts let the UI say so.
+	 */
+	async keepAllFromOtherDevice(): Promise<{ applied: number; skipped: number }> {
+		let applied = 0;
+		let skipped = 0;
+		for (const conflict of [...this.pendingConflicts]) {
+			if (conflict.kind === "kept-both") {
+				// Both versions are already in the list; there is no other side to switch to.
+				this.forgetConflict(conflict.key);
+				applied++;
+			} else if (this.isStale(conflict)) {
+				skipped++;
+			} else {
+				await this.applyConflictChoice(conflict.key);
+				applied++;
+			}
+		}
+		return { applied, skipped };
+	}
+
+	private applyTodoValue(scope: ConflictScope, todoId: number, value: Todo | null): void {
+		this.mutate(scope === "user" ? TodoScope.user : TodoScope.workspace, (state) => {
+			const index = state.todos.findIndex((todo) => todo.id === todoId);
+			if (value === null) {
+				if (index >= 0) {
+					state.todos.splice(index, 1);
+				}
+			} else if (index >= 0) {
+				// Replace in place. The merge preserves positional intent from both sides, and a
+				// remove-then-append would move a todo the user only meant to change the text of.
+				state.todos[index] = value;
+			} else {
+				// Absent because prefer-local dropped it (deleted here, edited there). Choosing the
+				// other device's version means putting it back.
+				state.todos.push(value);
+			}
+			recountTodos(state);
+		});
+	}
+
+	/**
+	 * Writes a per-file list. These live inside the workspace gist file, so this counts as a
+	 * workspace-scope edit for staleness and push purposes — the same bookkeeping {@link mutate}
+	 * does for `currentFile`, which cannot be reused here because the path being resolved is
+	 * usually not the one on screen.
+	 */
+	private applyFileValue(filePath: string, value: Todo[] | null): void {
+		this.workspaceGeneration++;
+		this.workspaceRetries = 0;
+		const filesData = { ...this.filesData };
+		const filesDataPaths = { ...this.filesDataPaths };
+		if (value === null) {
+			delete filesData[filePath];
+			// The path entry only describes a list that exists; leaving it behind would round-trip
+			// a record for a file that now has no todos.
+			delete filesDataPaths[filePath];
+		} else {
+			filesData[filePath] = value;
+		}
+		this.filesData = filesData;
+		this.filesDataPaths = filesDataPaths;
+
+		if (this.currentFile.filePath === filePath) {
+			this.currentFile = {
+				...this.currentFile,
+				todos: [...(value ?? [])],
+				lastActionType: "loadData",
+			};
+			this.recount(this.currentFile);
+			this.emitScope(TodoScope.currentFile);
+		}
+		// The file list and its per-file counts are derived from `filesData`.
+		this.emitReload();
+		this.scheduleWorkspacePush();
+	}
+
+	private forgetConflict(key: string): void {
+		this.pendingConflicts = this.pendingConflicts.filter((conflict) => conflict.key !== key);
+		void this.conflictStore.save(this.pendingConflicts);
+		this.publishConflicts();
+	}
+
+	/** Drops every pending record — used when switching gists or disconnecting. */
+	private async clearConflicts(): Promise<void> {
+		this.pendingConflicts = [];
+		await this.conflictStore.clear();
+		this.publishConflicts();
 	}
 }

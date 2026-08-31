@@ -5,6 +5,7 @@ import { DATA_GATEWAY, DataGateway } from "../data/data-gateway";
 import { GistConnectionState, GistGateway } from "../data/gist-gateway";
 import { dispatchMessageToGateway } from "../data/message-dispatcher";
 import { vscode } from "../utilities/vscode";
+import type { PendingConflictView } from "./conflicts/conflict-types";
 
 /**
  * Root component of the standalone PWA. Renders the GitHub connection flow (device-flow code
@@ -45,10 +46,18 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	 */
 	readonly defaultWorkspaceFileName = DefaultFileNames.workspace("default");
 
-	private gateway: GistGateway | undefined;
+	/**
+	 * Conflicts the sync resolved on its own and the user has not reviewed. Drives the banner
+	 * over the app and the full-screen review it opens.
+	 */
+	conflictViews: PendingConflictView[] = [];
+	/** Whether the review overlay is open. */
+	showConflictReview = false;
+	protected gateway: GistGateway | undefined;
 	private onFocus: (() => void) | undefined;
 	private connectionSub: Subscription | undefined;
 	private messagesSub: Subscription | undefined;
+	private conflictsSub: Subscription | undefined;
 
 	constructor(
 		@Inject(DATA_GATEWAY) private readonly injectedGateway: DataGateway,
@@ -97,6 +106,20 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 				this.gistChoice = state.currentGistId;
 				this.gistIdInput = "";
 			}
+			// Connecting, disconnecting and the gist picker all change whether the app is on
+			// screen at all, which is half of what decides the banner.
+			this.syncBannerClass();
+			this.cdRef.detectChanges();
+		});
+
+		this.conflictsSub = gateway.conflicts.subscribe((views) => {
+			this.conflictViews = views;
+			// Nothing left to review means nothing left to show; close the overlay rather than
+			// leaving the user on an empty screen after they resolve the last card.
+			if (views.length === 0) {
+				this.showConflictReview = false;
+			}
+			this.syncBannerClass();
 			this.cdRef.detectChanges();
 		});
 
@@ -198,9 +221,48 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		void this.gateway?.chooseFiles(userFile, workspaceFile);
 	}
 
+	/**
+	 * Whether the "changes were resolved automatically" bar is on screen. Hidden while the
+	 * review or the connect flow is up — both already cover the app.
+	 */
+	get showConflictBanner(): boolean {
+		return (
+			this.showApp &&
+			!this.showConnectScreen &&
+			!this.showConflictReview &&
+			this.conflictViews.length > 0
+		);
+	}
+
+	openConflictReview(): void {
+		this.showConflictReview = true;
+		this.syncBannerClass();
+	}
+
+	closeConflictReview(): void {
+		this.showConflictReview = false;
+		this.syncBannerClass();
+	}
+
+	/**
+	 * Reserves the strip the fixed banner occupies.
+	 *
+	 * The banner cannot be a normal-flow sibling of `<app-root>`: `app.component.scss` sizes
+	 * `main` at `100dvh`, which ignores its container, so anything above it would push the
+	 * layout off the bottom instead of shrinking it. The class lets the PWA-only stylesheet
+	 * shorten `main` by exactly the banner's height without touching the shared component
+	 * styles the extension webview also uses.
+	 */
+	private syncBannerClass(): void {
+		document.body.classList.toggle("has-conflict-banner", this.showConflictBanner);
+	}
+
 	ngOnDestroy(): void {
 		this.connectionSub?.unsubscribe();
 		this.messagesSub?.unsubscribe();
+		this.conflictsSub?.unsubscribe();
+		// The class lives on <body>, outside this component's view, so it survives teardown.
+		document.body.classList.remove("has-conflict-banner");
 		if (this.onFocus) {
 			window.removeEventListener("focus", this.onFocus);
 			document.removeEventListener("visibilitychange", this.onFocus);

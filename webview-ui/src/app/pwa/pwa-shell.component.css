@@ -147,3 +147,61 @@ input::placeholder {
 code {
 	font-family: monospace;
 }
+
+/* Fixed, like the connect screen, and for the same reason: `<app-root>` is sized in viewport
+   units, so a banner in normal flow would push the layout off the bottom rather than share the
+   space. The strip it covers is reserved by `body.has-conflict-banner` in the PWA stylesheet;
+   the two heights must stay in step, so both read --conflict-banner-height. Below the connect
+   screen's z-index — the picker is modal and should cover this. */
+.conflict-banner {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 98;
+	display: flex;
+	align-items: center;
+	/* Grouped, not spanned: the bar is full-width but at desktop widths a `flex: 1` label would
+	   strand "Review" a thousand pixels from the text it belongs to. */
+	justify-content: center;
+	gap: 8px;
+	height: var(--conflict-banner-height, 44px);
+	padding: 0 12px;
+	border: none;
+	border-bottom: 1px solid var(--vscode-panel-border);
+	border-radius: 0;
+	background-color: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	font-family: inherit;
+	font-size: 0.9em;
+	text-align: left;
+	cursor: pointer;
+}
+
+.conflict-count {
+	flex: none;
+	min-width: 20px;
+	padding: 2px 6px;
+	border-radius: 10px;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font-size: 0.85em;
+	text-align: center;
+}
+
+/* `min-width: 0` is what lets the flex item shrink below its content so the ellipsis appears
+   instead of the Review affordance being pushed off the right edge on a narrow phone. */
+.conflict-text {
+	/* Shrinks to an ellipsis on a phone, but does not grow to fill a desktop window. */
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.conflict-cta {
+	flex: none;
+	color: var(--vscode-textLink-foreground);
+	text-decoration: underline;
+}

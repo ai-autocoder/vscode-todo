@@ -552,3 +552,41 @@ body {
 html.samsung-internet main:focus-within {
 	padding-bottom: calc(16px + max(8px, env(safe-area-inset-bottom)));
 }
+
+
+/**
+ * Room for the conflict review banner (pwa-shell.component.html).
+ *
+ * The banner cannot sit in normal flow above `<app-root>`: `app.component.scss` sizes `main`
+ * at `100dvh`, a viewport unit that ignores its container, so anything stacked above it pushes
+ * the layout off the bottom of the screen instead of shrinking it. Reserving the strip here
+ * keeps the fix in the PWA's own stylesheet — `app.component.scss` is shared with the extension
+ * webview, which has no banner and must not gain one.
+ *
+ * The class is toggled on `<body>` by PwaShellComponent whenever the banner is on screen.
+ * Specificity (0,1,2) clears both the component rule's `main[_ngcontent-*]` (0,1,1) and the
+ * bare `main` in styles.css. The `vh` declarations are the fallback for engines without `dvh`,
+ * matching how app.component.scss pairs them.
+ */
+:root {
+	--conflict-banner-height: 44px;
+}
+
+body.has-conflict-banner app-pwa-shell {
+	/* Reserve the strip as padding on the host, not as a margin on `main`: a margin there
+	   collapses through this border-less, padding-less host and pushes the host itself down,
+	   adding the banner height to the page scroll instead of fitting inside it. The host is
+	   already `height: 100%`, and styles.css makes everything `border-box`, so the padding eats
+	   into that height rather than adding to it. */
+	padding-top: var(--conflict-banner-height);
+}
+
+body.has-conflict-banner main {
+	height: calc(100vh - var(--conflict-banner-height));
+	height: calc(100dvh - var(--conflict-banner-height));
+	/* styles.css floors `main` at `min-height: 100%` below 500px (the width the PWA actually runs
+	   at). That resolves against the full-height body, so it pins `main` to the whole viewport and
+	   overriding `height` alone leaves the composer below the fold. Same floor, less the banner. */
+	min-height: calc(100vh - var(--conflict-banner-height));
+	min-height: calc(100dvh - var(--conflict-banner-height));
+}
