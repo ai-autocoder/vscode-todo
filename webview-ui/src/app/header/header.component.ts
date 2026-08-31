@@ -62,6 +62,13 @@ export class HeaderComponent implements OnInit {
 	 * the control is hidden there rather than shown permanently disabled.
 	 */
 	readonly isMcpSupported = !environment.pwa;
+	/**
+	 * "Local" and "Profile Sync" are extension concepts — the latter is VS Code Settings Sync,
+	 * which has no meaning in a browser — and the PWA is always GitHub-gist-backed, so
+	 * `emitSyncInfo()` reports `"github"` unconditionally. Hide the picker there rather than
+	 * offer modes that cannot be selected.
+	 */
+	readonly isSyncModeSelectable = !environment.pwa;
 	private wideViewDelayHandle: number | null = null;
 	private currentScopeSource = new BehaviorSubject<TodoScope>(TodoScope.user);
 	private currentScopeValue: TodoScope = TodoScope.user;

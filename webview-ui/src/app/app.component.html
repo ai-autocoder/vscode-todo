@@ -28,19 +28,21 @@
       <vscode-badge [ngStyle]="{ opacity: todoCount.currentFile ? 1 : 0 }">{{
         todoCount.currentFile
       }}</vscode-badge>
-      <vscode-button
-        appearance="icon"
-        [class.active]="isPinned"
-        class="button-pin"
-        (click)="pinFile($event)"
-        [disabled]="!(currentFilePath | async)"
-        [aria-label]="isPinned ? 'Unpin file' : 'Pin file'"
-        [title]="isPinned ? 'Unpin file' : 'Pin file'"
-        >
-        <span>
-          <app-icon name="pin"></app-icon>
-        </span>
-      </vscode-button>
+      @if (isFilePinSupported) {
+        <vscode-button
+          appearance="icon"
+          [class.active]="isPinned"
+          class="button-pin"
+          (click)="pinFile($event)"
+          [disabled]="!(currentFilePath | async)"
+          [aria-label]="isPinned ? 'Unpin file' : 'Pin file'"
+          [title]="isPinned ? 'Unpin file' : 'Pin file'"
+          >
+          <span>
+            <app-icon name="pin"></app-icon>
+          </span>
+        </vscode-button>
+      }
     </vscode-panel-tab>
 
     <vscode-panel-view id="view-1">

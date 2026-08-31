@@ -179,7 +179,7 @@
 				<span class="menu-label">Sync - {{ syncInfo.scopeLabel }}</span>
 			</button>
 
-			@if (syncInfo.isUserScope) {
+			@if (isSyncModeSelectable && syncInfo.isUserScope) {
 				<button
 					mat-menu-item
 					(click)="setUserSyncMode('profile-local')"
@@ -230,7 +230,7 @@
 				</button>
 			}
 
-			@if (!syncInfo.isUserScope) {
+			@if (isSyncModeSelectable && !syncInfo.isUserScope) {
 				<button
 					mat-menu-item
 					(click)="setWorkspaceSyncMode('local')"
@@ -265,7 +265,9 @@
 				</button>
 			}
 
-			<mat-divider></mat-divider>
+			@if (isSyncModeSelectable) {
+				<mat-divider></mat-divider>
+			}
 
 			<button mat-menu-item disabled class="menu-section-label" aria-label="GitHub status">
 				<span class="menu-label">
