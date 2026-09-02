@@ -455,6 +455,22 @@ export class GistGateway implements DataGateway {
 		});
 	}
 
+	/**
+	 * Emits a slice to the webview, applying the `"<scope>/<name>"` prefix to `lastActionType`.
+	 *
+	 * `todoMutations` deliberately stores the bare reducer name to stay scope-agnostic, and
+	 * documents that the prefix "is applied by the caller" — mirroring how Redux adds the slice
+	 * name in the extension. This gateway is that caller, and used to ship the bare name.
+	 *
+	 * The consumer (`todo-list.component.ts`, `handleAnimations`) reads
+	 * `actionType.split("/")[1]`, so an unprefixed value arrived as `undefined`: never a member
+	 * of `enterAnimationEnabledActions`, and enough to make `shouldRunReorderAnimation()` return
+	 * false every time. Enter and reorder animations could not play at all.
+	 *
+	 * Prefixed on a copy rather than in place: the mutations write the bare name into the stored
+	 * slice, and re-prefixing an already-prefixed value on a second emit would produce
+	 * `"user/user/addTodo"`.
+	 */
 	private emitScope(scope: TodoScope): void {
 		const slice =
 			scope === TodoScope.user
@@ -464,7 +480,12 @@ export class GistGateway implements DataGateway {
 					: this.currentFile;
 		this._messages.next({
 			type: MessageActionsToWebview.syncTodoData,
-			payload: slice,
+			payload: {
+				...slice,
+				// `TodoScope`'s values are exactly the extension's slice names, so this matches
+				// what the webview sees from Redux there.
+				lastActionType: slice.lastActionType ? `${scope}/${slice.lastActionType}` : "",
+			},
 		});
 	}
 

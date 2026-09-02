@@ -405,3 +405,107 @@ describe("GistGateway sync failure reporting", () => {
 		expect(state.message).toContain("no gist selected");
 	});
 });
+
+/**
+ * Regression cover for the audit finding "enter and reorder animations never play in the PWA".
+ *
+ * `todoMutations` stores a bare reducer name (`"addTodo"`) and documents that the
+ * `"<scope>/<name>"` prefix "is applied by the caller", mirroring the slice-name prefix Redux
+ * adds in the extension. `emitScope` is that caller and used to ship the bare name, so the
+ * consumer's `actionType.split("/")[1]` produced `undefined` — never a member of
+ * `enterAnimationEnabledActions`, and enough to make `shouldRunReorderAnimation()` always
+ * return false.
+ *
+ * Asserted here on the gateway rather than in the shared list component's specs: the component
+ * is built into the extension webview too, and its parse side is correct — the drift was on the
+ * PWA's emit side.
+ */
+describe("GistGateway lastActionType scope prefix", () => {
+	interface Internals {
+		user: { lastActionType: string };
+		workspace: { lastActionType: string };
+		currentFile: { lastActionType: string };
+		emitScope(scope: TodoScope): void;
+	}
+
+	let gateway: GistGateway;
+	let internals: Internals;
+	let emitted: Array<{ type: string; payload?: unknown }>;
+
+	/** The `lastActionType` of the most recent `syncTodoData` message. */
+	function lastEmittedActionType(): string | undefined {
+		const syncs = emitted.filter((m) => m.type === MessageActionsToWebview.syncTodoData);
+		const payload = syncs[syncs.length - 1]?.payload as { lastActionType?: string } | undefined;
+		return payload?.lastActionType;
+	}
+
+	beforeEach(() => {
+		gateway = new GistGateway({
+			clientId: "test-client",
+			deviceFlowProxyUrl: "https://example.invalid",
+			pushDebounceMs: 60_000,
+		});
+		internals = gateway as unknown as Internals;
+
+		emitted = [];
+		gateway.messages.subscribe((m) => emitted.push(m as { type: string; payload?: unknown }));
+	});
+
+	it("prefixes the emitting scope onto a user action", () => {
+		internals.user.lastActionType = "addTodo";
+
+		internals.emitScope(TodoScope.user);
+
+		// The exact shape the consumer's `split("/")[1]` depends on.
+		expect(lastEmittedActionType()).toBe("user/addTodo");
+	});
+
+	it("prefixes the workspace scope", () => {
+		internals.workspace.lastActionType = "toggleTodo";
+
+		internals.emitScope(TodoScope.workspace);
+
+		expect(lastEmittedActionType()).toBe("workspace/toggleTodo");
+	});
+
+	it("prefixes the currentFile scope", () => {
+		internals.currentFile.lastActionType = "reorderTodo";
+
+		internals.emitScope(TodoScope.currentFile);
+
+		expect(lastEmittedActionType()).toBe("currentFile/reorderTodo");
+	});
+
+	it("yields an action name the enter animation actually accepts", () => {
+		// The end the fix exists for: what the component extracts must be a real reducer name.
+		internals.user.lastActionType = "addTodo";
+		internals.emitScope(TodoScope.user);
+
+		const extracted = (lastEmittedActionType() ?? "").split("/")[1];
+
+		expect(extracted).toBe("addTodo");
+		expect(["addTodo", "toggleTodo", "undoDelete"]).toContain(extracted);
+	});
+
+	it("leaves an empty action type empty rather than emitting a bare scope", () => {
+		// `""` is the initial value; prefixing it would yield "user/", which parses to "" anyway
+		// but reads as a real action in logs and in the store.
+		internals.user.lastActionType = "";
+
+		internals.emitScope(TodoScope.user);
+
+		expect(lastEmittedActionType()).toBe("");
+	});
+
+	it("does not re-prefix the stored slice on a second emit", () => {
+		// The reason the prefix is applied to a copy: mutating the slice in place would compound
+		// to "user/user/addTodo" the next time the same slice was emitted.
+		internals.user.lastActionType = "addTodo";
+
+		internals.emitScope(TodoScope.user);
+		internals.emitScope(TodoScope.user);
+
+		expect(lastEmittedActionType()).toBe("user/addTodo");
+		expect(internals.user.lastActionType).toBe("addTodo");
+	});
+});
