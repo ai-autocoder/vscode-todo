@@ -3,7 +3,12 @@ import { Subscription } from "rxjs";
 import { DefaultFileNames } from "@vsc-todo/core";
 import { MarkdownImportScopes } from "../../../../src/todo/todoTypes";
 import { DATA_GATEWAY, DataGateway } from "../data/data-gateway";
-import { GistConnectionState, GistGateway, ImportExportState } from "../data/gist-gateway";
+import {
+	GistConnectionState,
+	GistGateway,
+	ImportExportState,
+	SyncFailureState,
+} from "../data/gist-gateway";
 import { dispatchMessageToGateway } from "../data/message-dispatcher";
 import { vscode } from "../utilities/vscode";
 
@@ -46,6 +51,9 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	 */
 	readonly defaultWorkspaceFileName = DefaultFileNames.workspace("default");
 
+	/** A sync that has stopped working; see {@link SyncFailureState}. */
+	syncFailureState: SyncFailureState = { phase: "ok" };
+
 	/** Import/export prompt and result notice; see {@link ImportExportState}. */
 	importExportState: ImportExportState = { phase: "idle" };
 	/** Bound to the scope radio group while `awaiting-scope`. */
@@ -58,6 +66,7 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	private connectionSub: Subscription | undefined;
 	private messagesSub: Subscription | undefined;
 	private importExportSub: Subscription | undefined;
+	private syncFailureSub: Subscription | undefined;
 
 	constructor(
 		@Inject(DATA_GATEWAY) private readonly injectedGateway: DataGateway,
@@ -77,6 +86,15 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		vscode.setPostMessageDelegate((message) => dispatchMessageToGateway(gateway, message));
 		this.messagesSub = gateway.messages.subscribe((message) => {
 			window.postMessage(message, window.location.origin);
+		});
+
+		this.syncFailureSub = gateway.syncFailure.subscribe((state) => {
+			this.syncFailureState = state;
+			// `main` is sized to the full viewport by the shared stylesheet, so a banner above it
+			// would push the composer off the bottom. This class hands pwa/vscode-theme.css the cue
+			// to lay the shell out as a flex column instead, giving the app whatever height is left.
+			document.body.classList.toggle("has-sync-banner", state.phase === "failing");
+			this.cdRef.detectChanges();
 		});
 
 		this.importExportSub = gateway.importExport.subscribe((state) => {
@@ -227,6 +245,33 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		this.gateway?.resolveImportScope(undefined);
 	}
 
+	/**
+	 * Whether the banner has any button to show. A failure with no recovery — a rejected payload,
+	 * say — would otherwise render an empty actions row that still took the container's gap.
+	 */
+	get hasSyncFailureAction(): boolean {
+		const state = this.syncFailureState;
+		return (
+			state.phase === "failing" &&
+			(state.kind === "auth" || state.kind === "missing" || state.canRetry)
+		);
+	}
+
+	/** Retries a failed sync, from the banner. */
+	retrySync(): void {
+		this.gateway?.retrySync();
+	}
+
+	/** Re-runs the device flow after GitHub rejected the stored token. */
+	reconnect(): void {
+		void this.gateway?.connectGitHub();
+	}
+
+	/** Opens the gist chooser after the synced gist went missing. */
+	pickAnotherGist(): void {
+		void this.gateway?.changeGist();
+	}
+
 	/** Dismisses a result notice. */
 	dismissImportExportStatus(): void {
 		this.gateway?.clearImportExportStatus();
@@ -236,6 +281,8 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		this.connectionSub?.unsubscribe();
 		this.messagesSub?.unsubscribe();
 		this.importExportSub?.unsubscribe();
+		this.syncFailureSub?.unsubscribe();
+		document.body.classList.remove("has-sync-banner");
 		// A parked import would otherwise never settle.
 		this.gateway?.resolveImportScope(undefined);
 		if (this.onFocus) {

@@ -40,6 +40,8 @@ import {
 	DefaultFileNames,
 	GIST_ID_REGEX,
 	isEqual,
+	SyncErrorType,
+	type SyncError,
 	type GistFileInfo,
 	type GistSummary,
 	type GlobalGistData,
@@ -121,6 +123,33 @@ export type GistConnectionState =
 	| { phase: "needs-files"; userFiles: GistFileInfo[]; workspaceFiles: GistFileInfo[] }
 	| { phase: "connected"; userFile: string; workspaceFile?: string }
 	| { phase: "error"; message: string };
+
+/**
+ * A sync that has stopped working, for the PWA to say so.
+ *
+ * Edits keep landing in IndexedDB whatever the network does, which is the right behaviour — but
+ * it means a dead sync is invisible unless something says otherwise. Without this the app
+ * accepted edits forever while every push failed, and the sync menu still read "Connected".
+ *
+ * `kind` drives the recovery offered, because they are not the same:
+ *   - `auth`    — the token was revoked, expired, or lost its gist scope. Reconnect.
+ *   - `missing` — the gist (or its file) is gone. Pick another gist.
+ *   - `other`   — rate limit, offline, or a server fault. Retrying is the only move.
+ */
+export type SyncFailureKind = "auth" | "missing" | "other";
+
+export type SyncFailureState =
+	| { phase: "ok" }
+	| {
+			phase: "failing";
+			kind: SyncFailureKind;
+			message: string;
+			/**
+			 * Whether retrying could plausibly help. False for a rejected payload or a missing
+			 * gist selection, where offering "Try again" would only fail again.
+			 */
+			canRetry: boolean;
+	  };
 
 /**
  * Import/export progress, for the PWA to render. Separate from {@link GistConnectionState}
@@ -238,6 +267,30 @@ export class GistGateway implements DataGateway {
 	});
 	/** Connection flow state for the PWA's connect screen. */
 	readonly connection: Observable<GistConnectionState> = this._connection.asObservable();
+	private readonly _syncFailure = new BehaviorSubject<SyncFailureState>({ phase: "ok" });
+	/** Whether sync has stopped working, so the PWA can say so instead of looking healthy. */
+	readonly syncFailure: Observable<SyncFailureState> = this._syncFailure.asObservable();
+	/** The *sync* failure recorded per scope; the banner shows the most actionable of them. */
+	private readonly syncFailures = new Map<
+		TodoScope.user | TodoScope.workspace,
+		{ kind: SyncFailureKind; message: string; canRetry: boolean }
+	>();
+	/**
+	 * The *local write* failure recorded per scope. Deliberately a second map: both are keyed by
+	 * scope, so sharing one would let a failed IndexedDB write evict the `auth` entry for the same
+	 * scope and silently remove the "Reconnect" button that was the user's way out.
+	 */
+	private readonly persistFailures = new Map<
+		TodoScope.user | TodoScope.workspace,
+		{ kind: SyncFailureKind; message: string; canRetry: boolean }
+	>();
+	/**
+	 * Consecutive failures per scope, reset only by a success — unlike `userRetries`, which
+	 * `mutate` and `refresh` refill. See {@link recordSyncFailure}.
+	 */
+	private readonly consecutiveSyncFailures = new Map<TodoScope.user | TodoScope.workspace, number>();
+	/** Guards {@link retrySync} against repeat presses queueing parallel reconciles. */
+	private retryInFlight = false;
 	private readonly _importExport = new BehaviorSubject<ImportExportState>({ phase: "idle" });
 	/** Import/export progress, for the PWA's scope prompt and its result notice. */
 	readonly importExport: Observable<ImportExportState> = this._importExport.asObservable();
@@ -418,7 +471,249 @@ export class GistGateway implements DataGateway {
 	private emitGitHubStatus(): void {
 		this._messages.next({
 			type: MessageActionsToWebview.updateGitHubStatus,
+			// Reports whether a token is held, deliberately *not* whether GitHub still accepts it.
+			// Folding a rejected token in here looked tempting — it would stop the sync menu
+			// reading "Connected" — but the flag drives a shared menu: a false value swaps
+			// "Disconnect GitHub" for "Connect to GitHub" and disables the gist-*file* picker
+			// (`header.component.html`). Reconnecting would still be reachable, so this is a
+			// trade rather than a necessity; the failure is surfaced by {@link syncFailure}
+			// instead, as a banner carrying the action that fits the cause. The residue is that
+			// the menu still reads "Connected" over a dead token, which is worth revisiting if
+			// the menu ever gains a PWA-only variant.
 			payload: { isConnected: !!this.token, hasGistId: !!this.gistId },
+		});
+	}
+
+	/**
+	 * GitHub's wording for a secondary rate limit, which arrives as a 403 and so reaches us as an
+	 * `AuthError`. Matched against the response body, which core preserves in `error.message`.
+	 */
+	private static readonly RATE_LIMITED_TEXT = /rate limit|abuse detection|too many requests/i;
+
+	/**
+	 * Maps a {@link SyncError} onto the recovery the user actually has.
+	 *
+	 * `AuthError` arrives for 401 and 403 alike — core folds them together in
+	 * `gistClient.handleErrorResponse`. A revoked token and a token that lost its `gist` scope
+	 * both need re-authorizing, and those two are genuinely indistinguishable.
+	 *
+	 * A 403 is *not* always either: GitHub also returns it for a secondary rate limit, which is
+	 * transient and which re-running the device flow cannot fix — telling someone their token was
+	 * revoked because they synced too fast sends them to reconnect an account that is fine. The
+	 * status code does not separate the two, but GitHub's response body does.
+	 */
+	private classifySyncFailure(error?: SyncError): SyncFailureKind {
+		switch (error?.type) {
+			case SyncErrorType.AuthError:
+				return GistGateway.RATE_LIMITED_TEXT.test(error.message ?? "") ? "other" : "auth";
+			case SyncErrorType.NotFoundError:
+			case SyncErrorType.InvalidGistIdError:
+			case SyncErrorType.FileNotFoundError:
+				return "missing";
+			default:
+				return "other";
+		}
+	}
+
+	/**
+	 * Records a scope's sync failure and decides whether to tell the user yet.
+	 *
+	 * Reporting is deliberately *not* tied to the retry budget. `mutate` refills it on every
+	 * local edit and `refresh` on every focus, so a phone user editing against a revoked token
+	 * can loop 401 → retry → edit → 401 indefinitely without the counter ever reaching
+	 * {@link MAX_SYNC_RETRIES} — which would leave the dead sync silent, the exact bug this
+	 * exists to prevent. So:
+	 *
+	 *   - `auth` and `missing` are reported on the first failure. Neither fixes itself, and a
+	 *     backoff the user may never sit still for is no reason to withhold the news.
+	 *   - `other` (offline, rate limit, server fault) is genuinely often transient, so it waits
+	 *     for {@link MAX_SYNC_RETRIES} consecutive failures — counted here, where only a success
+	 *     resets it.
+	 */
+	private recordSyncFailure(
+		scope: TodoScope.user | TodoScope.workspace,
+		error: SyncError | undefined,
+		options: { retryable: boolean; message?: string; kind?: SyncFailureKind } = {
+			retryable: false,
+		}
+	): void {
+		// `kind` is taken from the caller where it knows something the error does not. Inferring
+		// it from the presence of `message` — as this first did — silently forced every
+		// custom-message failure to "other", which is how the "no gist selected" case ended up
+		// rendering a banner with no recovery button on it at all.
+		const kind = options.kind ?? this.classifySyncFailure(error);
+		const consecutive = (this.consecutiveSyncFailures.get(scope) ?? 0) + 1;
+		this.consecutiveSyncFailures.set(scope, consecutive);
+
+		const transient = kind === "other" && options.retryable && !options.message;
+		if (transient && consecutive < GistGateway.MAX_SYNC_RETRIES) {
+			return;
+		}
+
+		this.syncFailures.set(scope, {
+			kind,
+			// Retryability is not core's transport-level `retryable` flag. Core marks 401/403
+			// retryable (`gistClient.authError`), but re-sending a token GitHub has already
+			// rejected only fails again — and the dead "Try again" then sits beside the
+			// "Reconnect" that does work, inviting the wrong tap. Only an `other` failure can be
+			// retried into success.
+			canRetry: options.retryable && kind === "other",
+			message: options.message ?? this.syncFailureMessage(kind, error),
+		});
+		this.publishSyncFailure();
+	}
+
+	/**
+	 * Message for a sync that failed in a way no {@link SyncResult} described — a thrown error
+	 * rather than a returned failure.
+	 *
+	 * The reassurance is conditional: it is true when only the network broke, and false when this
+	 * device has also failed to write, which is a state {@link notePersistFailure} already knows
+	 * about. Promising "still on this device" while local storage is rejecting would be exactly
+	 * the kind of false comfort this whole change exists to remove.
+	 */
+	private unexpectedSyncMessage(
+		scope: TodoScope.user | TodoScope.workspace,
+		error: unknown
+	): string {
+		const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+		const reassurance = this.persistFailures.has(scope)
+			? "This device has also failed to save a recent change."
+			: "Your todos are still on this device.";
+		return `Syncing stopped unexpectedly${detail}. ${reassurance}`;
+	}
+
+	/**
+	 * Reports a failed *local* write, which is a different problem from a failed sync: the edit
+	 * is only in memory, so the usual "still on this device" reassurance would be false.
+	 *
+	 * Reaches here from IndexedDB rejecting — a blocked upgrade with the app open in another tab,
+	 * private-mode eviction, or quota.
+	 *
+	 * Kept in {@link persistFailures} rather than {@link syncFailures}: the two are keyed by scope
+	 * and would otherwise overwrite each other, so a failed local write on a scope whose token had
+	 * been revoked would replace the `auth` entry and take the "Reconnect" button away with it.
+	 */
+	private notePersistFailure(scope: TodoScope.user | TodoScope.workspace, error: unknown): void {
+		const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+		this.persistFailures.set(scope, {
+			kind: "other",
+			// Retrying is worth offering: a blocked upgrade or a transient quota rejection can
+			// clear on its own, and the retry re-runs the write.
+			canRetry: true,
+			message: `This device could not save your latest change${detail}. Keep the app open until syncing recovers.`,
+		});
+		this.publishSyncFailure();
+	}
+
+	/** Clears a scope's *sync* failure. Says nothing about local writes; see below. */
+	private clearSyncFailure(scope: TodoScope.user | TodoScope.workspace): void {
+		this.consecutiveSyncFailures.delete(scope);
+		if (this.syncFailures.delete(scope)) {
+			this.publishSyncFailure();
+		}
+	}
+
+	/**
+	 * Clears a scope's *persist* failure, on a local write that got through. Separate from
+	 * {@link clearSyncFailure} because a successful round trip to GitHub is no evidence that this
+	 * device's own storage recovered.
+	 */
+	private clearPersistFailure(scope: TodoScope.user | TodoScope.workspace): void {
+		if (this.persistFailures.delete(scope)) {
+			this.publishSyncFailure();
+		}
+	}
+
+	/** Drops every recorded failure, for a disconnect or a fresh connection. */
+	private resetSyncFailures(): void {
+		this.consecutiveSyncFailures.clear();
+		const had = this.syncFailures.size > 0 || this.persistFailures.size > 0;
+		this.syncFailures.clear();
+		this.persistFailures.clear();
+		if (had) {
+			this.publishSyncFailure();
+		}
+	}
+
+	/**
+	 * Emits the most actionable failure across scopes.
+	 *
+	 * User and workspace fail independently, and a scope can be failing to sync *and* failing to
+	 * write locally at once, but the banner has room for one message. A dead token outranks a
+	 * rate limit: reporting the 429 that happened to land second would hide the 401 and leave the
+	 * "Reconnect" button unrendered.
+	 */
+	private publishSyncFailure(): void {
+		const failures = [...this.syncFailures.values(), ...this.persistFailures.values()];
+		if (failures.length === 0) {
+			if (this._syncFailure.value.phase !== "ok") {
+				this._syncFailure.next({ phase: "ok" });
+			}
+			return;
+		}
+
+		const severity: Record<SyncFailureKind, number> = { auth: 0, missing: 1, other: 2 };
+		const worst = failures.reduce((a, b) => (severity[a.kind] <= severity[b.kind] ? a : b));
+		// Retrying is offered if *any* failure could benefit, since one button covers them all.
+		const canRetry = failures.some((f) => f.canRetry);
+
+		this._syncFailure.next({
+			phase: "failing",
+			kind: worst.kind,
+			message: worst.message,
+			canRetry,
+		});
+	}
+
+	private syncFailureMessage(kind: SyncFailureKind, error?: SyncError): string {
+		switch (kind) {
+			case "auth":
+				return "GitHub rejected the sync — the token has expired, been revoked, or lost access. Your todos are still on this device, but they are not syncing.";
+			case "missing":
+				return "The gist this app syncs with could not be found. Your todos are still on this device, but they are not syncing.";
+			default:
+				// Covers both directions on purpose: a failed pull means edits from VS Code or
+				// another device are not arriving either, and the failure can happen before any
+				// push is attempted.
+				return `Not syncing with GitHub${
+					error?.message ? ` (${error.message})` : ""
+				}. Changes may not be reaching the gist, and changes from your other devices may not be arriving.`;
+		}
+	}
+
+	/**
+	 * Retries after a failure, from the notice's action.
+	 *
+	 * Resets the retry budgets, which are spent by the time a transient failure is reported, so
+	 * the reconciles will re-arm. Guarded against repeat presses: each one would otherwise queue
+	 * another four-to-eight request round trip, which against a rate limit makes things worse.
+	 */
+	retrySync(): void {
+		if (this.retryInFlight) {
+			return;
+		}
+		this.retryInFlight = true;
+		this.userRetries = 0;
+		this.workspaceRetries = 0;
+		this.consecutiveSyncFailures.clear();
+
+		if (!this.token || !this.gistId || !this.userFile) {
+			// `refresh()` would return silently here, leaving the button looking broken.
+			this.retryInFlight = false;
+			this.recordSyncFailure(TodoScope.user, undefined, {
+				retryable: false,
+				// Explicitly `missing`, so the banner offers the gist chooser. Left to inference
+				// this became "other", and the message told the user to choose a gist while the
+				// button that does so went unrendered.
+				kind: "missing",
+				message: "There is no gist selected to sync with. Choose a gist to resume syncing.",
+			});
+			return;
+		}
+
+		void this.refresh().finally(() => {
+			this.retryInFlight = false;
 		});
 	}
 
@@ -457,8 +752,12 @@ export class GistGateway implements DataGateway {
 		// Persist the edit now rather than only when the push lands. The debounce means the change
 		// would otherwise exist solely in memory for `pushDebounceMs`, and on a phone that window
 		// routinely ends in the app being backgrounded and torn down. Fire-and-forget: this is a
-		// durability backstop, and nothing downstream waits on it.
-		void this.persistUserLocal();
+		// durability backstop, and nothing downstream waits on it — but a *failed* one must still
+		// be reported, or the edit exists only in memory while the app says nothing.
+		void this.persistUserLocal().then(
+			() => this.clearPersistFailure(TodoScope.user),
+			(error: unknown) => this.notePersistFailure(TodoScope.user, error)
+		);
 		this.userPushTimer = setTimeout(
 			() => void this.enqueue(() => this.reconcileUser()),
 			this.pushDebounceMs
@@ -469,7 +768,10 @@ export class GistGateway implements DataGateway {
 		if (this.workspacePushTimer) {
 			clearTimeout(this.workspacePushTimer);
 		}
-		void this.persistWorkspaceLocal();
+		void this.persistWorkspaceLocal().then(
+			() => this.clearPersistFailure(TodoScope.workspace),
+			(error: unknown) => this.notePersistFailure(TodoScope.workspace, error)
+		);
 		this.workspacePushTimer = setTimeout(
 			() => void this.enqueue(() => this.reconcileWorkspace()),
 			this.pushDebounceMs
@@ -496,6 +798,8 @@ export class GistGateway implements DataGateway {
 	private static readonly MAX_SYNC_RETRIES = 3;
 
 	private scheduleUserRetry(): void {
+		// Giving up quietly here is safe now: the caller has already handed the failure to
+		// `recordSyncFailure`, which reports it independently of this budget.
 		if (this.userRetries >= GistGateway.MAX_SYNC_RETRIES) {
 			return;
 		}
@@ -510,6 +814,7 @@ export class GistGateway implements DataGateway {
 	}
 
 	private scheduleWorkspaceRetry(): void {
+		// See scheduleUserRetry.
 		if (this.workspaceRetries >= GistGateway.MAX_SYNC_RETRIES) {
 			return;
 		}
@@ -556,6 +861,8 @@ export class GistGateway implements DataGateway {
 			const res = await engine.reconcileUser(fileName, local);
 			if (res.success && res.data) {
 				this.userRetries = 0;
+				// A round trip got through, so any standing failure notice is stale.
+				this.clearSyncFailure(TodoScope.user);
 				// An edit landed while we were on the network, so `res.data.data` was merged from
 				// a snapshot that no longer reflects local state. Neither side can just win here:
 				// adopting the result drops the edit, and keeping local drops whatever the remote
@@ -593,7 +900,21 @@ export class GistGateway implements DataGateway {
 				// is inside the success path — so without this the change waits for an unrelated
 				// trigger. The edit is still in local state and the cache, so a retry is safe.
 				this.scheduleUserRetry();
+				this.recordSyncFailure(TodoScope.user, res.error, { retryable: true });
+			} else {
+				// Non-retryable: a deleted gist, a rejected payload. No retry will help, and
+				// falling through silently here is what let the app accept edits forever without
+				// ever saying they were going nowhere.
+				this.recordSyncFailure(TodoScope.user, res.error, { retryable: false });
 			}
+		} catch (error: unknown) {
+			// A throw never reaches the SyncResult branches above, and every caller invokes this
+			// through `void this.enqueue(...)`, which discards the rejection. Report it here or it
+			// reaches no one — the spinner would simply stop as if the sync had worked.
+			this.recordSyncFailure(TodoScope.user, undefined, {
+				retryable: true,
+				message: this.unexpectedSyncMessage(TodoScope.user, error),
+			});
 		} finally {
 			this.emitSyncing(false);
 		}
@@ -618,6 +939,8 @@ export class GistGateway implements DataGateway {
 			const res = await engine.reconcileWorkspace(fileName, local);
 			if (res.success && res.data) {
 				this.workspaceRetries = 0;
+				// See reconcileUser.
+				this.clearSyncFailure(TodoScope.workspace);
 				// See reconcileUser. The workspace counter also covers `filesData`, so this keeps
 				// per-file lists as well as `workspaceTodos`.
 				const stale = this.workspaceGeneration !== generation;
@@ -668,7 +991,17 @@ export class GistGateway implements DataGateway {
 			} else if (res.error?.retryable) {
 				// See reconcileUser.
 				this.scheduleWorkspaceRetry();
+				this.recordSyncFailure(TodoScope.workspace, res.error, { retryable: true });
+			} else {
+				// See reconcileUser.
+				this.recordSyncFailure(TodoScope.workspace, res.error, { retryable: false });
 			}
+		} catch (error: unknown) {
+			// See reconcileUser.
+			this.recordSyncFailure(TodoScope.workspace, undefined, {
+				retryable: true,
+				message: this.unexpectedSyncMessage(TodoScope.workspace, error),
+			});
 		} finally {
 			this.emitSyncing(false);
 		}
@@ -1076,6 +1409,9 @@ export class GistGateway implements DataGateway {
 	 * land in the "error" phase instead of throwing, so the UI can offer a retry.
 	 */
 	async connectGitHub(): Promise<void> {
+		// Re-authorizing is the fix for an auth failure; clear the notice so the banner's own
+		// action does not appear to do nothing while the new token is being fetched.
+		this.resetSyncFailures();
 		this.connectAbort?.abort();
 		this.connectAbort = new AbortController();
 		try {
@@ -1361,6 +1697,8 @@ export class GistGateway implements DataGateway {
 	}
 
 	async disconnectGitHub(): Promise<void> {
+		// A banner about the old session must not survive it.
+		this.resetSyncFailures();
 		this.connectAbort?.abort();
 		this.cancelPendingPushes();
 		this.token = undefined;

@@ -554,3 +554,70 @@ body {
 html.samsung-internet main:focus-within {
 	padding-bottom: calc(16px + max(8px, env(safe-area-inset-bottom)));
 }
+
+/*
+	Sync-failure banner (PWA only).
+
+	In normal flow above the app, not fixed. A fixed banner has to be given a height so the app
+	can be shortened to match, and every guess was wrong: at the coarse-pointer font size, with
+	48px touch targets and a message long enough to explain itself, the real height overran the
+	reserved strip — clipping the banner's own text and buttons and pushing the composer out of
+	view. Letting the banner size itself and giving the app whatever is left removes the
+	arithmetic entirely.
+
+	Only applied while the banner is showing, so the app keeps its own `100dvh` sizing (shared
+	app.component.scss) the rest of the time.
+
+	Colours follow .ie-toast rather than a red fill: the PWA never defines
+	--vscode-inputValidation-*, so a red background falls back to a hardcoded dark red and leaves
+	the light theme's dark text illegible on it.
+*/
+body.has-sync-banner app-pwa-shell {
+	display: flex;
+	flex-direction: column;
+	height: 100dvh;
+}
+
+body.has-sync-banner app-root {
+	display: block;
+	/* min-height:0 so the app can shrink below its content instead of overflowing the column. */
+	flex: 1;
+	min-height: 0;
+}
+
+body.has-sync-banner main {
+	height: 100%;
+}
+
+.sync-failure {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	/*
+		A long message — GitHub's own error text can be verbose — would otherwise take most of a
+		small screen. Measured at 320x300 the banner reached 62% of the viewport and left the list
+		2px tall. Capped and scrolled instead, so the list always keeps usable space.
+	*/
+	max-height: 45dvh;
+	overflow-y: auto;
+	border-bottom: 2px solid var(--vscode-inputValidation-errorBorder, #be1100);
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-foreground, #ccc);
+}
+
+.sync-failure-text {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.sync-failure-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.sync-failure-actions button {
+	min-height: var(--touch-target-size, 32px);
+}

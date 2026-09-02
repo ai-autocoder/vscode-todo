@@ -1,3 +1,33 @@
+<!--
+	Sync-failure banner. Deliberately not dismissible: the whole point is that a dead sync must
+	not be able to look like a healthy one. It clears itself the moment a round trip succeeds.
+	The action offered depends on the cause — reconnecting will not fix a deleted gist.
+-->
+<div
+	class="sync-failure"
+	*ngIf="syncFailureState.phase === 'failing'"
+	role="alert"
+	aria-live="assertive"
+>
+	<p class="sync-failure-text" *ngIf="syncFailureState.phase === 'failing'">
+		{{ syncFailureState.message }}
+	</p>
+	<!--
+		Suppressed entirely when no button applies — a rejected payload (422) has no recovery to
+		offer, and an empty row still contributed the parent's 8px gap.
+	-->
+	<div class="sync-failure-actions" *ngIf="hasSyncFailureAction">
+		<button class="primary" *ngIf="syncFailureState.kind === 'auth'" (click)="reconnect()">
+			Reconnect
+		</button>
+		<button class="primary" *ngIf="syncFailureState.kind === 'missing'" (click)="pickAnotherGist()">
+			Choose a gist
+		</button>
+		<!-- `canRetry` is false wherever retrying cannot succeed; see `recordSyncFailure`. -->
+		<button *ngIf="syncFailureState.canRetry" (click)="retrySync()">Try again</button>
+	</div>
+</div>
+
 <app-root *ngIf="showApp"></app-root>
 
 <div class="connect-screen" *ngIf="showConnectScreen" [ngSwitch]="state.phase">
