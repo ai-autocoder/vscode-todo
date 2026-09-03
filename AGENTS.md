@@ -36,8 +36,25 @@
 - Tests: extension tests `*.test.ts` in `src/test/`; Angular tests follow `*.spec.ts`.
 
 ## Testing Guidelines
-- Extension: write Mocha tests in `src/test/` and run `npm test`.
-- Webview (Angular): run `npm --prefix webview-ui test` (Karma/Jasmine). Prefer small, focused specs per component/service.
+
+Three suites, three runners. All three run in CI (`.github/workflows/ci.yml`) on every pull
+request and again on pushes to `master`/`main`.
+
+| Suite | Location | Run it with |
+| --- | --- | --- |
+| Extension (Mocha, real VS Code) | `src/test/**/*.test.ts` | `npm test` |
+| Webview + PWA (Karma/Jasmine) | `webview-ui/src/**/*.spec.ts` | `npm run test:webview` |
+| Core sync engine (Vitest) | `packages/core/test/*.test.ts` | `npm run test:core` |
+
+- `packages/core` holds the PWA's sync engine, three-way merge, tag rules and IndexedDB
+  stores. It installs separately (`npm run install:all` covers it) and has no runtime deps.
+- Specs under `webview-ui/src/app/pwa/**` are PWA-only but run in the same Karma pass as the
+  shared ones — there is no separate PWA test command.
+- The extension runner picks up `out/test/**/*.test.js`, so a suite anywhere under
+  `src/test/` is collected; it does not have to sit in `src/test/suite/`.
+- CI also builds **both** Angular targets (`build` and `build:pwa`). The PWA-only files
+  (`bootstrap.pwa.ts`, `data.providers.pwa.ts`, `app/pwa/**`) are type-checked by nothing
+  else, so a change that breaks only the PWA is caught there and not by the extension build.
 - Add regression tests for bugs. Keep test names descriptive (e.g., "should persist todo on save").
 
 ## Commit & Pull Request Guidelines

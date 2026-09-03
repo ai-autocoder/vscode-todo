@@ -327,7 +327,7 @@
 		"url": "https://github.com/ai-autocoder/vscode-todo.git"
 	},
 	"scripts": {
-		"install:all": "npm install && npm --prefix webview-ui install",
+		"install:all": "npm install && npm --prefix webview-ui install && npm --prefix packages/core install",
 		"start:webview": "npm --prefix webview-ui run start",
 		"start:webview:pwa": "npm --prefix webview-ui run start:pwa",
 		"start:webview:pwa:host": "npm --prefix webview-ui run start:pwa:host",
@@ -343,7 +343,9 @@
 		"watch": "tsc -watch -p ./",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint . --ext .ts",
-		"test": "vscode-test"
+		"test": "vscode-test",
+		"test:core": "npm --prefix packages/core test",
+		"test:webview": "npm --prefix webview-ui run test:ci"
 	},
 	"devDependencies": {
 		"@modelcontextprotocol/inspector": "^0.18.0",
