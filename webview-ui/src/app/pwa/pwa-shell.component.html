@@ -153,23 +153,50 @@
 				<button (click)="changeGist()">Change gist</button>
 			</div>
 			<ng-container *ngIf="state.phase === 'needs-files'">
-				<label>User list</label>
-				<select [(ngModel)]="userFileChoice">
+				<label for="user-file">User list</label>
+				<select id="user-file" [(ngModel)]="userFileChoice">
 					<option *ngFor="let file of state.userFiles" [value]="file.fullPath">
 						{{ file.fullPath }}
 					</option>
-					<option [value]="newUserFileValue">New file ({{ defaultUserFileName }})</option>
+					<option [value]="newUserFileValue">New file…</option>
 				</select>
-				<label>Workspace list</label>
-				<select [(ngModel)]="workspaceFileChoice">
+				<!-- The prefix and suffix are fixed so the file stays discoverable; only the
+				     middle of the name is the user's to choose. -->
+				<div class="new-file" *ngIf="userFileChoice === newUserFileValue">
+					<span class="affix">{{ userFilePrefix }}</span>
+					<input
+						type="text"
+						aria-label="Name for the new user list"
+						[(ngModel)]="newUserFileName"
+						[placeholder]="defaultUserFileStem"
+						spellcheck="false"
+						autocapitalize="off"
+						autocomplete="off"
+					/>
+					<span class="affix">{{ fileNameSuffix }}</span>
+				</div>
+				<label for="workspace-file">Workspace list</label>
+				<select id="workspace-file" [(ngModel)]="workspaceFileChoice">
 					<option *ngFor="let file of state.workspaceFiles" [value]="file.fullPath">
 						{{ file.fullPath }}
 					</option>
-					<option [value]="newWorkspaceFileValue">
-						New file ({{ defaultWorkspaceFileName }})
-					</option>
+					<option [value]="newWorkspaceFileValue">New file…</option>
 				</select>
+				<div class="new-file" *ngIf="workspaceFileChoice === newWorkspaceFileValue">
+					<span class="affix">{{ workspaceFilePrefix }}</span>
+					<input
+						type="text"
+						aria-label="Name for the new workspace list"
+						[(ngModel)]="newWorkspaceFileName"
+						[placeholder]="defaultWorkspaceFileStem"
+						spellcheck="false"
+						autocapitalize="off"
+						autocomplete="off"
+					/>
+					<span class="affix">{{ fileNameSuffix }}</span>
+				</div>
 			</ng-container>
+			<p class="error" *ngIf="fileError">{{ fileError }}</p>
 			<div class="row">
 				<button class="primary" (click)="confirmFiles()">Ok</button>
 				<!-- No session to return to during first-time setup, so offer the way out instead. -->

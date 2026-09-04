@@ -144,6 +144,27 @@ input::placeholder {
 	color: var(--vscode-input-placeholderForeground);
 }
 
+/* Name field for a new list, wrapped in the two affixes the gist naming convention fixes.
+   `min-width: 0` is what lets the input shrink inside the flex row instead of pushing the
+   ".json" past the card's edge on a phone. */
+.new-file {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.new-file input {
+	flex: 1;
+	min-width: 0;
+}
+
+.affix {
+	flex: none;
+	color: var(--vscode-descriptionForeground);
+	font-family: monospace;
+	font-size: 0.9em;
+}
+
 code {
 	font-family: monospace;
 }

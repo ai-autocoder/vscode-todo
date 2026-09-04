@@ -1,6 +1,11 @@
 import { ChangeDetectorRef, Component, Inject, OnDestroy, OnInit } from "@angular/core";
 import { Subscription } from "rxjs";
-import { DefaultFileNames } from "@vsc-todo/core";
+import {
+	DefaultFileNames,
+	FILE_NAME_REGEX,
+	GistDirectories,
+	type GistFileInfo,
+} from "@vsc-todo/core";
 import { MarkdownImportScopes } from "../../../../src/todo/todoTypes";
 import { DATA_GATEWAY, DataGateway } from "../data/data-gateway";
 import {
@@ -12,6 +17,25 @@ import {
 import { dispatchMessageToGateway } from "../data/message-dispatcher";
 import { vscode } from "../utilities/vscode";
 import type { PendingConflictView } from "./conflicts/conflict-types";
+
+/** Suffix every gist list file carries; `GistClient.listFiles` filters on it. */
+const FILE_NAME_SUFFIX = ".json";
+
+/**
+ * The editable middle of a gist file name: what is left once the `user-`/`workspace-` prefix
+ * and the `.json` suffix are taken off. Tolerates a value that already carries either affix,
+ * so pasting a whole file name works as well as typing a bare one.
+ */
+function fileNameStem(value: string, prefix: string): string {
+	let stem = value.trim();
+	if (stem.toLowerCase().startsWith(prefix)) {
+		stem = stem.slice(prefix.length);
+	}
+	if (stem.toLowerCase().endsWith(FILE_NAME_SUFFIX)) {
+		stem = stem.slice(0, -FILE_NAME_SUFFIX.length);
+	}
+	return stem.trim();
+}
 
 /**
  * Root component of the standalone PWA. Renders the GitHub connection flow (device-flow code
@@ -43,14 +67,33 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	gistChoice = "";
 
 	readonly newUserFileValue = "__new__";
-	readonly defaultUserFileName = DefaultFileNames.user;
 	readonly newWorkspaceFileValue = "__new_workspace__";
+
+	/**
+	 * A gist file is only found again if its name carries the `user-`/`workspace-` prefix and the
+	 * `.json` suffix — that is exactly what `GistClient.listFiles` filters on. So a new list is
+	 * named by its middle part only, typed between two fixed affixes, and the picker cannot be
+	 * used to create a file it would then fail to list.
+	 */
+	readonly userFilePrefix = GistDirectories.user;
+	readonly workspaceFilePrefix = GistDirectories.workspace;
+	readonly fileNameSuffix = FILE_NAME_SUFFIX;
+
+	/** Name typed for a new list, prefilled with the default the picker used to impose. */
+	newUserFileName = "";
+	newWorkspaceFileName = "";
+	readonly defaultUserFileStem = fileNameStem(DefaultFileNames.user, GistDirectories.user);
 	/**
 	 * The PWA has no workspace on disk to name the file after, so a newly created workspace list
-	 * uses a fixed name. The extension picks its own name from the open workspace; both sides
-	 * just need to agree on the file that is actually selected in the gist.
+	 * starts from a fixed name. The extension picks its own name from the open workspace; both
+	 * sides just need to agree on the file that is actually selected in the gist.
 	 */
-	readonly defaultWorkspaceFileName = DefaultFileNames.workspace("default");
+	readonly defaultWorkspaceFileStem = fileNameStem(
+		DefaultFileNames.workspace("default"),
+		GistDirectories.workspace
+	);
+	/** Why the last Ok was refused, shown under the two selects. */
+	fileError = "";
 
 	/**
 	 * Conflicts the sync resolved on its own and the user has not reviewed. Drives the banner
@@ -126,6 +169,11 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 				this.showApp = false;
 			}
 			if (state.phase === "needs-files") {
+				// A fresh visit to the picker: drop the previous attempt's complaint and start the
+				// new-file names from the defaults.
+				this.fileError = "";
+				this.newUserFileName = this.defaultUserFileStem;
+				this.newWorkspaceFileName = this.defaultWorkspaceFileStem;
 				// Preselect what is actually in use; the first entry is only a fallback for a
 				// first-time setup, where there is no current selection to show.
 				const currentUser = gateway.currentUserFile;
@@ -249,15 +297,68 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	}
 
 	confirmFiles(): void {
-		const userFile =
-			this.userFileChoice === this.newUserFileValue ? this.defaultUserFileName : this.userFileChoice;
+		this.fileError = "";
+		const state = this.state;
+		const userFile = this.resolveFileChoice(
+			this.userFileChoice,
+			this.newUserFileValue,
+			this.newUserFileName,
+			this.userFilePrefix,
+			"user list",
+			state.phase === "needs-files" ? state.userFiles : []
+		);
 		// Both lists are mandatory: the PWA has no local storage, so a scope without a gist file
 		// behind it would accept edits and silently drop them on the next reconcile.
-		const workspaceFile =
-			this.workspaceFileChoice === this.newWorkspaceFileValue
-				? this.defaultWorkspaceFileName
-				: this.workspaceFileChoice;
+		const workspaceFile = this.resolveFileChoice(
+			this.workspaceFileChoice,
+			this.newWorkspaceFileValue,
+			this.newWorkspaceFileName,
+			this.workspaceFilePrefix,
+			"workspace list",
+			state.phase === "needs-files" ? state.workspaceFiles : []
+		);
+		if (!userFile || !workspaceFile) {
+			return;
+		}
 		void this.gateway?.chooseFiles(userFile, workspaceFile);
+	}
+
+	/**
+	 * Turns one select into the gist file name to use. An existing file is its own answer; the
+	 * "New file…" option is instead built from the name typed beside it, which has to survive
+	 * both GitHub and a later `listFiles`, so it is validated here rather than sent as-is.
+	 */
+	private resolveFileChoice(
+		choice: string,
+		newFileValue: string,
+		typedName: string,
+		prefix: string,
+		label: string,
+		existing: GistFileInfo[]
+	): string | undefined {
+		if (choice !== newFileValue) {
+			return choice;
+		}
+		const stem = fileNameStem(typedName, prefix);
+		if (!stem) {
+			return this.rejectFiles(`Enter a name for the new ${label}.`);
+		}
+		const fullPath = `${prefix}${stem}${FILE_NAME_SUFFIX}`;
+		if (!FILE_NAME_REGEX.test(fullPath)) {
+			return this.rejectFiles(`A list name cannot contain \\ / : * ? " < > |`);
+		}
+		// Reusing an existing file is a legitimate choice, but it is the *other* control — picking
+		// it from the list makes it obvious the todos already in it will be adopted.
+		if (existing.some((file) => file.fullPath.toLowerCase() === fullPath.toLowerCase())) {
+			return this.rejectFiles(`${fullPath} already exists — pick it from the list instead.`);
+		}
+		return fullPath;
+	}
+
+	/** Records the first refusal only: the later one would otherwise hide the earlier control's. */
+	private rejectFiles(message: string): undefined {
+		this.fileError ||= message;
+		return undefined;
 	}
 
 	/**
