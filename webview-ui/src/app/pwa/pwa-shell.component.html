@@ -15,6 +15,35 @@
 		(closed)="closeConflictReview()"
 	></app-conflict-review>
 }
+<!--
+	Sync-failure banner. Deliberately not dismissible: the whole point is that a dead sync must
+	not be able to look like a healthy one. It clears itself the moment a round trip succeeds.
+	The action offered depends on the cause — reconnecting will not fix a deleted gist.
+-->
+<div
+	class="sync-failure"
+	*ngIf="syncFailureState.phase === 'failing'"
+	role="alert"
+	aria-live="assertive"
+>
+	<p class="sync-failure-text" *ngIf="syncFailureState.phase === 'failing'">
+		{{ syncFailureState.message }}
+	</p>
+	<!--
+		Suppressed entirely when no button applies — a rejected payload (422) has no recovery to
+		offer, and an empty row still contributed the parent's 8px gap.
+	-->
+	<div class="sync-failure-actions" *ngIf="hasSyncFailureAction">
+		<button class="primary" *ngIf="syncFailureState.kind === 'auth'" (click)="reconnect()">
+			Reconnect
+		</button>
+		<button class="primary" *ngIf="syncFailureState.kind === 'missing'" (click)="pickAnotherGist()">
+			Choose a gist
+		</button>
+		<!-- `canRetry` is false wherever retrying cannot succeed; see `recordSyncFailure`. -->
+		<button *ngIf="syncFailureState.canRetry" (click)="retrySync()">Try again</button>
+	</div>
+</div>
 
 <app-root *ngIf="showApp"></app-root>
 
@@ -157,4 +186,75 @@
 			</div>
 		</ng-container>
 	</div>
+</div>
+
+<!--
+	Import/export prompt and result notice. Separate from the connect screen above because these
+	happen while connected, over the running app. `awaiting-scope` is the browser's stand-in for
+	the extension's "Import to" quick pick — a markdown file says nothing about which list it
+	belongs in.
+-->
+<div
+	class="ie-overlay"
+	*ngIf="importExportState.phase === 'awaiting-scope'"
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby="ie-scope-title"
+>
+	<div class="ie-panel">
+		<h2 id="ie-scope-title">Import to</h2>
+		<p class="ie-file" *ngIf="importExportState.phase === 'awaiting-scope'">
+			{{ importExportState.fileName }}
+		</p>
+
+		<label class="ie-choice">
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.user"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>User</span>
+		</label>
+		<label class="ie-choice">
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.workspace"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>Workspace</span>
+		</label>
+		<!-- File is only a real option when one is open; there is no editor to fall back on. -->
+		<label
+			class="ie-choice"
+			*ngIf="importExportState.phase === 'awaiting-scope' && importExportState.currentFilePath"
+		>
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.currentFile"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>File — {{ importExportState.currentFilePath }}</span>
+		</label>
+
+		<div class="row">
+			<button class="primary" (click)="confirmImportScope()">Import</button>
+			<button (click)="cancelImportScope()">Cancel</button>
+		</div>
+	</div>
+</div>
+
+<div
+	class="ie-toast"
+	*ngIf="importExportState.phase === 'done' || importExportState.phase === 'error'"
+	[class.ie-toast-error]="importExportState.phase === 'error'"
+	role="status"
+	aria-live="polite"
+>
+	<span *ngIf="importExportState.phase === 'done' || importExportState.phase === 'error'">
+		{{ importExportState.message }}
+	</span>
+	<button class="ie-dismiss" (click)="dismissImportExportStatus()" aria-label="Dismiss">×</button>
 </div>

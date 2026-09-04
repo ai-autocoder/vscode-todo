@@ -13,6 +13,7 @@ import { SplitComponent } from "angular-split";
 import { Observable, Subscription } from "rxjs";
 import { TodoCount, TodoScope } from "../../../src/todo/todoTypes";
 import { TodoService } from "./todo/todo.service";
+import { environment } from "../environments/environment";
 
 // In order to use the Webview UI Toolkit web components they
 // must be registered with the browser (i.e. webview) using the
@@ -59,6 +60,12 @@ export class AppComponent implements OnInit, AfterViewInit {
 	enableWideViewAnimation!: Observable<boolean>;
 	private lastActionTypeSubscription!: Subscription;
 	isPinned = false;
+	/**
+	 * Pinning exists to stop the File list following the active editor. The standalone PWA has
+	 * no editor, so the selection is already sticky and `pinFile()` is a no-op there — hide the
+	 * control rather than show one that can never change state.
+	 */
+	readonly isFilePinSupported = !environment.pwa;
 	@ViewChild("mySplit") mySplitEl!: SplitComponent;
 	angularSplitSubscription!: Subscription;
 	isFileListExpanded = false;

@@ -476,8 +476,8 @@ body {
 		/* `overflow-x: auto` alone did nothing. The tablist is a grid item that sizes to its
 		   content (424px inside a 395px host), so scrollWidth equalled clientWidth and there was
 		   nothing to scroll — the row was just clipped by the `overflow-x: hidden` that
-		   app.component.scss puts on `vscode-panels`, taking the pin button at the right end of
-		   tab-3 with it. `max-width: 100%` resolves against that content-sized grid area and so
+		   app.component.scss puts on `vscode-panels`, taking the right end of tab-3 with it.
+		   `max-width: 100%` resolves against that content-sized grid area and so
 		   never bites (the same trap documented for vscode-panel-view below), so pin the row to
 		   the visible width instead. */
 		max-width: calc(100vw - 16px);
@@ -489,10 +489,12 @@ body {
 		   phantom. */
 		overflow-y: hidden;
 		/* The toolkit's 32px inter-tab gap alone accounted for 64px of the row's 424px, which is
-		   what pushed the pin button inside tab-3 off the right edge. At 12px the whole row lands
-		   at 384px and fits without scrolling at all, so the pin is simply visible rather than
-		   merely reachable. The width cap and nowrap above stay as the safety net for a long
-		   filename. */
+		   what pushed the right end of tab-3 off the visible width. At 12px the whole row lands
+		   at 384px and fits without scrolling at all. (This was originally tuned to keep the
+		   File-tab pin button on screen; the PWA no longer renders that button — there is no
+		   editor for the list to follow — but the gap still keeps a long filename's tab from
+		   needing a scroll.) The width cap and nowrap above stay as the safety net for one that
+		   is longer still. */
 		column-gap: 12px;
 	}
 
@@ -553,40 +555,80 @@ html.samsung-internet main:focus-within {
 	padding-bottom: calc(16px + max(8px, env(safe-area-inset-bottom)));
 }
 
+/*
+	Room for the PWA's two top banners: the sync-failure banner and the conflict-review banner.
 
-/**
- * Room for the conflict review banner (pwa-shell.component.html).
- *
- * The banner cannot sit in normal flow above `<app-root>`: `app.component.scss` sizes `main`
- * at `100dvh`, a viewport unit that ignores its container, so anything stacked above it pushes
- * the layout off the bottom of the screen instead of shrinking it. Reserving the strip here
- * keeps the fix in the PWA's own stylesheet — `app.component.scss` is shared with the extension
- * webview, which has no banner and must not gain one.
- *
- * The class is toggled on `<body>` by PwaShellComponent whenever the banner is on screen.
- * Specificity (0,1,2) clears both the component rule's `main[_ngcontent-*]` (0,1,1) and the
- * bare `main` in styles.css. The `vh` declarations are the fallback for engines without `dvh`,
- * matching how app.component.scss pairs them.
- */
-:root {
-	--conflict-banner-height: 44px;
-}
+	Both sit in normal flow at the top of pwa-shell.component.html, above <app-root>, and each
+	sets a class on <body> while it is up. Neither can simply stack above the app as-is:
+	app.component.scss sizes `main` at 100dvh, a viewport unit that ignores its container, so
+	anything placed above it pushes the layout off the bottom instead of shrinking it. Fixing it
+	here keeps the shared stylesheet untouched — the extension webview has no banners and must
+	not gain the rules.
 
+	Reserving a fixed-height strip per banner was tried and abandoned: at the coarse-pointer font
+	size, with 48px touch targets and a message long enough to explain itself, the sync banner's
+	real height overran the reserved strip, clipping its own text and buttons and pushing the
+	composer out of view. Making the shell a flex column and giving the app whatever height is
+	left removes the arithmetic — and unlike a per-banner strip it composes: with both banners up
+	the two `flex: none` rows take what they need and the app still gets the remainder.
+
+	Only applied while a banner is showing, so the app keeps its own 100dvh sizing the rest of
+	the time.
+*/
+body.has-sync-banner app-pwa-shell,
 body.has-conflict-banner app-pwa-shell {
-	/* Reserve the strip as padding on the host, not as a margin on `main`: a margin there
-	   collapses through this border-less, padding-less host and pushes the host itself down,
-	   adding the banner height to the page scroll instead of fitting inside it. The host is
-	   already `height: 100%`, and styles.css makes everything `border-box`, so the padding eats
-	   into that height rather than adding to it. */
-	padding-top: var(--conflict-banner-height);
+	display: flex;
+	flex-direction: column;
+	height: 100dvh;
 }
 
+body.has-sync-banner app-root,
+body.has-conflict-banner app-root {
+	display: block;
+	/* min-height:0 so the app can shrink below its content instead of overflowing the column. */
+	flex: 1;
+	min-height: 0;
+}
+
+body.has-sync-banner main,
 body.has-conflict-banner main {
-	height: calc(100vh - var(--conflict-banner-height));
-	height: calc(100dvh - var(--conflict-banner-height));
-	/* styles.css floors `main` at `min-height: 100%` below 500px (the width the PWA actually runs
-	   at). That resolves against the full-height body, so it pins `main` to the whole viewport and
-	   overriding `height` alone leaves the composer below the fold. Same floor, less the banner. */
-	min-height: calc(100vh - var(--conflict-banner-height));
-	min-height: calc(100dvh - var(--conflict-banner-height));
+	height: 100%;
+}
+
+/*
+	Colours follow .ie-toast rather than a red fill: the PWA never defines
+	--vscode-inputValidation-*, so a red background falls back to a hardcoded dark red and leaves
+	the light theme's dark text illegible on it.
+*/
+.sync-failure {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	/*
+		A long message — GitHub's own error text can be verbose — would otherwise take most of a
+		small screen. Measured at 320x300 the banner reached 62% of the viewport and left the list
+		2px tall. Capped and scrolled instead, so the list always keeps usable space.
+	*/
+	max-height: 45dvh;
+	overflow-y: auto;
+	border-bottom: 2px solid var(--vscode-inputValidation-errorBorder, #be1100);
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-foreground, #ccc);
+}
+
+.sync-failure-text {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.sync-failure-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.sync-failure-actions button {
+	min-height: var(--touch-target-size, 32px);
 }

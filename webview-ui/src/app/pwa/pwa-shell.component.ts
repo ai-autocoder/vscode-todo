@@ -1,8 +1,14 @@
 import { ChangeDetectorRef, Component, Inject, OnDestroy, OnInit } from "@angular/core";
 import { Subscription } from "rxjs";
 import { DefaultFileNames } from "@vsc-todo/core";
+import { MarkdownImportScopes } from "../../../../src/todo/todoTypes";
 import { DATA_GATEWAY, DataGateway } from "../data/data-gateway";
-import { GistConnectionState, GistGateway } from "../data/gist-gateway";
+import {
+	GistConnectionState,
+	GistGateway,
+	ImportExportState,
+	SyncFailureState,
+} from "../data/gist-gateway";
 import { dispatchMessageToGateway } from "../data/message-dispatcher";
 import { vscode } from "../utilities/vscode";
 import type { PendingConflictView } from "./conflicts/conflict-types";
@@ -53,11 +59,25 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	conflictViews: PendingConflictView[] = [];
 	/** Whether the review overlay is open. */
 	showConflictReview = false;
+
+	/** A sync that has stopped working; see {@link SyncFailureState}. */
+	syncFailureState: SyncFailureState = { phase: "ok" };
+
+	/** Import/export prompt and result notice; see {@link ImportExportState}. */
+	importExportState: ImportExportState = { phase: "idle" };
+	/** Bound to the scope radio group while `awaiting-scope`. */
+	importScopeChoice: MarkdownImportScopes = MarkdownImportScopes.user;
+	/** Exposed for the template's radio values. */
+	readonly markdownImportScopes = MarkdownImportScopes;
+
+	/** `protected`, not `private`: the template passes it to <app-conflict-review>. */
 	protected gateway: GistGateway | undefined;
 	private onFocus: (() => void) | undefined;
 	private connectionSub: Subscription | undefined;
 	private messagesSub: Subscription | undefined;
 	private conflictsSub: Subscription | undefined;
+	private importExportSub: Subscription | undefined;
+	private syncFailureSub: Subscription | undefined;
 
 	constructor(
 		@Inject(DATA_GATEWAY) private readonly injectedGateway: DataGateway,
@@ -77,6 +97,25 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		vscode.setPostMessageDelegate((message) => dispatchMessageToGateway(gateway, message));
 		this.messagesSub = gateway.messages.subscribe((message) => {
 			window.postMessage(message, window.location.origin);
+		});
+
+		this.syncFailureSub = gateway.syncFailure.subscribe((state) => {
+			this.syncFailureState = state;
+			// `main` is sized to the full viewport by the shared stylesheet, so a banner above it
+			// would push the composer off the bottom. This class hands pwa/vscode-theme.css the cue
+			// to lay the shell out as a flex column instead, giving the app whatever height is left.
+			document.body.classList.toggle("has-sync-banner", state.phase === "failing");
+			this.cdRef.detectChanges();
+		});
+
+		this.importExportSub = gateway.importExport.subscribe((state) => {
+			this.importExportState = state;
+			if (state.phase === "awaiting-scope") {
+				// Default to the list the user is most likely to mean; File is only offered when
+				// one is actually open.
+				this.importScopeChoice = MarkdownImportScopes.user;
+			}
+			this.cdRef.detectChanges();
 		});
 
 		this.connectionSub = gateway.connection.subscribe((state) => {
@@ -245,16 +284,59 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	}
 
 	/**
-	 * Reserves the strip the fixed banner occupies.
+	 * Tells the PWA stylesheet the conflict banner is on screen.
 	 *
-	 * The banner cannot be a normal-flow sibling of `<app-root>`: `app.component.scss` sizes
-	 * `main` at `100dvh`, which ignores its container, so anything above it would push the
-	 * layout off the bottom instead of shrinking it. The class lets the PWA-only stylesheet
-	 * shorten `main` by exactly the banner's height without touching the shared component
-	 * styles the extension webview also uses.
+	 * `app.component.scss` sizes `main` at `100dvh`, which ignores its container, so a banner
+	 * above it would push the layout off the bottom instead of shrinking it. This class (like
+	 * `has-sync-banner`) makes pwa/vscode-theme.css lay the shell out as a flex column and give
+	 * the app whatever height the banner leaves — no reserved strip to keep in step, and the two
+	 * banners compose if both are up. The shared component styles the extension webview also
+	 * uses stay untouched.
 	 */
 	private syncBannerClass(): void {
 		document.body.classList.toggle("has-conflict-banner", this.showConflictBanner);
+	}
+
+	/** Confirms the scope prompt, letting the parked import continue. */
+	confirmImportScope(): void {
+		this.gateway?.resolveImportScope(this.importScopeChoice);
+	}
+
+	/** Dismisses the scope prompt, abandoning the import. */
+	cancelImportScope(): void {
+		this.gateway?.resolveImportScope(undefined);
+	}
+
+	/**
+	 * Whether the banner has any button to show. A failure with no recovery — a rejected payload,
+	 * say — would otherwise render an empty actions row that still took the container's gap.
+	 */
+	get hasSyncFailureAction(): boolean {
+		const state = this.syncFailureState;
+		return (
+			state.phase === "failing" &&
+			(state.kind === "auth" || state.kind === "missing" || state.canRetry)
+		);
+	}
+
+	/** Retries a failed sync, from the banner. */
+	retrySync(): void {
+		this.gateway?.retrySync();
+	}
+
+	/** Re-runs the device flow after GitHub rejected the stored token. */
+	reconnect(): void {
+		void this.gateway?.connectGitHub();
+	}
+
+	/** Opens the gist chooser after the synced gist went missing. */
+	pickAnotherGist(): void {
+		void this.gateway?.changeGist();
+	}
+
+	/** Dismisses a result notice. */
+	dismissImportExportStatus(): void {
+		this.gateway?.clearImportExportStatus();
 	}
 
 	ngOnDestroy(): void {
@@ -263,6 +345,11 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		this.conflictsSub?.unsubscribe();
 		// The class lives on <body>, outside this component's view, so it survives teardown.
 		document.body.classList.remove("has-conflict-banner");
+		this.importExportSub?.unsubscribe();
+		this.syncFailureSub?.unsubscribe();
+		document.body.classList.remove("has-sync-banner");
+		// A parked import would otherwise never settle.
+		this.gateway?.resolveImportScope(undefined);
 		if (this.onFocus) {
 			window.removeEventListener("focus", this.onFocus);
 			document.removeEventListener("visibilitychange", this.onFocus);

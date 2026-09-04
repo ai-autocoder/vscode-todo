@@ -148,24 +148,20 @@ code {
 	font-family: monospace;
 }
 
-/* Fixed, like the connect screen, and for the same reason: `<app-root>` is sized in viewport
-   units, so a banner in normal flow would push the layout off the bottom rather than share the
-   space. The strip it covers is reserved by `body.has-conflict-banner` in the PWA stylesheet;
-   the two heights must stay in step, so both read --conflict-banner-height. Below the connect
-   screen's z-index — the picker is modal and should cover this. */
+/* In normal flow at the top of the shell, like the sync-failure banner and for the same reason:
+   a fixed banner has to be given a height for the app to be shortened by, and no fixed height
+   survives the coarse-pointer font size — see the layout note in pwa/vscode-theme.css, which
+   turns the shell into a flex column while a banner is up. `flex: none` keeps this row at its
+   own height inside that column; `min-height` rather than `height` so it can still grow. */
 .conflict-banner {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	z-index: 98;
+	flex: none;
 	display: flex;
 	align-items: center;
 	/* Grouped, not spanned: the bar is full-width but at desktop widths a `flex: 1` label would
 	   strand "Review" a thousand pixels from the text it belongs to. */
 	justify-content: center;
 	gap: 8px;
-	height: var(--conflict-banner-height, 44px);
+	min-height: 44px;
 	padding: 0 12px;
 	border: none;
 	border-bottom: 1px solid var(--vscode-panel-border);
@@ -204,4 +200,86 @@ code {
 	flex: none;
 	color: var(--vscode-textLink-foreground);
 	text-decoration: underline;
+}
+
+/*
+	Import/export prompt + result notice. These sit over the running app (unlike the connect
+	screen, which replaces it), so they need their own stacking context and a scrim.
+*/
+.ie-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.ie-panel {
+	width: 100%;
+	max-width: 360px;
+	padding: 16px;
+	border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+	border-radius: 6px;
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-foreground, #ccc);
+}
+
+.ie-panel h2 {
+	margin: 0 0 4px;
+	font-size: 1.1em;
+}
+
+.ie-file {
+	margin: 0 0 12px;
+	opacity: 0.75;
+	overflow-wrap: anywhere;
+}
+
+.ie-choice {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	/* Coarse-pointer rows need a real touch target; matches the 48px used app-wide. */
+	min-height: var(--touch-target-size, 32px);
+	overflow-wrap: anywhere;
+}
+
+.ie-toast {
+	position: fixed;
+	/* Clear of the composer, which is pinned to the bottom on mobile. */
+	bottom: 72px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: calc(100% - 32px);
+	max-width: 360px;
+	padding: 10px 12px;
+	border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+	border-radius: 6px;
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-foreground, #ccc);
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.ie-toast-error {
+	border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.ie-dismiss {
+	margin-left: auto;
+	padding: 0 6px;
+	border: none;
+	background: none;
+	color: inherit;
+	font-size: 1.2em;
+	line-height: 1;
+	cursor: pointer;
+	min-width: var(--touch-target-size, 32px);
+	min-height: var(--touch-target-size, 32px);
 }
