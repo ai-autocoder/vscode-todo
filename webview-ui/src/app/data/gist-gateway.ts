@@ -94,6 +94,7 @@ import {
 	type PendingConflictView,
 	type ConflictApplyResult,
 } from "../pwa/conflicts/conflict-types";
+import { ViewPreferencesStore } from "../pwa/view-preferences.store";
 
 /** Runtime configuration for the PWA's GitHub access (supplied by the PWA environment). */
 export interface GistGatewayConfig {
@@ -271,6 +272,7 @@ export class GistGateway implements DataGateway {
 	private readonly tokenStore = new IndexedDbTokenStore();
 	private readonly cacheStore = new IndexedDbCacheStore();
 	private readonly conflictStore = new PendingConflictStore();
+	private readonly viewPreferencesStore = new ViewPreferencesStore();
 	private readonly client: GistClient;
 	private readonly deviceFlow: DeviceFlowClient;
 	private engine: GistSyncEngine | undefined;
@@ -397,6 +399,11 @@ export class GistGateway implements DataGateway {
 	 * connect screen or the app.
 	 */
 	async restoreSession(): Promise<GistConnectionState> {
+		// Before anything is emitted: `ready()` sends the config to the UI in its first
+		// `reloadWebview`, and `TodoService.handleReloadWebview` seeds the Wide View and Show Tags
+		// observables straight from it. Loading these later would leave the app rendering one
+		// frame of the defaults and then jumping.
+		Object.assign(this.config, await this.viewPreferencesStore.load());
 		this.token = await this.tokenStore.getToken();
 		this.gistId = await this.tokenStore.getGistId();
 		this.userFile = await this.tokenStore.getUserFile();
@@ -1463,9 +1470,23 @@ export class GistGateway implements DataGateway {
 	}
 	setWideViewEnabled(isEnabled: boolean): void {
 		this.config.enableWideView = isEnabled;
+		this.persistViewPreferences();
 	}
 	setShowTagsEnabled(isEnabled: boolean): void {
 		this.config.showTags = isEnabled;
+		this.persistViewPreferences();
+	}
+
+	/**
+	 * Fire-and-forget: the UI has already applied the toggle optimistically (`TodoService`
+	 * pushes its own observable before posting the message), so nothing is waiting on the write,
+	 * and the store swallows its own failures.
+	 */
+	private persistViewPreferences(): void {
+		void this.viewPreferencesStore.save({
+			enableWideView: this.config.enableWideView,
+			showTags: this.config.showTags,
+		});
 	}
 
 	// --- sync / GitHub commands ---
