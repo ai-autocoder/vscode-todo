@@ -1,7 +1,7 @@
 # agent-plans-auth-proxy
 
 A tiny Cloudflare Worker that adds CORS headers to GitHub's **OAuth Device Flow** endpoints
-so the Agent Plans **PWA** can complete sign-in from the browser.
+so the Plans **PWA** can complete sign-in from the browser.
 
 ## Why it exists
 

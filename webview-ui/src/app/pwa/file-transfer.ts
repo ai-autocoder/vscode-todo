@@ -105,7 +105,7 @@ export async function downloadTextFile(
 		try {
 			const handle = await picker.call(window, {
 				suggestedName: fileName,
-				types: [{ description: "Agent Plans export", accept: { [mimeType]: [extensionOf(fileName)] } }],
+				types: [{ description: "Plans export", accept: { [mimeType]: [extensionOf(fileName)] } }],
 			});
 			const writable = await handle.createWritable();
 			await writable.write(text);
