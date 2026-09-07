@@ -414,6 +414,66 @@ describe("missing files", () => {
 		// Seeding an empty file is harmless, but it must not report a remote change.
 		expect(res.data?.changedRemotely).toBe(false);
 	});
+
+	/**
+	 * The seed path re-reads before writing, so that a file the other peer created inside the
+	 * window gets merged rather than replaced. That recheck used to guard on `success` alone, so
+	 * a transient network failure — which says nothing about whether the file now exists — fell
+	 * through to the same blind write the recheck exists to prevent.
+	 */
+	it("does not seed over a file when the recheck fails for a reason other than 404", async () => {
+		/**
+		 * Absent on the first read; by the recheck the other peer has created it, but the read
+		 * that would have told us so fails. The peer's content must survive.
+		 */
+		class UnreachableOnRecheckGist extends FakeGist {
+			reads = 0;
+
+			override async readFile(gistId: string, fileName: string): Promise<SyncResult<string>> {
+				this.reads++;
+				if (this.reads === 1) {
+					return super.readFile(gistId, fileName);
+				}
+				this.seed(USER_FILE, { userTodos: [todo(9, "peer")] });
+				return {
+					success: false,
+					error: {
+						type: SyncErrorType.NetworkError,
+						message: "offline",
+						timestamp: "",
+						retryable: true,
+					},
+				};
+			}
+		}
+		const gist = new UnreachableOnRecheckGist();
+		const store = new PersistentCacheStore();
+
+		const res = await newEngine(gist, store).reconcileUser(USER_FILE, {
+			userTodos: [todo(5, "local")],
+		});
+
+		// Asserted first: this is the harm the guard exists to prevent, so a regression should
+		// report the clobbered content rather than the failed status code that accompanies it.
+		expect(gist.user().userTodos).toEqual([todo(9, "peer")]);
+		expect(gist.writeLog).toHaveLength(0);
+		expect(res.success).toBe(false);
+		expect(res.error?.type).toBe(SyncErrorType.NetworkError);
+		// No baseline recorded either, so the next reconcile starts clean.
+		expect(store.size).toBe(0);
+	});
+
+	it("still seeds when the recheck confirms the file is genuinely absent", async () => {
+		const gist = new FakeGist();
+		const store = new PersistentCacheStore();
+
+		const res = await newEngine(gist, store).reconcileUser(USER_FILE, {
+			userTodos: [todo(5, "local")],
+		});
+
+		expect(res.success).toBe(true);
+		expect(gist.user().userTodos).toHaveLength(1);
+	});
 });
 
 describe("warm cache + cold in-memory state (the reload wipe)", () => {

@@ -360,6 +360,13 @@ export class GistSyncEngine {
 				);
 				return this.pushVerified(key, fileName, created, merged, true, conflicts, fileConflicts, strategy);
 			}
+			// Only a genuine "still absent" clears us to seed. Any other failure (network, rate
+			// limit, auth) leaves us unable to tell an absent file from a peer's fresh content, and
+			// writing localData out would clobber content we never saw. Surface the error and let
+			// the next reconcile retry.
+			if (recheck.error?.type !== SyncErrorType.FileNotFoundError) {
+				return { success: false, error: recheck.error };
+			}
 			const write = await this.client.writeFile(this.gistId, fileName, serialize(localData));
 			if (!write.success) {
 				return { success: false, error: write.error };
