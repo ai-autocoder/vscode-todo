@@ -25,6 +25,7 @@ import {
 	Todo,
 	TodoFilesData,
 	mergeFilesData,
+	resolveFileConflict,
 } from "../src/index";
 
 const GIST_ID = "0123456789abcdef0123456789abcdef";
@@ -918,5 +919,158 @@ describe("mergeFilesData merges per todo, not per file", () => {
 		);
 		expect(localOnly.conflicts).toEqual([]);
 		expect((localOnly.autoMerged[FILE_PATH] ?? []).map((t) => t.text)).toEqual(["a", "local"]);
+	});
+});
+
+/**
+ * A file conflict is settled by policy, never shown to the user, so whatever the policy drops
+ * disappears with no dialog, no message, and no way back. Escalation used to hand the caller
+ * the raw local/remote arrays and `prefer-local` stored `conflict.local` verbatim — every todo
+ * the other side had added to that same file went with it.
+ *
+ * The conflict now carries the per-item merge it escalated from, and `resolveFileConflict`
+ * settles only the ids that genuinely conflict against that substrate.
+ *
+ * Mirrored in src/test/suite/sync/threeWayMerge.test.ts for the extension's copy.
+ */
+describe("resolveFileConflict settles only the conflicting todos", () => {
+	/** id 1 renamed differently on both sides, plus an unrelated addition on each side. */
+	const conflicted = () =>
+		mergeFilesData(
+			{ [FILE_PATH]: [todo(1, "orig")] },
+			{ [FILE_PATH]: [todo(1, "local rename"), todo(2, "local add")] },
+			{ [FILE_PATH]: [todo(1, "remote rename"), todo(7, "remote add")] }
+		).conflicts[0];
+
+	it("escalates with the per-item merge attached", () => {
+		const conflict = conflicted();
+		expect(conflict.conflictType).toBe("file-edit-edit");
+		// Only id 1 is the policy's to decide; the two additions already settled on their own.
+		expect(conflict.itemMerge?.conflicts.map((c) => c.todoId)).toEqual([1]);
+		expect(conflict.itemMerge?.autoMerged.map((t) => t.text)).toEqual([
+			"local add",
+			"remote add",
+		]);
+	});
+
+	it("keeps both sides' additions under prefer-local", () => {
+		const texts = (resolveFileConflict(conflicted(), "local") ?? []).map((t) => t.text);
+		expect(texts).toContain("local rename"); // the policy's call on the conflicting id
+		expect(texts).not.toContain("remote rename");
+		expect(texts).toContain("local add");
+		expect(texts).toContain("remote add"); // the regression: silently dropped before
+	});
+
+	it("keeps both sides' additions under prefer-remote", () => {
+		const texts = (resolveFileConflict(conflicted(), "remote") ?? []).map((t) => t.text);
+		expect(texts).toContain("remote rename");
+		expect(texts).not.toContain("local rename");
+		expect(texts).toContain("remote add");
+		expect(texts).toContain("local add");
+	});
+
+	it("honours a deletion made by the preferred side", () => {
+		// Local renamed id 1 while remote deleted it and added another todo: an edit-delete
+		// inside the file, which escalates the file just the same.
+		const conflict = mergeFilesData(
+			{ [FILE_PATH]: [todo(1, "orig"), todo(2, "kept")] },
+			{ [FILE_PATH]: [todo(1, "local rename"), todo(2, "kept")] },
+			{ [FILE_PATH]: [todo(2, "kept"), todo(7, "remote add")] }
+		).conflicts[0];
+
+		const texts = (resolveFileConflict(conflict, "remote") ?? []).map((t) => t.text);
+		expect(texts).not.toContain("local rename"); // the remote deletion stands
+		expect(texts).toContain("kept");
+		expect(texts).toContain("remote add");
+	});
+
+	it("takes the whole preferred side when there is no per-item substrate", () => {
+		// The file itself was deleted remotely while edited locally: nothing to merge per item.
+		const conflict = mergeFilesData(
+			{ [FILE_PATH]: [todo(1, "orig")] },
+			{ [FILE_PATH]: [todo(1, "local rename")] },
+			{}
+		).conflicts[0];
+
+		expect(conflict.conflictType).toBe("file-edit-delete");
+		expect(conflict.itemMerge).toBeUndefined();
+		expect((resolveFileConflict(conflict, "local") ?? []).map((t) => t.text)).toEqual([
+			"local rename",
+		]);
+		// Nothing on the remote side, so preferring remote means accepting the deletion.
+		expect(resolveFileConflict(conflict, "remote")).toBeNull();
+	});
+
+	it("a resolution becomes a clean base for the next reconcile", () => {
+		// mergeFilesData(x, x, x) returns x for any x, so asserting that proves nothing. What
+		// matters is that once the resolution is on the gist it behaves as an ordinary base: the
+		// next edit merges into it without re-conflicting on the id that was settled.
+		const settled = resolveFileConflict(conflicted(), "local")!;
+		const next = mergeFilesData(
+			{ [FILE_PATH]: settled } as TodoFilesData,
+			{ [FILE_PATH]: [...settled, todo(9, "added later")] },
+			{ [FILE_PATH]: settled }
+		);
+
+		expect(next.conflicts).toEqual([]);
+		expect((next.autoMerged[FILE_PATH] ?? []).map((t) => t.text)).toEqual([
+			...settled.map((t) => t.text),
+			"added later",
+		]);
+	});
+});
+
+/**
+ * The same data loss as the block above, on the other branch that has a per-item substrate.
+ *
+ * A file path absent from the base but present on both sides is `file-added-both`, and it used
+ * to escalate with no substrate at all — so resolution took one whole side and destroyed the
+ * other's todos for that file. "Added on both sides" is not a conflict: the base is simply
+ * empty, which is exactly what a three-way merge of two addition sets handles.
+ *
+ * This is the more reachable half of the bug, because `GistSyncEngine.bootstrap` merges against
+ * `strategy.empty()` — so on a cold cache EVERY file path both sides hold reads as added-both.
+ *
+ * Mirrored in src/test/suite/sync/threeWayMerge.test.ts for the extension's copy.
+ */
+describe("mergeFilesData merges a file added on both sides", () => {
+	it("keeps both sides' todos instead of escalating", () => {
+		const result = mergeFilesData(
+			{},
+			{ [FILE_PATH]: [todo(2, "added on phone")] },
+			{ [FILE_PATH]: [todo(7, "added in vscode")] }
+		);
+
+		// Disjoint additions to a file neither side had before: nothing to resolve.
+		expect(result.conflicts).toEqual([]);
+		const texts = (result.autoMerged[FILE_PATH] ?? []).map((t) => t.text);
+		expect(texts).toContain("added on phone");
+		expect(texts).toContain("added in vscode");
+	});
+
+	it("escalates with a substrate when the two sides really do collide on an id", () => {
+		// Same id, different text, and neither side has a base version: an id-collision.
+		const result = mergeFilesData(
+			{},
+			{ [FILE_PATH]: [todo(1, "phone text"), todo(2, "added on phone")] },
+			{ [FILE_PATH]: [todo(1, "vscode text"), todo(7, "added in vscode")] }
+		);
+
+		expect(result.conflicts.map((c) => c.conflictType)).toEqual(["file-added-both"]);
+		const conflict = result.conflicts[0];
+		expect(conflict.itemMerge?.conflicts.map((c) => c.conflictType)).toEqual(["id-collision"]);
+
+		// Whichever way the policy falls, only id 1 is decided by it.
+		const local = (resolveFileConflict(conflict, "local") ?? []).map((t) => t.text);
+		expect(local).toContain("phone text");
+		expect(local).not.toContain("vscode text");
+		expect(local).toContain("added on phone");
+		expect(local).toContain("added in vscode");
+
+		const remote = (resolveFileConflict(conflict, "remote") ?? []).map((t) => t.text);
+		expect(remote).toContain("vscode text");
+		expect(remote).not.toContain("phone text");
+		expect(remote).toContain("added on phone");
+		expect(remote).toContain("added in vscode");
 	});
 });

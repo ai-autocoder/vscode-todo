@@ -421,12 +421,17 @@ export function mergeFilesData(
 				if (itemMerge.conflicts.length === 0) {
 					autoMerged[filePath] = itemMerge.autoMerged;
 				} else {
+					// The per-item merge rides along on the conflict: it is what a resolution must be
+					// built from, so the caller settles only the conflicting ids and keeps both sides’
+					// additions to the file. Resolving from the raw local/remote arrays instead drops
+					// the losing side’s additions, silently — see resolveFileConflict.
 					conflicts.push({
 						filePath,
 						base: baseTodos,
 						local: localTodos,
 						remote: remoteTodos,
 						conflictType: "file-edit-edit",
+						itemMerge,
 					});
 				}
 			} else if (remoteModified) {
@@ -476,14 +481,25 @@ export function mergeFilesData(
 		// CASE 4: File in local and remote, not base (added on both sides)
 		if (!inBase && inLocal && inRemote) {
 			if (!isEqual(localTodos, remoteTodos)) {
-				// FILE CONFLICT: File added on both sides with different content
-				conflicts.push({
-					filePath,
-					base: null,
-					local: localTodos,
-					remote: remoteTodos,
-					conflictType: "file-added-both",
-				});
+				// "Added on both sides" is not itself a conflict: the base is just empty, which is
+				// what a three-way merge of two addition sets already handles. Escalating the whole
+				// file destroyed one side’s todos outright, and this is the branch a cold cache takes
+				// for EVERY file both sides hold — bootstrap merges against an empty base, so an empty
+				// base must mean "both sides added", never "pick one side". Only a genuine id
+				// collision inside the file escalates, and it carries its substrate.
+				const itemMerge = threeWayMerge([], localTodos, remoteTodos);
+				if (itemMerge.conflicts.length === 0) {
+					autoMerged[filePath] = itemMerge.autoMerged;
+				} else {
+					conflicts.push({
+						filePath,
+						base: null,
+						local: localTodos,
+						remote: remoteTodos,
+						conflictType: "file-added-both",
+						itemMerge,
+					});
+				}
 			} else {
 				// Same content, add once
 				autoMerged[filePath] = localTodos;
@@ -505,6 +521,49 @@ export function mergeFilesData(
 	}
 
 	return { autoMerged, conflicts };
+}
+
+/**
+ * Settles one file conflict into the todo array to store for that file, given the side the
+ * caller’s policy prefers.
+ *
+ * Where the conflict carries a per-item merge (`file-edit-edit` and `file-added-both`, the two
+ * types where both sides hold a version of the file) the resolution is built from that
+ * substrate, so the policy decides only the ids that genuinely conflict: additions either side
+ * made to the file, and edits only one side made, survive whichever way the policy falls.
+ * Taking `conflict.local` or `conflict.remote` wholesale instead — as callers did before this
+ * existed — drops every addition the losing side made to that file, with no dialog and no
+ * message, because a file conflict is settled by policy rather than shown to the user.
+ *
+ * The remaining types (`file-edit-delete`, `file-delete-edit`) have no substrate: the file
+ * itself is the unit of conflict, edited on one side and deleted on the other, so the whole
+ * preferred side wins. Those are also the only types where the preferred side can be absent,
+ * which is why the guard below can return `pick` for both reasons at once.
+ *
+ * Returns null when the preferred side has no version of the file — leave it out of the
+ * merged set, i.e. accept the deletion.
+ *
+ * Kept in step with the sibling copy of this module; both peers sync the same gist and must
+ * settle the same conflict identically.
+ */
+export function resolveFileConflict(conflict: FileConflictSet, prefer: "local" | "remote"): Todo[] | null {
+	const pick = prefer === "remote" ? conflict.remote : conflict.local;
+	if (!conflict.itemMerge || !pick) {
+		return pick;
+	}
+
+	const resolved: Todo[] = [];
+	for (const itemConflict of conflict.itemMerge.conflicts) {
+		const side = prefer === "remote" ? itemConflict.remote : itemConflict.local;
+		if (side) {
+			resolved.push(side);
+		}
+		// else: the preferred side deleted this todo, so the deletion stands.
+	}
+
+	// Same positioning rule as the workspace-todo path: base order for anything that was in
+	// base, additions appended after it.
+	return mergeWithPreservedPositions(conflict.itemMerge.autoMerged, resolved, conflict.base ?? []);
 }
 
 /**

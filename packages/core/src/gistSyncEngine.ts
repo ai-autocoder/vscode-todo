@@ -13,6 +13,7 @@ import {
 	threeWayMerge,
 	threeWayMergeWorkspace,
 	mergeWithPreservedPositions,
+	resolveFileConflict,
 	ConflictSet,
 } from "./threeWayMerge";
 import {
@@ -212,13 +213,7 @@ export class GistSyncEngine {
 			reconciled.filesDataPaths ?? {}
 		);
 		const resolvedWs = this.resolve(result.workspaceConflicts);
-		const finalFilesData: TodoFilesData = { ...result.autoMergedFilesData };
-		for (const fc of result.fileConflicts) {
-			const pick = this.policy === "prefer-remote" ? fc.remote : fc.local;
-			if (pick) {
-				finalFilesData[fc.filePath] = pick;
-			}
-		}
+		const finalFilesData = this.resolveFiles(result.autoMergedFilesData, result.fileConflicts);
 		return {
 			data: {
 				workspaceTodos: mergeWithPreservedPositions(
@@ -232,6 +227,26 @@ export class GistSyncEngine {
 			conflicts: result.workspaceConflicts,
 			fileConflicts: result.fileConflicts,
 		};
+	}
+
+	/**
+	 * Applies the active policy to file-level conflicts, on top of the files that auto-merged.
+	 *
+	 * Routed through `resolveFileConflict` rather than storing the winning side’s array: within
+	 * one file only the genuinely conflicting ids are the policy’s to decide, and taking the raw
+	 * array would discard everything the losing side added to that file.
+	 */
+	private resolveFiles(autoMerged: TodoFilesData, conflicts: FileConflictSet[]): TodoFilesData {
+		const prefer = this.policy === "prefer-remote" ? "remote" : "local";
+		const finalFilesData: TodoFilesData = { ...autoMerged };
+		for (const fc of conflicts) {
+			const settled = resolveFileConflict(fc, prefer);
+			if (settled) {
+				finalFilesData[fc.filePath] = settled;
+			}
+			// else: the preferred side deleted the file, so it stays out of the merged set.
+		}
+		return finalFilesData;
 	}
 
 	/** Picks the winning side for each conflict per the active policy; dropped if that side deleted. */
@@ -289,13 +304,7 @@ export class GistSyncEngine {
 					resolvedWs,
 					base.workspaceTodos
 				);
-				const finalFilesData: TodoFilesData = { ...result.autoMergedFilesData };
-				for (const fc of result.fileConflicts) {
-					const pick = this.policy === "prefer-remote" ? fc.remote : fc.local;
-					if (pick) {
-						finalFilesData[fc.filePath] = pick;
-					}
-				}
+				const finalFilesData = this.resolveFiles(result.autoMergedFilesData, result.fileConflicts);
 				const merged: WorkspaceGistData = {
 					workspaceTodos: finalWorkspaceTodos,
 					filesData: finalFilesData,

@@ -270,6 +270,23 @@ export interface FileConflictSet {
 	remote: Todo[] | null;
 	/** Type of conflict detected */
 	conflictType: "file-added-both" | "file-edit-edit" | "file-edit-delete" | "file-delete-edit";
+	/**
+	 * Set for the conflict types where both sides hold a version of the file
+	 * (`file-edit-edit` and `file-added-both`): the per-item merge of this file, and the
+	 * substrate a resolution must be built from. `autoMerged` already holds everything that settled on its own — both
+	 * sides’ additions, one-sided edits, accepted deletions — and `conflicts` holds only the
+	 * ids edited differently on both sides.
+	 *
+	 * Resolve through `resolveFileConflict`, never by taking `local` or `remote` wholesale:
+	 * those raw arrays each lack the other side’s additions to the file, and a file conflict is
+	 * settled by policy without ever showing the user the items, so the loss would be silent.
+	 */
+	itemMerge?: {
+		/** Items of this file that merged cleanly; only `conflicts` need a policy decision. */
+		autoMerged: Todo[];
+		/** Item-level conflicts within this file, in the same shape as a todo-list merge. */
+		conflicts: ConflictSet[];
+	};
 }
 
 /**

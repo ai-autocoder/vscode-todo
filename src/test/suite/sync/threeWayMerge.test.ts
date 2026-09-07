@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { mergeFilesData } from "../../../sync/ThreeWayMerge";
+import { mergeFilesData, resolveFileConflict } from "../../../sync/ThreeWayMerge";
 import { Todo } from "../../../todo/todoTypes";
 
 /**
@@ -141,5 +141,173 @@ suite("mergeFilesData merges per todo, not per file", () => {
 			textsOf(settled[filePath]),
 			"a settled file should merge to itself, or every reconcile would push a no-op write"
 		);
+	});
+});
+
+/**
+ * How a file conflict is settled once it has escalated.
+ *
+ * A file conflict is decided by policy — the modal's "Keep Local Files" / "Keep Remote Files",
+ * or the PWA engine's default — and the user never sees the individual todos, so whatever the
+ * decision drops is gone with no dialog and no way back. Escalation used to hand the caller the
+ * raw local/remote arrays, and storing the winning one discarded every todo the other side had
+ * added to that same file.
+ *
+ * The conflict now carries the per-item merge it escalated from, and `resolveFileConflict`
+ * settles only the ids that genuinely conflict against that substrate.
+ *
+ * Mirrors `describe("resolveFileConflict settles only the conflicting todos")` in
+ * `packages/core/test/gistSyncConcurrency.test.ts`.
+ */
+suite("resolveFileConflict settles only the conflicting todos", () => {
+	/** id 1 renamed differently on both sides, plus an unrelated addition on each side. */
+	const conflicted = () =>
+		mergeFilesData(
+			{ [filePath]: [todo(1, "orig")] },
+			{ [filePath]: [todo(1, "vscode rename"), todo(2, "added in vscode")] },
+			{ [filePath]: [todo(1, "pwa rename"), todo(7, "added in pwa")] }
+		).conflicts[0];
+
+	test("escalates with the per-item merge attached", () => {
+		const conflict = conflicted();
+		assert.strictEqual(conflict.conflictType, "file-edit-edit");
+		// Only id 1 is the policy's to decide; the two additions already settled on their own.
+		assert.deepStrictEqual(
+			conflict.itemMerge?.conflicts.map((c) => c.todoId),
+			[1]
+		);
+		assert.deepStrictEqual(textsOf(conflict.itemMerge?.autoMerged), [
+			"added in vscode",
+			"added in pwa",
+		]);
+	});
+
+	test("keeps both sides' additions when the local side is preferred", () => {
+		const texts = textsOf(resolveFileConflict(conflicted(), "local") ?? undefined);
+		assert.ok(texts.includes("vscode rename"), "the policy's call on the conflicting id");
+		assert.ok(!texts.includes("pwa rename"));
+		assert.ok(texts.includes("added in vscode"));
+		assert.ok(texts.includes("added in pwa"), "the regression: silently dropped before");
+	});
+
+	test("keeps both sides' additions when the remote side is preferred", () => {
+		const texts = textsOf(resolveFileConflict(conflicted(), "remote") ?? undefined);
+		assert.ok(texts.includes("pwa rename"));
+		assert.ok(!texts.includes("vscode rename"));
+		assert.ok(texts.includes("added in pwa"));
+		assert.ok(texts.includes("added in vscode"), "the regression: silently dropped before");
+	});
+
+	test("honours a deletion made by the preferred side", () => {
+		// Local renamed id 1 while remote deleted it and added another todo: an edit-delete
+		// inside the file, which escalates the file just the same.
+		const conflict = mergeFilesData(
+			{ [filePath]: [todo(1, "orig"), todo(2, "kept")] },
+			{ [filePath]: [todo(1, "vscode rename"), todo(2, "kept")] },
+			{ [filePath]: [todo(2, "kept"), todo(7, "added in pwa")] }
+		).conflicts[0];
+
+		const texts = textsOf(resolveFileConflict(conflict, "remote") ?? undefined);
+		assert.ok(!texts.includes("vscode rename"), "the remote deletion stands");
+		assert.ok(texts.includes("kept"));
+		assert.ok(texts.includes("added in pwa"));
+	});
+
+	test("takes the whole preferred side when there is no per-item substrate", () => {
+		// The file itself was deleted remotely while edited locally: nothing to merge per item.
+		const conflict = mergeFilesData(
+			{ [filePath]: [todo(1, "orig")] },
+			{ [filePath]: [todo(1, "vscode rename")] },
+			{}
+		).conflicts[0];
+
+		assert.strictEqual(conflict.conflictType, "file-edit-delete");
+		assert.strictEqual(conflict.itemMerge, undefined);
+		assert.deepStrictEqual(textsOf(resolveFileConflict(conflict, "local") ?? undefined), [
+			"vscode rename",
+		]);
+		// Nothing on the remote side, so preferring remote means accepting the deletion.
+		assert.strictEqual(resolveFileConflict(conflict, "remote"), null);
+	});
+
+	test("a resolution becomes a clean base for the next reconcile", () => {
+		// mergeFilesData(x, x, x) returns x for any x, so asserting that proves nothing. What
+		// matters is that once the resolution is on the gist it behaves as an ordinary base: the
+		// next edit merges into it without re-conflicting on the id that was settled.
+		const settled = resolveFileConflict(conflicted(), "local")!;
+		const next = mergeFilesData(
+			{ [filePath]: settled },
+			{ [filePath]: [...settled, todo(9, "added later")] },
+			{ [filePath]: settled }
+		);
+
+		assert.deepStrictEqual(next.conflicts, [], "the settled id must not conflict again");
+		assert.deepStrictEqual(textsOf(next.autoMerged[filePath]), [
+			...textsOf(settled),
+			"added later",
+		]);
+	});
+});
+
+/**
+ * The same data loss as above, on the other branch that has a per-item substrate.
+ *
+ * A file path absent from the base but present on both sides is `file-added-both`, and it used
+ * to escalate with no substrate at all — so resolution took one whole side and destroyed the
+ * other's todos for that file. "Added on both sides" is not a conflict: the base is simply
+ * empty, which is exactly what a three-way merge of two addition sets handles.
+ *
+ * This is the more reachable half of the bug. Both peers merge against an empty base whenever
+ * they have no clean baseline — `SyncManager`'s "first time with new code" branch, and the
+ * PWA engine's `bootstrap` — so on a cold cache EVERY file path both sides hold took it.
+ *
+ * Mirrors `describe("mergeFilesData merges a file added on both sides")` in
+ * `packages/core/test/gistSyncConcurrency.test.ts`.
+ */
+suite("mergeFilesData merges a file added on both sides", () => {
+	test("keeps both sides' todos instead of escalating", () => {
+		const result = mergeFilesData(
+			{},
+			{ [filePath]: [todo(2, "added in vscode")] },
+			{ [filePath]: [todo(7, "added in pwa")] }
+		);
+
+		// Disjoint additions to a file neither side had before: nothing to resolve.
+		assert.deepStrictEqual(result.conflicts, []);
+		const texts = textsOf(result.autoMerged[filePath]);
+		assert.ok(texts.includes("added in vscode"), "local addition should survive");
+		assert.ok(texts.includes("added in pwa"), "remote addition should survive");
+	});
+
+	test("escalates with a substrate when the two sides really do collide on an id", () => {
+		// Same id, different text, and neither side has a base version: an id-collision.
+		const result = mergeFilesData(
+			{},
+			{ [filePath]: [todo(1, "vscode text"), todo(2, "added in vscode")] },
+			{ [filePath]: [todo(1, "pwa text"), todo(7, "added in pwa")] }
+		);
+
+		assert.deepStrictEqual(
+			result.conflicts.map((c) => c.conflictType),
+			["file-added-both"]
+		);
+		const conflict = result.conflicts[0];
+		assert.deepStrictEqual(
+			conflict.itemMerge?.conflicts.map((c) => c.conflictType),
+			["id-collision"]
+		);
+
+		// Whichever way the policy falls, only id 1 is decided by it.
+		const local = textsOf(resolveFileConflict(conflict, "local") ?? undefined);
+		assert.ok(local.includes("vscode text"));
+		assert.ok(!local.includes("pwa text"));
+		assert.ok(local.includes("added in vscode"));
+		assert.ok(local.includes("added in pwa"));
+
+		const remote = textsOf(resolveFileConflict(conflict, "remote") ?? undefined);
+		assert.ok(remote.includes("pwa text"));
+		assert.ok(!remote.includes("vscode text"));
+		assert.ok(remote.includes("added in vscode"));
+		assert.ok(remote.includes("added in pwa"));
 	});
 });

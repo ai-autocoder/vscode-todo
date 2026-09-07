@@ -276,6 +276,68 @@ describe("GistSyncEngine.reconcileWorkspace", () => {
 		expect(merged[B].map((t) => t.id)).toEqual([20]);
 	});
 
+	// A file conflict is settled by the engine’s policy with no prompt, so anything the policy
+	// drops is lost silently. Escalating the whole file made prefer-local store the local array
+	// verbatim, discarding every todo the other peer had added to that same file.
+	//
+	// Same repro both ways round, so neither policy is privileged: only the id both sides edited
+	// is the policy’s to decide.
+	const stageFileConflict = async (engine: GistSyncEngine, gist: FakeGist) => {
+		await engine.reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(10, "orig")] },
+			filesDataPaths: {},
+		}); // baseline
+
+		// The extension renames todo 10 and adds 11 to the same file.
+		gist.files.set(
+			WS_FILE,
+			serialize({
+				workspaceTodos: [],
+				filesData: { [A]: [todo(10, "renamed in vscode"), todo(11, "added in vscode")] },
+				filesDataPaths: {},
+			})
+		);
+
+		// The phone renames the same todo differently and adds 12 to that file.
+		return engine.reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(10, "renamed on phone"), todo(12, "added on phone")] },
+			filesDataPaths: {},
+		});
+	};
+
+	it("keeps both peers’ additions to a file whose todo also conflicts (prefer-local)", async () => {
+		const gist = new FakeGist();
+		const res = await stageFileConflict(makeEngine(gist), gist);
+
+		expect(res.data?.fileConflicts.map((c) => c.filePath)).toEqual([A]);
+		const texts = res.data!.data.filesData[A].map((t) => t.text);
+		expect(texts).toContain("renamed on phone"); // prefer-local decides the conflicting id
+		expect(texts).not.toContain("renamed in vscode");
+		expect(texts).toContain("added on phone");
+		expect(texts).toContain("added in vscode"); // the regression: dropped silently before
+		// And that is what lands on the gist, not just what the caller is handed back.
+		expect(readWs(gist).filesData[A].map((t) => t.text)).toEqual(texts);
+	});
+
+	it("keeps both peers’ additions to a file whose todo also conflicts (prefer-remote)", async () => {
+		const gist = new FakeGist();
+		const engine = new GistSyncEngine({
+			client: gist,
+			gistId: GIST_ID,
+			cacheStore: new MemoryCacheStore(),
+			conflictPolicy: "prefer-remote",
+		});
+		const res = await stageFileConflict(engine, gist);
+
+		const texts = res.data!.data.filesData[A].map((t) => t.text);
+		expect(texts).toContain("renamed in vscode");
+		expect(texts).not.toContain("renamed on phone");
+		expect(texts).toContain("added in vscode");
+		expect(texts).toContain("added on phone");
+	});
+
 	it("is a no-op on the second reconcile with unchanged data", async () => {
 		const gist = new FakeGist();
 		const engine = makeEngine(gist);
@@ -366,6 +428,39 @@ describe("cold cache bootstrap (data-loss regression)", () => {
 describe("cold cache bootstrap: workspace filesData", () => {
 	// The workspace file carries per-file todo lists in `filesData`. A cold cache with an empty
 	// local slice must not read as "the user deleted every per-file list".
+	// The dangerous variant: a cold cache where the device DOES hold per-file todos. bootstrap
+	// merges against strategy.empty(), so every path both sides hold has an empty base and reads
+	// as "added on both sides" — which used to escalate to a whole-file conflict with no per-item
+	// substrate, and prefer-local then stored the phone’s array over the extension’s todos.
+	//
+	// bootstrap’s contract is that with no baseline "both sides read as additions and neither is
+	// deleted"; that has to hold for filesData too, not just for the todo arrays.
+	it("keeps both sides’ per-file todos when bootstrapping with a populated local workspace", async () => {
+		const gist = new FakeGist();
+		gist.files.set(
+			WS_FILE,
+			serialize({
+				workspaceTodos: [],
+				filesData: { [A]: [todo(5, "written in vscode"), todo(6, "also vscode")] },
+				filesDataPaths: {},
+			})
+		);
+
+		const engine = makeEngine(gist);
+		const res = await engine.reconcileWorkspace(WS_FILE, {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(1, "on the phone")] },
+			filesDataPaths: {},
+		});
+
+		const texts = res.data!.data.filesData[A].map((t) => t.text);
+		expect(texts).toContain("on the phone");
+		expect(texts).toContain("written in vscode"); // was destroyed by the whole-side resolution
+		expect(texts).toContain("also vscode");
+		// Nothing is lost on the gist either.
+		expect(readWs(gist).filesData[A].map((t) => t.text).sort()).toEqual(texts.slice().sort());
+	});
+
 	it("preserves remote filesData when bootstrapping with an empty local workspace", async () => {
 		const gist = new FakeGist();
 		// Computed key: a literal file-path property trips the camelCase lint rule.
@@ -388,5 +483,60 @@ describe("cold cache bootstrap: workspace filesData", () => {
 		expect(res.data!.pushed).toBe(false);
 		expect(Object.keys(res.data!.data.filesData)).toEqual([readmePath]);
 		expect(res.data!.data.workspaceTodos).toHaveLength(1);
+	});
+});
+
+/**
+ * Two clients, one gist, one conflicting file — does the exchange settle?
+ *
+ * The resolution's element order depends on which side is `local`, so the two clients settle
+ * the same conflict into *different* orders. `isEqual` compares serialized JSON, so a different
+ * order reads as a change: if each client kept re-merging and pushing its own order, every poll
+ * would rewrite the file forever. This pins that it converges instead.
+ *
+ * Worth having explicitly because the per-call tests only ever exercise one engine, and
+ * `mergeFilesData(x, x, x) === x` makes a single-client "fixed point" assertion vacuous.
+ */
+describe("two clients converge after a per-file conflict", () => {
+	it("stops writing once both have adopted the merge, having lost nothing", async () => {
+		const gist = new FakeGist();
+		const phone = makeEngine(gist);
+		const code = makeEngine(gist);
+
+		// Both start from the same baseline.
+		const seed: WorkspaceGistData = {
+			workspaceTodos: [],
+			filesData: { [A]: [todo(10, "orig")] },
+			filesDataPaths: {},
+		};
+		let phoneLocal = (await phone.reconcileWorkspace(WS_FILE, seed)).data!.data;
+		let codeLocal = (await code.reconcileWorkspace(WS_FILE, seed)).data!.data;
+
+		// Each renames todo 10 differently and adds one of its own to the same file.
+		phoneLocal = { ...phoneLocal, filesData: { [A]: [todo(10, "phone"), todo(12, "from phone")] } };
+		codeLocal = { ...codeLocal, filesData: { [A]: [todo(10, "vscode"), todo(11, "from vscode")] } };
+
+		// Alternate reconciles, each client adopting the merged result as its new local state —
+		// which is what the gateway does with what it gets back.
+		const writesPerRound: number[] = [];
+		for (let round = 0; round < 6; round++) {
+			const before = gist.writes;
+			if (round % 2 === 0) {
+				phoneLocal = (await phone.reconcileWorkspace(WS_FILE, phoneLocal)).data!.data;
+			} else {
+				codeLocal = (await code.reconcileWorkspace(WS_FILE, codeLocal)).data!.data;
+			}
+			writesPerRound.push(gist.writes - before);
+		}
+
+		// The tail must be quiet: no client still has something to say.
+		expect(writesPerRound.slice(-2)).toEqual([0, 0]);
+
+		// Neither addition was lost along the way, and both clients agree on the contents.
+		const onGist = readWs(gist).filesData[A].map((t) => t.text);
+		expect(onGist).toContain("from phone");
+		expect(onGist).toContain("from vscode");
+		expect(phoneLocal.filesData[A].map((t) => t.text).sort()).toEqual(onGist.slice().sort());
+		expect(codeLocal.filesData[A].map((t) => t.text).sort()).toEqual(onGist.slice().sort());
 	});
 });

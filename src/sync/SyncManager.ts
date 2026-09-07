@@ -16,7 +16,7 @@ import {
 	GistCache,
 } from "./syncTypes";
 import { isEqual } from "../todo/todoUtils";
-import { threeWayMerge, formatMergeSummary, ConflictSet, threeWayMergeWorkspace, formatWorkspaceMergeSummary, mergeWithPreservedPositions } from "./ThreeWayMerge";
+import { threeWayMerge, formatMergeSummary, ConflictSet, threeWayMergeWorkspace, formatWorkspaceMergeSummary, mergeWithPreservedPositions, resolveFileConflict } from "./ThreeWayMerge";
 import { Todo } from "../todo/todoTypes";
 import { ConflictResolutionUI } from "./ConflictResolutionUI";
 import { getGistId } from "../utilities/syncConfig";
@@ -667,19 +667,16 @@ export class SyncManager {
 							};
 						}
 
-						// Apply file conflict resolution
-						if (fileChoice === "Keep Local Files") {
-							for (const conflict of mergeResult.fileConflicts) {
-								if (conflict.local) {
-									mergeResult.autoMergedFilesData[conflict.filePath] = conflict.local;
-								}
-							}
-						} else {
-							// Keep Remote Files (or user closed dialog)
-							for (const conflict of mergeResult.fileConflicts) {
-								if (conflict.remote) {
-									mergeResult.autoMergedFilesData[conflict.filePath] = conflict.remote;
-								}
+						// Apply file conflict resolution. "Keep Remote Files" also covers the user
+						// dismissing the dialog. The choice settles only the todos that genuinely
+						// conflict inside each file — storing the chosen side’s array instead would
+						// also throw away the todos the other side added to those files, which the
+						// user was never shown and never chose to discard.
+						const prefer = fileChoice === "Keep Local Files" ? "local" : "remote";
+						for (const conflict of mergeResult.fileConflicts) {
+							const settled = resolveFileConflict(conflict, prefer);
+							if (settled) {
+								mergeResult.autoMergedFilesData[conflict.filePath] = settled;
 							}
 						}
 					}
