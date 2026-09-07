@@ -55,6 +55,7 @@ import {
 	recountTodos,
 	type ConflictSet,
 	type FileConflictSet,
+	resolveFileConflict,
 	buildExportFileName,
 	buildExportObject,
 	hasImportChanges,
@@ -1969,9 +1970,14 @@ export class GistGateway implements DataGateway {
 	}
 
 	/**
-	 * Records whole-list conflicts on the per-file todos inside the workspace gist file. The
-	 * merge reports these as entire `Todo[]` values for a path rather than per todo, so the only
-	 * choices the review screen can offer are the two lists.
+	 * Records conflicts on the per-file todo lists inside the workspace gist file.
+	 *
+	 * Both sides are stored as **resolutions**, not as the raw arrays the merge reports. Only the
+	 * todos both devices changed are really in dispute; `resolveFileConflict` settles just those
+	 * and keeps every addition either device made to the file. The raw `local` array is not what
+	 * the engine applied, and the raw `remote` array is not what the user would get by choosing
+	 * the other device — storing them would mis-state both sides of the choice, mark every record
+	 * permanently stale, and applying one would delete the other device’s additions outright.
 	 */
 	private captureFileConflicts(fileConflicts: FileConflictSet[]): void {
 		if (fileConflicts.length === 0) {
@@ -1984,17 +1990,21 @@ export class GistGateway implements DataGateway {
 		}
 		const syncedAt = new Date().toISOString();
 		this.upsertConflicts(
-			[...latest.values()].map((conflict) => ({
-				kind: "file" as const,
-				key: fileConflictKey(conflict.filePath),
-				filePath: conflict.filePath,
-				conflictType: conflict.conflictType,
-				base: conflict.base,
-				local: conflict.local,
-				remote: conflict.remote,
-				resolvedValue: conflict.local,
-				syncedAt,
-			}))
+			[...latest.values()].map((conflict) => {
+				// prefer-local is the engine’s policy, so this is what it applied and pushed.
+				const applied = resolveFileConflict(conflict, "local");
+				return {
+					kind: "file" as const,
+					key: fileConflictKey(conflict.filePath),
+					filePath: conflict.filePath,
+					conflictType: conflict.conflictType,
+					base: conflict.base,
+					local: applied,
+					remote: resolveFileConflict(conflict, "remote"),
+					resolvedValue: applied,
+					syncedAt,
+				};
+			})
 		);
 	}
 

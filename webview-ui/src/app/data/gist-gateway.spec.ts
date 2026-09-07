@@ -1,7 +1,21 @@
-import { SyncErrorType, type SyncError, type SyncResult } from "@vsc-todo/core";
+import {
+	mergeFilesData,
+	resolveFileConflict,
+	SyncErrorType,
+	type FileConflictSet,
+	type SyncError,
+	type SyncResult,
+	type Todo,
+	type TodoFilesData,
+} from "@vsc-todo/core";
 import { TodoScope } from "../../../../src/todo/todoTypes";
 import { GistGateway, type SyncFailureState } from "./gist-gateway";
 import { MessageActionsToWebview } from "../../../../src/panels/message";
+import {
+	fileConflictKey,
+	type PendingConflictView,
+	type PendingFileConflict,
+} from "../pwa/conflicts/conflict-types";
 
 /**
  * Regression cover for the audit finding "a dead sync looks exactly like a healthy one".
@@ -513,5 +527,110 @@ describe("GistGateway lastActionType scope prefix", () => {
 
 		expect(lastEmittedActionType()).toBe("user/addTodo");
 		expect(internals.user.lastActionType).toBe("addTodo");
+	});
+});
+
+/**
+ * The third place a file conflict gets settled — the review screen's "use the other device"
+ * button — and the one furthest from the merge.
+ *
+ * `mergeFilesData` merges a file's todos per item and escalates only the ids both devices
+ * changed, so the raw `local`/`remote` arrays on a `FileConflictSet` are pre-merge values that
+ * neither device is holding: `local` is not what the engine applied, and `remote` lacks every
+ * todo this device added to that file. Recording them verbatim made the card mis-state both
+ * sides, made every record read as permanently stale (`resolvedValue` never matching what was
+ * actually applied), and made accepting the other device delete this device's additions.
+ *
+ * `captureFileConflicts` therefore stores the two *resolutions*.
+ */
+describe("GistGateway file conflict records", () => {
+	interface FileInternals {
+		filesData: TodoFilesData;
+		captureFileConflicts(conflicts: FileConflictSet[]): void;
+		applyConflictChoice(key: string, merged?: Todo, force?: boolean): Promise<unknown>;
+	}
+
+	const filePath = "src/a.ts";
+
+	const todo = (id: number, text: string): Todo => ({
+		id,
+		text,
+		completed: false,
+		creationDate: "2020-01-01T00:00:00.000Z",
+		isMarkdown: false,
+		isNote: false,
+	});
+
+	let gateway: GistGateway;
+	let internals: FileInternals;
+	let views: PendingConflictView[] = [];
+
+	/**
+	 * Todo 10 renamed differently on both devices, and one addition on each side — the exact
+	 * shape that used to lose the other device's addition.
+	 */
+	const conflict = (): FileConflictSet => {
+		const base = [todo(10, "orig")];
+		const local = [todo(10, "renamed here"), todo(12, "added here")];
+		const remote = [todo(10, "renamed there"), todo(11, "added there")];
+		return mergeFilesData({ [filePath]: base }, { [filePath]: local }, { [filePath]: remote })
+			.conflicts[0];
+	};
+
+	const fileRecord = (): PendingFileConflict => {
+		const view = views.find((candidate) => candidate.conflict.kind === "file");
+		return view!.conflict as PendingFileConflict;
+	};
+
+	beforeEach(() => {
+		gateway = new GistGateway({
+			clientId: "test-client",
+			deviceFlowProxyUrl: "https://example.invalid",
+			pushDebounceMs: 60_000,
+		});
+		internals = gateway as unknown as FileInternals;
+		views = [];
+		gateway.conflicts.subscribe((next) => (views = next));
+	});
+
+	it("records both sides as resolutions, each keeping every addition", () => {
+		internals.captureFileConflicts([conflict()]);
+
+		const record = fileRecord();
+		const local = (record.local ?? []).map((t) => t.text);
+		const remote = (record.remote ?? []).map((t) => t.text);
+
+		// "This device" is what the engine applied under prefer-local...
+		expect(local).toContain("renamed here");
+		expect(local).not.toContain("renamed there");
+		// ...and "other device" swaps only the disputed todo.
+		expect(remote).toContain("renamed there");
+		expect(remote).not.toContain("renamed here");
+		// Neither side drops anyone's addition. This is the regression.
+		for (const side of [local, remote]) {
+			expect(side).toContain("added here");
+			expect(side).toContain("added there");
+		}
+	});
+
+	it("keeps resolvedValue equal to the applied side, so the record is not born stale", () => {
+		const record = (internals.captureFileConflicts([conflict()]), fileRecord());
+
+		expect(record.resolvedValue).toEqual(record.local);
+	});
+
+	it("does not delete this device's additions when the other device is accepted", async () => {
+		const settled = conflict();
+		// The engine has already applied its prefer-local resolution to the local list.
+		internals.filesData = { [filePath]: resolveFileConflict(settled, "local")! };
+		internals.captureFileConflicts([settled]);
+
+		await internals.applyConflictChoice(fileConflictKey(filePath));
+
+		const stored = (internals.filesData[filePath] ?? []).map((t) => t.text);
+		expect(stored).toContain("renamed there"); // the choice took effect
+		expect(stored).not.toContain("renamed here");
+		expect(stored).toContain("added here"); // and nothing was collateral
+		expect(stored).toContain("added there");
 	});
 });

@@ -12,8 +12,8 @@
 import type { Todo } from "@vsc-todo/core";
 
 /**
- * Scope a conflict belongs to. Per-file lists live inside the workspace gist file but conflict
- * as whole lists rather than per todo, so they are reported separately as file conflicts.
+ * Scope a conflict belongs to. Per-file lists live inside the workspace gist file and are
+ * reported separately as file conflicts, keyed by path rather than by todo id.
  */
 export type ConflictScope = "user" | "workspace";
 
@@ -51,9 +51,14 @@ export interface PendingTodoConflict {
 }
 
 /**
- * A whole per-file list that changed on both sides. The unit really is the list: the merge
- * reports `filesData` conflicts as entire `Todo[]` values for a path, not per todo, so the only
- * choices available are the two lists.
+ * A per-file list that changed on both sides in a way the merge could not settle by itself.
+ *
+ * The record is keyed by path and its two sides are whole `Todo[]` lists, but they are not the
+ * raw arrays from either device: the merge settles per todo, so both sides already contain every
+ * addition either device made to the file and differ only on the todos genuinely in dispute.
+ * `local` is what the engine applied under prefer-local; `remote` is what choosing the other
+ * device would apply. Choosing therefore swaps the disputed todos, and does not discard the
+ * other device’s work.
  */
 export interface PendingFileConflict {
 	kind: "file";
