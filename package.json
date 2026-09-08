@@ -55,7 +55,7 @@
 	"activationEvents": [
 		"onStartupFinished"
 	],
-	"main": "./out/extension.js",
+	"main": "./out/src/extension.js",
 	"contributes": {
 		"commands": [
 			{
@@ -339,13 +339,14 @@
 		"deploy:worker": "npm --prefix worker run deploy",
 		"mcp:inspector": "mcp-inspector",
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./",
+		"compile": "npm run clean && tsc -p ./",
 		"watch": "tsc -watch -p ./",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint . --ext .ts",
 		"test": "vscode-test",
 		"test:core": "npm --prefix packages/core test",
-		"test:webview": "npm --prefix webview-ui run test:ci"
+		"test:webview": "npm --prefix webview-ui run test:ci",
+		"clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\""
 	},
 	"devDependencies": {
 		"@modelcontextprotocol/inspector": "^0.18.0",

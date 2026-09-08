@@ -6,7 +6,9 @@
  * change there. `packages/core/test/importExport.test.ts` mirrors
  * `src/test/suite/todo/importer.test.ts` so a divergence fails visibly.
  *
- * Same arrangement as `src/sync/ThreeWayMerge.ts` and its peer in packages/core.
+ * The sync half of the codebase no longer works this way — it was consolidated into
+ * packages/core, which the extension now compiles in (see `src/core.ts`). Import/export is the
+ * remaining duplicated pair and should follow.
  */
 import path = require("node:path");
 import fs = require("fs/promises");

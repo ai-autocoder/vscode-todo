@@ -6,15 +6,26 @@
 
 # Ignore test files
 .vscode-test/**
+out/src/test/**
+# Belt and braces: `compile` cleans `out/` first, but a tree built before the output layout
+# moved to `out/src/**` still has the old `out/test/**` sitting there, and a stale tree that
+# skipped the clean would otherwise package compiled Mocha suites.
 out/test/**
 
 # Ignore source code
 src/**
 
+# The shared core is compiled into out/ alongside src/, so nothing here ships as source.
+# Without this its node_modules (vitest, fake-indexeddb) would be packaged into the vsix.
+packages/**
+
 # Ignore all webview-ui files except the build directory
 webview-ui/src/**
 webview-ui/public/**
 webview-ui/scripts/**
+# Karma's compiled test output — ~24 MB, including a full copy of the KaTeX fonts. Only
+# `webview-ui/build/**` (the Angular build the webview actually loads) belongs in the vsix.
+webview-ui/dist/**
 webview-ui/README.md
 webview-ui/package.json
 webview-ui/package-lock.json

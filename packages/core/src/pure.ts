@@ -56,14 +56,15 @@ export function generateUniqueId(todos: Array<{ id: number }>): number {
 
 // ---------------------------------------------------------------------------
 // Path normalization (used by the workspace merge to match the same logical file
-// across machines/OSes). Copied verbatim from the extension's todoUtils.
+// across machines/OSes). This is the only copy: the extension's `todoUtils` re-exports
+// these rather than keeping its own, so both peers match paths identically.
 // ---------------------------------------------------------------------------
 
-function isWindowsPath(filePath: string): boolean {
+export function isWindowsPath(filePath: string): boolean {
 	return /^[a-zA-Z]:[\\/]/.test(filePath) || /^\\\\/.test(filePath);
 }
 
-function normalizeSlashes(filePath: string): string {
+export function normalizeSlashes(filePath: string): string {
 	return filePath.replace(/\\/g, "/");
 }
 

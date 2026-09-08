@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { mergeFilesData, resolveFileConflict } from "../../../sync/ThreeWayMerge";
+import { mergeFilesData, resolveFileConflict } from "../../../core";
 import { Todo } from "../../../todo/todoTypes";
 
 /**

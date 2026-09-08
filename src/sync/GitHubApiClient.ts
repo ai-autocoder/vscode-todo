@@ -257,8 +257,13 @@ export class GitHubApiClient {
 			};
 		}
 
-		// If content is not included in response, fetch from raw_url
-		if (file.content !== undefined) {
+		// Inline content, but only when the API says it is complete. GitHub caps the `content` it
+		// embeds and sets `truncated: true` — it still sends a `content` field, just a cut-off
+		// prefix of the file. Trusting it there hands the reconcile a JSON fragment, which parses
+		// as "empty remote" or throws, either way from a file that is perfectly intact on the
+		// gist. Fall through to `raw_url`, which serves the whole thing. (The shared core's
+		// `GistClient` has always made this check; this copy had not.)
+		if (file.content !== undefined && !file.truncated) {
 			return { success: true, data: file.content };
 		}
 

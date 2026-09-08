@@ -35,9 +35,16 @@ npm run build    # tsc -> dist/ (ESM + d.ts)
 npm test         # vitest
 ```
 
-> The VS Code extension does not yet import this package; that migration is a deliberate
-> follow-up (the extension ships an unbundled `tsc` build, so wiring a workspace dependency
-> needs packaging validation). The merge logic here is a faithful copy of the extension's
-> `src/sync/ThreeWayMerge.ts` (only import paths differ) and `tagUtils.ts` is copied
-> verbatim, so until the migration removes the duplication, changes to either side must be
-> mirrored. The migration is what makes that drift structurally impossible.
+> **The VS Code extension imports this package.** It is not installed as a dependency — the
+> extension compiles `packages/core/src/**` into its own `tsc` build and imports it through the
+> single re-export at `src/core.ts` (see AGENTS.md). So the merge, equality, serialization and
+> sync-engine code here is the *only* copy, and a change to it changes how the extension syncs
+> as well as the PWA: `npm run test:core` is not optional.
+>
+> The extension previously kept a parallel copy in `src/sync/ThreeWayMerge.ts`. The two drifted
+> — into a key-order-sensitive `isEqual` and an unsorted `filesData` — which made identical
+> content read as modified and raised conflicts whose "remote" side was the unchanged local
+> value. Do not reintroduce a host-local copy.
+>
+> Still duplicated, and worth consolidating next: `importExport.ts` (peer of the extension's
+> `src/todo/exporter.ts` / `importer.ts`).

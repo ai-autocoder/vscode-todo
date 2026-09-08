@@ -415,8 +415,8 @@ export function mergeFilesData(
 				// in conflict, and whole-array resolution silently discarded whichever side lost.
 				// Only genuinely conflicting todos (the same id edited differently on both sides)
 				// escalate to a file conflict for the caller's policy to settle.
-				// Kept in step with src/sync/ThreeWayMerge.ts — the extension runs that copy, and
-				// the two peers must resolve the same situation identically.
+				// This is the only copy: both peers run it, so they cannot resolve the same
+				// situation differently. (The extension used to ship its own, and they drifted.)
 				const itemMerge = threeWayMerge(baseTodos, localTodos, remoteTodos);
 				if (itemMerge.conflicts.length === 0) {
 					autoMerged[filePath] = itemMerge.autoMerged;

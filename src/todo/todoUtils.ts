@@ -185,71 +185,19 @@ export type FilesDataPathIndexes = {
 	relIndex: Record<string, string>;
 };
 
-function isWindowsPath(filePath: string): boolean {
-	return /^[a-zA-Z]:[\\/]/.test(filePath) || /^\\\\/.test(filePath);
-}
+// Path normalization is the shared core's. The workspace merge matches the same logical file
+// across machines by these rules, so a second copy here would let the two peers disagree about
+// which gist entry a file maps to.
+import {
+	isWindowsPath,
+	normalizeAbsolutePath,
+	normalizeRelativePath,
+	normalizeSlashes,
+} from "../core";
+export { normalizeAbsolutePath, normalizeRelativePath };
 
 function isAbsolutePath(filePath: string): boolean {
 	return /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(filePath);
-}
-
-function normalizeSlashes(filePath: string): string {
-	return filePath.replace(/\\/g, "/");
-}
-
-function normalizePathSegments(filePath: string, allowAboveRoot: boolean): string {
-	const segments = normalizeSlashes(filePath).split("/");
-	const result: string[] = [];
-
-	for (const segment of segments) {
-		if (!segment || segment === ".") {
-			continue;
-		}
-		if (segment === "..") {
-			if (result.length > 0) {
-				result.pop();
-			} else if (allowAboveRoot) {
-				result.push("..");
-			}
-			continue;
-		}
-		result.push(segment);
-	}
-
-	return result.join("/");
-}
-
-export function normalizeAbsolutePath(filePath: string): string {
-	const normalized = normalizeSlashes(filePath);
-	let prefix = "";
-	let rest = normalized;
-
-	if (/^[a-zA-Z]:\//.test(normalized)) {
-		prefix = normalized.slice(0, 2);
-		rest = normalized.slice(2);
-	} else if (normalized.startsWith("//")) {
-		prefix = "//";
-		rest = normalized.slice(2);
-	} else if (normalized.startsWith("/")) {
-		prefix = "/";
-		rest = normalized.slice(1);
-	}
-
-	const cleaned = normalizePathSegments(rest, false);
-	let result = prefix;
-	if (cleaned) {
-		if (prefix && !prefix.endsWith("/")) {
-			result += "/";
-		}
-		result += cleaned;
-	}
-
-	return isWindowsPath(filePath) ? result.toLowerCase() : result;
-}
-
-export function normalizeRelativePath(filePath: string): string {
-	const normalized = normalizePathSegments(filePath, true);
-	return normalized.startsWith("./") ? normalized.slice(2) : normalized;
 }
 
 function getWorkspaceFolderPathForFile(filePath: string): string | null {
@@ -463,9 +411,21 @@ export function getWorkspacePath() {
 	return workspacePath;
 }
 
-export function isEqual(a: Object, b: Object) {
-	return JSON.stringify(a) === JSON.stringify(b);
-}
+/**
+ * Structural equality, re-exported from the shared core.
+ *
+ * This used to be a local `JSON.stringify(a) === JSON.stringify(b)`, which is sensitive to
+ * object *key* order. The same todo reaches the two peers with different key ordering — the
+ * PWA writes the gist with sorted keys while the extension's reducers build todos in literal
+ * order and Immer appends `completionDate` last — so the naive comparison reported todos as
+ * modified that nobody had touched. In the sync path that meant phantom `edit-edit` conflicts
+ * whose "remote" side was just the unchanged local text, and a `hasRemoteChanges` that fired
+ * on every push from the other device.
+ *
+ * The shared implementation compares canonical JSON (keys sorted, array order preserved —
+ * todo order is user-visible). Both peers must use it or they cannot agree on what changed.
+ */
+export { isEqual } from "../core";
 
 export function updateDataForRenamedFile({
 	context,

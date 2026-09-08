@@ -847,8 +847,8 @@ describe("the guard is what prevents the loss (paired, same harness)", () => {
  * other side entirely. Two people adding a todo to the same file are not in conflict, so the
  * arrays are merged per item and only genuinely conflicting todos escalate.
  *
- * `mergeFilesData` is duplicated in `src/sync/ThreeWayMerge.ts` for the extension; both copies
- * carry this behaviour so the two peers resolve identically.
+ * `mergeFilesData` has one copy, here: both peers run it, so they resolve identically by
+ * construction. The extension used to duplicate it, and the two drifted.
  */
 describe("mergeFilesData merges per todo, not per file", () => {
 	it("keeps additions made to the same file on both sides", () => {

@@ -14,11 +14,14 @@
  * blob download.
  *
  * Kept in step with `src/todo/exporter.ts` and `src/todo/importer.ts` — the PWA runs this copy
- * and the extension runs those, and an import must produce the same result on both. The repo
- * keeps these as deliberate peers rather than one shared module because the extension host
- * does not consume this package (see `src/sync/ThreeWayMerge.ts` for the same arrangement);
+ * and the extension runs those, and an import must produce the same result on both.
  * `test/importExport.test.ts` mirrors the extension's own import/export tests so a change to
  * either copy fails visibly.
+ *
+ * This duplication is now avoidable and should be removed: the extension host DOES consume this
+ * package (it compiles `packages/core/src` into its own build — see `src/core.ts`), which is
+ * what the sync half was consolidated onto. Import/export was left as peers only because it was
+ * out of scope for that change, not because it has to be.
  *
  * Two behavioural notes where this copy is deliberately *not* a transcription:
  *

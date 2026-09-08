@@ -58,13 +58,76 @@ export class MemoryCacheStore implements CacheStore {
  */
 export type ConflictPolicy = "prefer-local" | "prefer-remote";
 
+/**
+ * What an interactive {@link ConflictResolver} decided.
+ *
+ * Sparse on purpose: anything the resolver leaves out falls back to the engine's
+ * {@link ConflictPolicy}, so a resolver may decide some conflicts and defer the rest (the VS
+ * Code dialog's "Skip This Conflict" does exactly that).
+ *
+ * A `null` value means "keep no version of this item" — i.e. accept the deletion. Note this is
+ * different from leaving the key out, which defers to the policy.
+ */
+export interface ConflictDecisions {
+	/** Winning version per conflicting todo id. */
+	todos?: Map<number, Todo | null>;
+	/** Winning list per conflicting file path (workspace scope). */
+	files?: Map<string, Todo[] | null>;
+	/**
+	 * Extra todos to add to the merged list, for a resolver that wants to keep *both* versions.
+	 *
+	 * An `id-collision` is the case that needs this: the two todos were created independently on
+	 * the two devices and merely drew the same random id, so they are not versions of each other
+	 * and picking a side destroys a real item. Keeping both means re-adding one under a fresh id,
+	 * which no per-id decision can express. Ids must not already be in use — pick them with
+	 * `generateUniqueId` over the `knownIds` the resolver was handed.
+	 */
+	extraTodos?: Todo[];
+}
+
+/**
+ * Hook for a host that wants to ask the user instead of applying a policy.
+ *
+ * Called during a reconcile, before anything is written, whenever a merge produces conflicts.
+ * Return `null` to abort the whole reconcile: nothing is pushed, the baseline is left alone,
+ * and the caller gets a retryable {@link SyncErrorType.ConflictError} — so the next sync
+ * presents the same decision rather than silently picking a side.
+ *
+ * May be called more than once per reconcile: if the remote moves during the write window the
+ * engine re-merges against the fresh content, and genuinely new conflicts need deciding too.
+ * Conflicts already settled do not come back — the previous decision is in the data being
+ * re-merged, so the fresh remote has to disagree with *that* to conflict again.
+ *
+ * The PWA supplies none of this and keeps the policy path, recording what was decided for
+ * after-the-fact review; the extension supplies one and blocks on a quick pick.
+ */
+export type ConflictResolver = (conflicts: {
+	todos: ConflictSet[];
+	files: FileConflictSet[];
+	/**
+	 * Every todo id this merge touched (base, local and remote sides of the list being merged).
+	 * A resolver returning {@link ConflictDecisions.extraTodos} picks free ids against this.
+	 */
+	knownIds: number[];
+}) => Promise<ConflictDecisions | null>;
+
 export interface GistSyncEngineOptions {
 	client: GistFileIO;
 	gistId: string;
 	cacheStore?: CacheStore;
 	/** Default policy for unresolved conflicts. Defaults to "prefer-local". */
 	conflictPolicy?: ConflictPolicy;
+	/** Optional interactive resolver; anything it does not decide falls back to the policy. */
+	conflictResolver?: ConflictResolver;
 	logger?: (message: string) => void;
+}
+
+/** Raised internally when a {@link ConflictResolver} returns null. Never escapes the engine. */
+class ConflictCancelled extends Error {
+	constructor() {
+		super("Conflict resolution cancelled");
+		this.name = "ConflictCancelled";
+	}
 }
 
 /** Outcome of reconciling a single file. */
@@ -84,11 +147,25 @@ export interface ReconcileResult<T> {
 const EMPTY_GLOBAL: GlobalGistData = { userTodos: [] };
 const emptyWorkspace = (): WorkspaceGistData => ({ workspaceTodos: [], filesData: {}, filesDataPaths: {} });
 
+/** Union of the todo ids across the lists a merge saw; handed to a {@link ConflictResolver}. */
+function idsIn(...lists: Todo[][]): number[] {
+	return [...new Set(lists.flat().map((todo) => todo.id))];
+}
+
+/**
+ * Deep copy of gist data. Everything the engine stores is JSON by construction — it is read
+ * from and written to a gist file — so a JSON round trip is both sufficient and exact.
+ */
+function cloneData<T>(value: T): T {
+	return JSON.parse(JSON.stringify(value)) as T;
+}
+
 export class GistSyncEngine {
 	private readonly client: GistFileIO;
 	private readonly gistId: string;
 	private readonly store: CacheStore;
 	private readonly policy: ConflictPolicy;
+	private readonly resolver?: ConflictResolver;
 	private readonly logger?: (message: string) => void;
 
 	constructor(options: GistSyncEngineOptions) {
@@ -96,6 +173,7 @@ export class GistSyncEngine {
 		this.gistId = options.gistId;
 		this.store = options.cacheStore ?? new MemoryCacheStore();
 		this.policy = options.conflictPolicy ?? "prefer-local";
+		this.resolver = options.conflictResolver;
 		this.logger = options.logger;
 	}
 
@@ -205,9 +283,9 @@ export class GistSyncEngine {
 			snapshot.workspaceTodos,
 			currentLocal.workspaceTodos,
 			reconciled.workspaceTodos,
-			snapshot.filesData,
-			currentLocal.filesData,
-			reconciled.filesData,
+			snapshot.filesData ?? {},
+			currentLocal.filesData ?? {},
+			reconciled.filesData ?? {},
 			snapshot.filesDataPaths ?? {},
 			currentLocal.filesDataPaths ?? {},
 			reconciled.filesDataPaths ?? {}
@@ -236,29 +314,76 @@ export class GistSyncEngine {
 	 * one file only the genuinely conflicting ids are the policy’s to decide, and taking the raw
 	 * array would discard everything the losing side added to that file.
 	 */
-	private resolveFiles(autoMerged: TodoFilesData, conflicts: FileConflictSet[]): TodoFilesData {
+	private resolveFiles(
+		autoMerged: TodoFilesData,
+		conflicts: FileConflictSet[],
+		decisions?: ConflictDecisions
+	): TodoFilesData {
 		const prefer = this.policy === "prefer-remote" ? "remote" : "local";
 		const finalFilesData: TodoFilesData = { ...autoMerged };
 		for (const fc of conflicts) {
-			const settled = resolveFileConflict(fc, prefer);
+			const settled = decisions?.files?.has(fc.filePath)
+				? decisions.files.get(fc.filePath) ?? null
+				: resolveFileConflict(fc, prefer);
 			if (settled) {
 				finalFilesData[fc.filePath] = settled;
+			} else {
+				// The winning side has no version of this file, so the deletion stands. Deleted
+				// explicitly rather than merely "not added": `autoMerged` never carries a
+				// conflicting path, but a resolver may settle one that a *previous* merge pass in
+				// the same reconcile had already written in.
+				delete finalFilesData[fc.filePath];
 			}
-			// else: the preferred side deleted the file, so it stays out of the merged set.
 		}
 		return finalFilesData;
 	}
 
-	/** Picks the winning side for each conflict per the active policy; dropped if that side deleted. */
-	private resolve(conflicts: ConflictSet[]): Todo[] {
+	/**
+	 * Picks the winning side for each conflict; dropped if that side deleted.
+	 *
+	 * A {@link ConflictResolver}'s decision wins where it made one. Everything else falls back to
+	 * the active policy — which is also the whole path when no resolver is configured.
+	 */
+	private resolve(conflicts: ConflictSet[], decisions?: ConflictDecisions): Todo[] {
 		const resolved: Todo[] = [];
 		for (const c of conflicts) {
-			const pick = this.policy === "prefer-remote" ? c.remote : c.local;
+			const pick = decisions?.todos?.has(c.todoId)
+				? decisions.todos.get(c.todoId) ?? null
+				: this.policy === "prefer-remote"
+					? c.remote
+					: c.local;
 			if (pick) {
 				resolved.push(pick);
 			}
 		}
+		// Keep-both copies. These carry ids that are in neither base nor either side, so
+		// `mergeWithPreservedPositions` appends them after everything that was in base.
+		for (const extra of decisions?.extraTodos ?? []) {
+			resolved.push(extra);
+		}
 		return resolved;
+	}
+
+	/**
+	 * Asks the resolver, if there is one and there is anything to ask about.
+	 *
+	 * Throws {@link ConflictCancelled} when the resolver declines, which `reconcile` turns into a
+	 * retryable failure. Throwing rather than threading a null through every merge site keeps the
+	 * abort from being silently dropped at one of them.
+	 */
+	private async decide(
+		conflicts: ConflictSet[],
+		fileConflicts: FileConflictSet[],
+		knownIds: number[]
+	): Promise<ConflictDecisions | undefined> {
+		if (!this.resolver || (conflicts.length === 0 && fileConflicts.length === 0)) {
+			return undefined;
+		}
+		const decisions = await this.resolver({ todos: conflicts, files: fileConflicts, knownIds });
+		if (decisions === null) {
+			throw new ConflictCancelled();
+		}
+		return decisions;
 	}
 
 	/**
@@ -269,9 +394,14 @@ export class GistSyncEngine {
 		return this.reconcile("global", fileName, localData, {
 			empty: () => ({ userTodos: [] }),
 			parse: parseGlobal,
-			merge: (base, local, remote) => {
+			merge: async (base, local, remote) => {
 				const { autoMerged, conflicts } = threeWayMerge(base.userTodos, local.userTodos, remote.userTodos);
-				const resolved = this.resolve(conflicts);
+				const decisions = await this.decide(
+					conflicts,
+					[],
+					idsIn(base.userTodos, local.userTodos, remote.userTodos)
+				);
+				const resolved = this.resolve(conflicts, decisions);
 				const finalTodos = mergeWithPreservedPositions(autoMerged, resolved, base.userTodos);
 				return { merged: { userTodos: finalTodos }, conflicts, fileConflicts: [] };
 			},
@@ -286,25 +416,53 @@ export class GistSyncEngine {
 		return this.reconcile("workspace", fileName, localData, {
 			empty: emptyWorkspace,
 			parse: parseWorkspace,
-			merge: (base, local, remote) => {
+			merge: async (base, local, remote) => {
+				// `filesData` is defaulted like `filesDataPaths`, not dereferenced bare. A cached
+				// baseline can lack it: the extension's old download path parsed the gist file
+				// straight into the cache and normalized only `filesDataPaths`, so a workspace file
+				// written without a `filesData` key — hand-edited, or produced by another tool —
+				// was stored that way. `mergeFilesData` then threw on `Object.keys(undefined)`,
+				// which the caller reports as an unknown error and the scope sits on Error until
+				// someone clears the cache.
 				const result = threeWayMergeWorkspace(
 					base.workspaceTodos,
 					local.workspaceTodos,
 					remote.workspaceTodos,
-					base.filesData,
-					local.filesData,
-					remote.filesData,
+					base.filesData ?? {},
+					local.filesData ?? {},
+					remote.filesData ?? {},
 					base.filesDataPaths ?? {},
 					local.filesDataPaths ?? {},
 					remote.filesDataPaths ?? {}
 				);
-				const resolvedWs = this.resolve(result.workspaceConflicts);
+				// One prompt for the whole file: the workspace todo conflicts and the per-file ones
+				// come out of a single merge, so asking twice would make the user answer half a
+				// decision, then the other half.
+				const decisions = await this.decide(
+					result.workspaceConflicts,
+					result.fileConflicts,
+					// Per-file ids are included: a keep-both copy must be unique across everything
+					// this gist file holds, not just the workspace list it was raised from.
+					idsIn(
+						base.workspaceTodos,
+						local.workspaceTodos,
+						remote.workspaceTodos,
+						...Object.values(base.filesData ?? {}),
+						...Object.values(local.filesData ?? {}),
+						...Object.values(remote.filesData ?? {})
+					)
+				);
+				const resolvedWs = this.resolve(result.workspaceConflicts, decisions);
 				const finalWorkspaceTodos = mergeWithPreservedPositions(
 					result.autoMergedWorkspaceTodos,
 					resolvedWs,
 					base.workspaceTodos
 				);
-				const finalFilesData = this.resolveFiles(result.autoMergedFilesData, result.fileConflicts);
+				const finalFilesData = this.resolveFiles(
+					result.autoMergedFilesData,
+					result.fileConflicts,
+					decisions
+				);
 				const merged: WorkspaceGistData = {
 					workspaceTodos: finalWorkspaceTodos,
 					filesData: finalFilesData,
@@ -322,7 +480,38 @@ export class GistSyncEngine {
 		strategy: {
 			empty: () => T;
 			parse: (raw: string) => T;
-			merge: (base: T, local: T, remote: T) => { merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] };
+			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
+		}
+	): Promise<SyncResult<ReconcileResult<T>>> {
+		try {
+			return await this.reconcileInner(scope, fileName, localData, strategy);
+		} catch (error) {
+			// A resolver that declined. Nothing was written and the baseline is untouched, so the
+			// next sync re-derives the same conflicts and asks again — which is what "decide
+			// later" has to mean if the item is not to quietly vanish.
+			if (error instanceof ConflictCancelled) {
+				return {
+					success: false,
+					error: {
+						type: SyncErrorType.ConflictError,
+						message: `Conflict resolution for ${fileName} was cancelled; nothing was synced.`,
+						timestamp: new Date().toISOString(),
+						retryable: true,
+					},
+				};
+			}
+			throw error;
+		}
+	}
+
+	private async reconcileInner<T extends object>(
+		scope: "global" | "workspace",
+		fileName: string,
+		localData: T,
+		strategy: {
+			empty: () => T;
+			parse: (raw: string) => T;
+			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
 		const key = this.cacheKey(scope, fileName);
@@ -353,7 +542,7 @@ export class GistSyncEngine {
 			const recheck = await this.client.readFile(this.gistId, fileName);
 			if (recheck.success) {
 				const created = strategy.parse(recheck.data ?? "");
-				const { merged, conflicts, fileConflicts } = strategy.merge(
+				const { merged, conflicts, fileConflicts } = await strategy.merge(
 					strategy.empty(),
 					localData,
 					created
@@ -406,7 +595,7 @@ export class GistSyncEngine {
 		}
 
 		// 3d. Both changed → three-way merge, then push the merged result.
-		const { merged, conflicts, fileConflicts } = strategy.merge(base, localData, remoteData);
+		const { merged, conflicts, fileConflicts } = await strategy.merge(base, localData, remoteData);
 		return this.pushVerified(key, fileName, remoteData, merged, true, conflicts, fileConflicts, strategy);
 	}
 
@@ -435,7 +624,7 @@ export class GistSyncEngine {
 		fileConflicts: FileConflictSet[],
 		strategy: {
 			parse: (raw: string) => T;
-			merge: (base: T, local: T, remote: T) => { merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] };
+			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
 		let base = readRemote;
@@ -446,15 +635,30 @@ export class GistSyncEngine {
 
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const recheck = await this.client.readFile(this.gistId, fileName);
-			// A file that vanished mid-flight is not a concurrent edit to merge with; fall through
-			// and let the write recreate it.
+
+			// Only a genuine "the file is not there" clears us to write without comparing. A file
+			// that vanished mid-flight is not a concurrent edit to merge with, so fall through and
+			// let the write recreate it.
+			//
+			// Any OTHER failure — a network drop, a 5xx, a rate limit — leaves us unable to tell
+			// an absent file from a peer's fresh content, and this is the one check standing
+			// between the write and an overwrite. Treating it as "absent" would push our data over
+			// whatever is really there and then record it as the clean baseline, so the next
+			// reconcile would see remote == base and never pull the lost change back: precisely
+			// the silent, permanent loss this verified write exists to prevent. Give up instead —
+			// the remote is untouched and the baseline unmoved, so the next sync simply retries.
+			// (The seeding path in `reconcileInner` already makes this distinction.)
+			if (!recheck.success && recheck.error?.type !== SyncErrorType.FileNotFoundError) {
+				return { success: false, error: recheck.error };
+			}
+
 			const current = recheck.success ? strategy.parse(recheck.data ?? "") : undefined;
 
 			if (current !== undefined && !isEqual(current, base)) {
 				this.logger?.(
 					`[GistSyncEngine] remote moved during reconcile of ${fileName}; re-merging (attempt ${attempt + 1})`
 				);
-				const remerged = strategy.merge(base, data, current);
+				const remerged = await strategy.merge(base, data, current);
 				data = remerged.merged;
 				allConflicts = [...allConflicts, ...remerged.conflicts];
 				allFileConflicts = [...allFileConflicts, ...remerged.fileConflicts];
@@ -505,7 +709,7 @@ export class GistSyncEngine {
 		strategy: {
 			empty: () => T;
 			parse: (raw: string) => T;
-			merge: (base: T, local: T, remote: T) => { merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] };
+			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
 		const empty = strategy.empty();
@@ -522,15 +726,30 @@ export class GistSyncEngine {
 			});
 		}
 
-		const { merged, conflicts, fileConflicts } = strategy.merge(empty, localData, remoteData);
+		const { merged, conflicts, fileConflicts } = await strategy.merge(empty, localData, remoteData);
 		// Same TOCTOU window as the ordinary push paths, so the same verified write.
 		return this.pushVerified(key, fileName, remoteData, merged, true, conflicts, fileConflicts, strategy);
 	}
 
+	/**
+	 * Persists `data` and the baseline it was reconciled against.
+	 *
+	 * Every caller passes the SAME object for both — the reconciled result is also the new
+	 * baseline — so the baseline is cloned before it is stored. Without that, `data` and
+	 * `lastCleanRemoteData` are one object in the saved cache, and any {@link CacheStore} that
+	 * persists by reference lets a later in-place edit of `data` silently move the baseline with
+	 * it. The merge then has no record of what the remote looked like: local always equals base,
+	 * so a genuine local edit reads as "nothing to push", the untouched remote reads as a remote
+	 * change, and the edit is pulled away and deleted.
+	 *
+	 * That is not hypothetical — it is exactly what the VS Code extension does. Its cache lives
+	 * in a memento, whose `get` hands back the live stored object, and `SyncStorageManager`
+	 * records an edit with `cache.data.userTodos = todos`, in place.
+	 */
 	private async saveCache<T>(key: string, data: T, lastCleanRemoteData: T): Promise<void> {
 		await this.store.save<T>(key, {
 			data,
-			lastCleanRemoteData,
+			lastCleanRemoteData: cloneData(lastCleanRemoteData),
 			lastSynced: new Date().toISOString(),
 			isDirty: false,
 		});

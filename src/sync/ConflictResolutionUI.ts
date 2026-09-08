@@ -1,20 +1,37 @@
 /**
  * Conflict Resolution UI
  * Enhanced per-item conflict resolution using multi-step QuickPick
+ *
+ * This is the extension's {@link ConflictResolver}: it turns the conflicts a reconcile found
+ * into a {@link ConflictDecisions} the shared {@link GistSyncEngine} applies. It returns
+ * *decisions*, not a finished todo list — an earlier version returned the list, and because a
+ * three-way merge deliberately leaves conflicting ids out of its auto-merged output, every
+ * conflict the user did not explicitly resolve was absent from the uploaded result and deleted
+ * on both devices. Decisions are sparse by design: anything left undecided falls back to the
+ * engine's policy (prefer-local), so "decide later" means the local version stands and the
+ * conflict is presented again, rather than the item disappearing.
  */
 
 import * as vscode from "vscode";
 import { Todo } from "../todo/todoTypes";
-import { ConflictSet } from "./ThreeWayMerge";
-import { formatMergeSummary } from "./ThreeWayMerge";
+import {
+	ConflictDecisions,
+	ConflictSet,
+	FileConflictSet,
+	generateUniqueId,
+	resolveFileConflict,
+} from "../core";
 import { getGistId } from "../utilities/syncConfig";
 
 /**
- * Result of user's conflict resolution choices
+ * Result of user's conflict resolution choices.
+ *
+ * `keep-both` only applies to `id-collision`, where the two todos are independent items that
+ * happen to share a random id rather than two versions of one item.
  */
 export interface ConflictResolution {
 	conflictId: number;
-	resolution: "local" | "remote" | "skip";
+	resolution: "local" | "remote" | "keep-both" | "skip";
 }
 
 export interface ConflictResolutionResult {
@@ -27,41 +44,103 @@ export interface ConflictResolutionResult {
  */
 export class ConflictResolutionUI {
 	/**
-	 * Show conflict resolution wizard
-	 * Returns resolved todos or null if cancelled
+	 * Ask the user about everything one reconcile found, todo- and file-level.
 	 *
-	 * @param conflicts - Array of conflicts to resolve
-	 * @param autoMerged - Todos that were successfully auto-merged
-	 * @param base - Base version for context
-	 * @returns Array of todos after resolution, or null if cancelled
+	 * Returns null when the user backs out, which aborts the reconcile: nothing is written and
+	 * the same decision comes back on the next sync.
+	 *
+	 * @param conflicts - Todo-level conflicts
+	 * @param fileConflicts - Per-file list conflicts (workspace scope; empty for the user scope)
+	 * @param knownIds - Ids already in play, so a keep-both copy can pick a free one
 	 */
-	static async resolveConflicts(
+	static async resolve(
 		conflicts: ConflictSet[],
-		autoMerged: Todo[],
-		base: Todo[]
-	): Promise<Todo[] | null> {
+		fileConflicts: FileConflictSet[],
+		knownIds: number[]
+	): Promise<ConflictDecisions | null> {
+		// Todos first, then files. The order matters: either half can abort the whole reconcile
+		// (the user backs out, or skips every conflict), and asking the coarse file question first
+		// meant an abort in the todo wizard threw away answers the user had already given. Nothing
+		// is applied until both halves return, so the cheaper-to-re-answer half goes last.
+		let todoDecisions: ConflictDecisions = {};
+		if (conflicts.length > 0) {
+			const decided = await this.resolveTodoConflicts(conflicts, knownIds);
+			if (!decided) {
+				return null;
+			}
+			todoDecisions = decided;
+		}
+
+		if (fileConflicts.length === 0) {
+			return todoDecisions;
+		}
+
+		const fileDecisions = await this.resolveFileConflicts(fileConflicts);
+		if (!fileDecisions) {
+			return null;
+		}
+		return { ...todoDecisions, files: fileDecisions };
+	}
+
+	/**
+	 * The file-level question. Resolved through `resolveFileConflict` rather than by storing the
+	 * chosen side's array: within one file only the genuinely conflicting ids are the choice's to
+	 * decide, and taking the raw array would also discard every todo the other device added to
+	 * that file — items the user was never shown and never chose to discard.
+	 */
+	private static async resolveFileConflicts(
+		fileConflicts: FileConflictSet[]
+	): Promise<Map<string, Todo[] | null> | null> {
+		const paths = fileConflicts.map((conflict) => conflict.filePath).join(", ");
+		const choice = await vscode.window.showWarningMessage(
+			`Workspace Sync: ${fileConflicts.length} file list conflict(s) detected.`,
+			{ modal: true, detail: `Affected files: ${paths}` },
+			"Keep Local Files",
+			"Keep Remote Files",
+			"View Gist"
+		);
+
+		if (choice === "View Gist") {
+			await this.openGist();
+			return null;
+		}
+
+		// Dismissing the dialog aborts rather than silently choosing. Escape must not be a
+		// destructive answer to a destructive question.
+		if (choice !== "Keep Local Files" && choice !== "Keep Remote Files") {
+			return null;
+		}
+
+		const prefer = choice === "Keep Local Files" ? "local" : "remote";
+		const decided = new Map<string, Todo[] | null>();
+		for (const conflict of fileConflicts) {
+			decided.set(conflict.filePath, resolveFileConflict(conflict, prefer));
+		}
+		return decided;
+	}
+
+	private static async resolveTodoConflicts(
+		conflicts: ConflictSet[],
+		knownIds: number[]
+	): Promise<ConflictDecisions | null> {
 		// Step 1: Overview and choice of resolution mode
-		const mode = await this.showOverview(conflicts, autoMerged, base);
+		const mode = await this.showOverview(conflicts);
 		if (!mode) {
 			return null;
 		}
 
-		// Batch mode: Keep all local
-		if (mode === "all-local") {
-			return conflicts.map((c) => c.local).filter((t): t is Todo => t !== null);
-		}
-
-		// Batch mode: Keep all remote
-		if (mode === "all-remote") {
-			return conflicts.map((c) => c.remote).filter((t): t is Todo => t !== null);
+		if (mode === "all-local" || mode === "all-remote") {
+			const side = mode === "all-local" ? "local" : "remote";
+			const todos = new Map<number, Todo | null>();
+			for (const conflict of conflicts) {
+				todos.set(conflict.todoId, side === "local" ? conflict.local : conflict.remote);
+			}
+			return { todos };
 		}
 
 		// View gist in browser
 		if (mode === "view-gist") {
-			const gistId = getGistId();
-			if (gistId) {
-				await vscode.env.openExternal(vscode.Uri.parse(`https://gist.github.com/${gistId}`));
-			}
+			await this.openGist();
 			return null;
 		}
 
@@ -71,21 +150,24 @@ export class ConflictResolutionUI {
 			if (!result || result.cancelled) {
 				return null;
 			}
-			return this.applyResolutions(conflicts, result.resolutions);
+			return this.applyResolutions(conflicts, result.resolutions, knownIds);
 		}
 
 		return null;
 	}
 
+	private static async openGist(): Promise<void> {
+		const gistId = getGistId();
+		if (gistId) {
+			await vscode.env.openExternal(vscode.Uri.parse(`https://gist.github.com/${gistId}`));
+		}
+	}
+
 	/**
 	 * Step 1: Show overview and resolution mode selection
 	 */
-	private static async showOverview(
-		conflicts: ConflictSet[],
-		autoMerged: Todo[],
-		base: Todo[]
-	): Promise<string | null> {
-		const autoMergeSummary = formatMergeSummary({ autoMerged, conflicts: [] }, base);
+	private static async showOverview(conflicts: ConflictSet[]): Promise<string | null> {
+		const collisions = conflicts.filter((c) => c.conflictType === "id-collision").length;
 
 		const items = [
 			{
@@ -114,9 +196,17 @@ export class ConflictResolutionUI {
 			},
 		];
 
+		// Items with no common history are called out because a batch choice may be the wrong tool
+		// for them: if two devices independently created items that drew the same id, "keep all
+		// local" throws a real item away. Per-item offers Keep Both for those.
+		const placeHolder =
+			collisions > 0
+				? `${conflicts.length} conflict(s), ${collisions} with no shared history. Resolve those individually`
+				: `${conflicts.length} conflict(s) to resolve`;
+
 		const selected = await vscode.window.showQuickPick(items, {
 			title: "Sync Conflict Detected",
-			placeHolder: `Auto-merged: ${autoMergeSummary} | Conflicts: ${conflicts.length}`,
+			placeHolder,
 			ignoreFocusOut: true,
 			matchOnDescription: true,
 			matchOnDetail: true,
@@ -191,14 +281,14 @@ export class ConflictResolutionUI {
 		conflict: ConflictSet,
 		index: number,
 		total: number
-	): Promise<"local" | "remote" | "skip" | "back" | "cancel" | "view-diff"> {
+	): Promise<"local" | "remote" | "keep-both" | "skip" | "back" | "cancel" | "view-diff"> {
 		const conflictDetail = this.formatConflictDetail(conflict);
 
 		const items: Array<{
 			label: string;
 			description: string;
 			detail: string;
-			value: "local" | "remote" | "skip" | "back" | "view-diff";
+			value: "local" | "remote" | "keep-both" | "skip" | "back" | "view-diff";
 		}> = [
 			{
 				label: "$(check) Keep Local",
@@ -212,6 +302,26 @@ export class ConflictResolutionUI {
 				detail: conflict.remote ? this.formatFullTodoText(conflict.remote) : "[This todo was deleted]",
 				value: "remote",
 			},
+		];
+
+		// `id-collision` means only "this merge had no common ancestor for this id" — the two
+		// sides may be independently created items that drew the same random id, in which case
+		// picking a side destroys a real item, OR simply two versions of one item seen without a
+		// baseline (a first sync, or a scope just switched to GitHub, merges against an empty
+		// base and labels every differing shared id this way). Nothing in the data distinguishes
+		// them, so offer Keep Both without claiming which it is and without recommending it.
+		if (conflict.conflictType === "id-collision" && conflict.local && conflict.remote) {
+			items.push({
+				label: "$(diff-added) Keep Both",
+				description: "If these are two different items, not two versions of one",
+				detail:
+					"Keeps this device's item and adds the other device's as a separate item. " +
+					"Choose this only if the two texts are unrelated; otherwise you get a duplicate.",
+				value: "keep-both",
+			});
+		}
+
+		items.push(
 			{
 				label: "$(diff) View Full Diff",
 				description: "Open side-by-side comparison",
@@ -221,10 +331,10 @@ export class ConflictResolutionUI {
 			{
 				label: "$(debug-step-over) Skip This Conflict",
 				description: "Decide later",
-				detail: "You'll be prompted again next sync",
+				detail: "Keeps this device's version for now; you'll be prompted again next sync",
 				value: "skip",
-			},
-		];
+			}
+		);
 
 		// Add back option if not first conflict
 		if (index > 0) {
@@ -261,10 +371,12 @@ export class ConflictResolutionUI {
 		const resolved = resolutions.filter((r) => r.resolution !== "skip").length;
 		const skipped = resolutions.filter((r) => r.resolution === "skip").length;
 
-		// Check if all were skipped
+		// Every conflict skipped: there is nothing to apply, so abort the reconcile rather than
+		// push. Aborting leaves the baseline untouched, which is what makes the same conflicts
+		// come back next sync — the promise the Skip option makes.
 		if (skipped === conflicts.length) {
 			vscode.window.showWarningMessage(
-				"All conflicts skipped. Sync cancelled. You'll be asked again next sync."
+				"All conflicts skipped. Nothing was synced: this device's versions are unchanged and you'll be asked again next sync."
 			);
 			return false;
 		}
@@ -282,8 +394,16 @@ export class ConflictResolutionUI {
 					text += `Keep Local: ${this.truncate(conflict.local?.text || "", 40)}`;
 				} else if (r.resolution === "remote") {
 					text += `Keep Remote: ${this.truncate(conflict.remote?.text || "", 40)}`;
+				} else if (r.resolution === "keep-both") {
+					text += `Keep Both: ${this.truncate(conflict.local?.text || "", 20)} + ${this.truncate(
+						conflict.remote?.text || "",
+						20
+					)}`;
 				} else {
-					text += "SKIPPED";
+					text += `SKIPPED (keeps this device's version for now): ${this.truncate(
+						conflict.local?.text || conflict.remote?.text || "",
+						40
+					)}`;
 				}
 				return text;
 			})
@@ -342,28 +462,45 @@ export class ConflictResolutionUI {
 	 */
 	private static applyResolutions(
 		conflicts: ConflictSet[],
-		resolutions: ConflictResolution[]
-	): Todo[] {
-		const resolved: Todo[] = [];
+		resolutions: ConflictResolution[],
+		knownIds: number[]
+	): ConflictDecisions {
+		const todos = new Map<number, Todo | null>();
+		const extraTodos: Todo[] = [];
+		// Ids handed out here must not collide with each other either, so the pool grows as we go.
+		const pool = knownIds.map((id) => ({ id }));
 
 		for (const resolution of resolutions) {
-			if (resolution.resolution === "skip") {
-				continue; // Skip this conflict, won't be in result
-			}
-
 			const conflict = conflicts.find((c) => c.todoId === resolution.conflictId);
 			if (!conflict) {
 				continue;
 			}
 
-			if (resolution.resolution === "local" && conflict.local) {
-				resolved.push(conflict.local);
-			} else if (resolution.resolution === "remote" && conflict.remote) {
-				resolved.push(conflict.remote);
+			// A skipped conflict is deliberately left OUT of the map: an absent key means "no
+			// decision", which the engine settles with its prefer-local policy. Recording it as
+			// null instead would mean "delete this item", and returning a list rather than a map —
+			// what this used to do — dropped the item entirely, deleting it on both devices under
+			// a menu entry that promised to ask again.
+			if (resolution.resolution === "skip") {
+				continue;
+			}
+
+			if (resolution.resolution === "local") {
+				todos.set(conflict.todoId, conflict.local);
+			} else if (resolution.resolution === "remote") {
+				todos.set(conflict.todoId, conflict.remote);
+			} else if (resolution.resolution === "keep-both" && conflict.local && conflict.remote) {
+				// This device's item keeps the contested id; the other device's is re-added under a
+				// fresh one. Both survive, which for an id collision is the only non-destructive
+				// answer — see resolveOneConflict.
+				todos.set(conflict.todoId, conflict.local);
+				const newId = generateUniqueId(pool);
+				pool.push({ id: newId });
+				extraTodos.push({ ...conflict.remote, id: newId });
 			}
 		}
 
-		return resolved;
+		return extraTodos.length > 0 ? { todos, extraTodos } : { todos };
 	}
 
 	/**

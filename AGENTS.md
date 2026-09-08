@@ -1,14 +1,26 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Root VS Code extension (TypeScript) in `src/`; compiled output in `out/`.
+- Root VS Code extension (TypeScript) in `src/`; compiled output in `out/src/`.
 - Webview UI (Angular) in `webview-ui/` with its own `package.json` and tests.
 - Tests for the extension in `src/test/` (Mocha via @vscode/test).
 - Assets in `assets/`, docs in `docs/`, configuration in `.eslintrc.json`, `.prettierrc`, and `tsconfig.json`.
 
+### `packages/core` is compiled into the extension, not installed
+
+The extension compiles `packages/core/src/**` alongside `src/**` and imports it through the one
+re-export in **`src/core.ts`**. Import shared code from there (`import { … } from "../core"`),
+never as `"@vsc-todo/core"`: the package is ESM with bundler-style resolution, so a `paths`
+mapping would type-check and then fail to `require` at runtime. The webview keeps using the
+package name — its bundler resolves it via `webview-ui/tsconfig.json`.
+
+Because there are two source roots, tsc's inferred root is the repo root, so output lands at
+`out/src/**` and `out/packages/core/src/**`. That is why `main` is `./out/src/extension.js` and
+the test glob is `out/src/test/**`.
+
 ## Build, Test, and Development Commands
-- Install all deps: `npm run install:all` (root + webview).
-- Build extension: `npm run compile` (emits to `out/`). Watch: `npm run watch`.
+- Install all deps: `npm run install:all` (root + webview + core).
+- Build extension: `npm run compile` (emits to `out/src/`). Watch: `npm run watch`.
 - Lint extension: `npm run lint`.
 - Test extension: `npm test`.
 - Webview dev server: `npm run start:webview` (equivalent to `npm --prefix webview-ui run start`).
@@ -46,11 +58,13 @@ request and again on pushes to `master`/`main`.
 | Webview + PWA (Karma/Jasmine) | `webview-ui/src/**/*.spec.ts` | `npm run test:webview` |
 | Core sync engine (Vitest) | `packages/core/test/*.test.ts` | `npm run test:core` |
 
-- `packages/core` holds the PWA's sync engine, three-way merge, tag rules and IndexedDB
-  stores. It installs separately (`npm run install:all` covers it) and has no runtime deps.
+- `packages/core` holds the sync engine, three-way merge, tag rules and IndexedDB stores. It
+  installs separately (`npm run install:all` covers it) and has no runtime deps. **Both** peers
+  run it — the extension compiles it in (see above), the PWA bundles it — so a change here
+  changes how the extension syncs too, and `npm run test:core` is not optional.
 - Specs under `webview-ui/src/app/pwa/**` are PWA-only but run in the same Karma pass as the
   shared ones — there is no separate PWA test command.
-- The extension runner picks up `out/test/**/*.test.js`, so a suite anywhere under
+- The extension runner picks up `out/src/test/**/*.test.js`, so a suite anywhere under
   `src/test/` is collected; it does not have to sit in `src/test/suite/`.
 - CI also builds **both** Angular targets (`build` and `build:pwa`). The PWA-only files
   (`bootstrap.pwa.ts`, `data.providers.pwa.ts`, `app/pwa/**`) are type-checked by nothing

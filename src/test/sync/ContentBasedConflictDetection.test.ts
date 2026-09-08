@@ -9,12 +9,17 @@ import { Todo } from "../../todo/todoTypes";
 import { GlobalGistData, WorkspaceGistData, GistCache } from "../../sync/syncTypes";
 
 suite("Content-Based Conflict Detection Test Suite", () => {
-	// Helper function to create a sample todo
+	// Helper function to create a sample todo.
+	//
+	// The creation date is FIXED, not `new Date()`. These tests build the "same" todo twice —
+	// once as the remote, once as the baseline — and assert the two compare equal. With a
+	// per-call timestamp they differ whenever the clock ticks between the two calls, so the
+	// suite failed at random under load, claiming a remote change that had not happened.
 	const createTodo = (id: number, text: string): Todo => ({
 		id,
 		text,
 		completed: false,
-		creationDate: new Date().toISOString(),
+		creationDate: "2026-01-01T00:00:00.000Z",
 		isMarkdown: false,
 		isNote: false,
 	});
