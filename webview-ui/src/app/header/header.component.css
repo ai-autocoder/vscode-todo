@@ -60,6 +60,19 @@
 		--header-icon-button-size: 32px;
 	}
 
+	/* Touch adds a fourth 48px target (the sync indicator) to a row that already had three, on a
+	   375px screen shared with the search field — the squeeze that once truncated its placeholder
+	   to "Search todos and n" (see pwa/vscode-theme.css). Each target carries ~14px of padding
+	   around a ~20px glyph, so they stay mis-tap-proof touching; the gap is what the field needs
+	   back. Must live here: this rule's `_ngcontent` scoping outranks that global file.
+
+	   Conditional on the indicator actually being rendered — it is hidden for a scope that is not
+	   gist-backed — so an extension user with sync off does not lose the gap between the three
+	   buttons they do have. Where `:has()` is unsupported the rule drops out and the header keeps
+	   its normal gap, i.e. exactly the pre-indicator behaviour. */
+	.header-actions:has(.sync-indicator) {
+		gap: 0;
+	}
 }
 
 .search-bar {
@@ -163,6 +176,43 @@
 	.search-bar {
 		width: 100%;
 	}
+}
+
+
+/*
+ * The same squeeze on a fine pointer: the extension sidebar is the narrowest surface the header
+ * has, and it never matches the coarse-pointer block above, so it needs the gap trimmed on width
+ * too. 500px is the breakpoint styles.css already uses for the sidebar's own layout switch.
+ * Conditional on the indicator being rendered, for the reason given above.
+ */
+@media (max-width: 500px) {
+	.header-actions:has(.sync-indicator) {
+		gap: 0;
+	}
+}
+
+/* Sync indicator, beside the menu button. All four of its glyphs use `fill: currentColor`
+   (see icon.component.html), unlike the rest of the icon set, so `color` here is what paints
+   them — which is also why the passive states are de-emphasised with a dimmer *token* rather
+   than with `opacity`: an opacity dim over the icon set's hardcoded #C5C5C5 came out at about
+   1.3:1 on a light ground, i.e. invisible in the indicator's most common state. */
+.sync-indicator {
+	color: var(--vscode-descriptionForeground);
+}
+
+.sync-indicator.status-dirty {
+	/* The PWA supplies this for both its themes (pwa/vscode-theme.css); the fallback is for a VS
+	   Code theme that omits the var, and reads on both a light and a dark ground. */
+	color: var(--vscode-charts-yellow, #b58900);
+}
+
+.sync-indicator.status-error {
+	color: var(--vscode-errorForeground);
+}
+
+/* Only the two actionable states are pressable; the rest must not invite a click. */
+.sync-indicator:not(.actionable)::part(control) {
+	cursor: default;
 }
 
 /* Spinning animation for sync button */

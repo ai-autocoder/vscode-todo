@@ -79,6 +79,9 @@ import {
 	MessageActionsToWebview,
 	messagesFromWebview,
 	GitHubSyncInfo,
+	SyncScopeStatus,
+	SyncStatusInfo,
+	SyncStatusValue,
 } from "../../../../src/panels/message";
 import { Config } from "../../../../src/utilities/config";
 import type { DataGateway, InboundMessage } from "./data-gateway";
@@ -622,6 +625,11 @@ export class GistGateway implements DataGateway {
 			message: options.message ?? this.syncFailureMessage(kind, error),
 		});
 		this.publishSyncFailure();
+		// Turn the indicator red on the same threshold as the banner: a failure suppressed above
+		// as transient must not show an error the banner is not showing either. Set here rather
+		// than only in settleSyncStatus because retrySync can record a failure with no reconcile
+		// running to settle.
+		this.setSyncStatus(scope, "error");
 	}
 
 	/**
@@ -665,6 +673,8 @@ export class GistGateway implements DataGateway {
 			message: `This device could not save your latest change${detail}. Keep the app open until syncing recovers.`,
 		});
 		this.publishSyncFailure();
+		// A local write that failed is worse than an unpushed change, so it outranks "dirty".
+		this.setSyncStatus(scope, "error");
 	}
 
 	/** Clears a scope's *sync* failure. Says nothing about local writes; see below. */
@@ -683,6 +693,16 @@ export class GistGateway implements DataGateway {
 	private clearPersistFailure(scope: TodoScope.user | TodoScope.workspace): void {
 		if (this.persistFailures.delete(scope)) {
 			this.publishSyncFailure();
+			// The indicator was showing this failure; hand it back to whatever sync is doing —
+			// usually "dirty", since the write that just succeeded is still owed to the gist.
+			//
+			// Unless a reconcile is on the network: this runs from a fire-and-forget promise, and
+			// that reconcile has already cleared its pending-push flag, so settling here would
+			// announce "up to date" mid-flight and let its own `finally` correct it a moment
+			// later. The reconcile settles the scope itself when it ends.
+			if (this.statusOf(scope) !== "syncing") {
+				this.settleSyncStatus(scope);
+			}
 		}
 	}
 
@@ -694,6 +714,21 @@ export class GistGateway implements DataGateway {
 		this.persistFailures.clear();
 		if (had) {
 			this.publishSyncFailure();
+		}
+		// Deliberately does NOT reset the statuses to "offline". This is also the Reconnect path
+		// (`connectGitHub` clears the banner before running the device flow), and a reconnect
+		// happens mid-session with a real edit possibly still owed — calling that "not synced
+		// yet" would be the app-looks-healthy-while-sync-is-dead state this whole feature exists
+		// to remove. Re-settle instead, so the scope reports what it actually is; the two places
+		// where the session really ends set "offline" themselves.
+		//
+		// A reconcile on the network settles itself when it lands, and overriding it here would
+		// stop the spinner and show a result for a round trip still in progress — the same guard
+		// `clearPersistFailure` needs, for the same reason.
+		for (const scope of [TodoScope.user, TodoScope.workspace] as const) {
+			if (this.statusOf(scope) !== "syncing") {
+				this.settleSyncStatus(scope);
+			}
 		}
 	}
 
@@ -751,13 +786,35 @@ export class GistGateway implements DataGateway {
 	 * another four-to-eight request round trip, which against a rate limit makes things worse.
 	 */
 	retrySync(): void {
+		// From the banner, so a failure is already reported and on screen: forgetting the streak
+		// is safe, and starting the next round from zero is what the user asked for.
+		this.startManualSync({ forgetSuppressedFailures: true });
+	}
+
+	/**
+	 * "Sync all now", from the header's menu or its indicator.
+	 *
+	 * Same guarded path as the banner's retry — repeat presses are the obvious response to a sync
+	 * that looks stuck, and each one is another four-to-eight gist requests — but it keeps the
+	 * suppression streak. This press may be the user reacting to an *unreported* failure (the
+	 * amber "changes not yet on GitHub" a suppressed transient failure leaves behind), and
+	 * clearing the counter each time would hold `recordSyncFailure` below its threshold forever:
+	 * the banner would never appear and the user would never be told sync was broken.
+	 */
+	syncNow(): void {
+		this.startManualSync({ forgetSuppressedFailures: false });
+	}
+
+	private startManualSync(options: { forgetSuppressedFailures: boolean }): void {
 		if (this.retryInFlight) {
 			return;
 		}
 		this.retryInFlight = true;
 		this.userRetries = 0;
 		this.workspaceRetries = 0;
-		this.consecutiveSyncFailures.clear();
+		if (options.forgetSuppressedFailures) {
+			this.consecutiveSyncFailures.clear();
+		}
 
 		if (!this.token || !this.gistId || !this.userFile) {
 			// `refresh()` would return silently here, leaving the button looking broken.
@@ -770,6 +827,10 @@ export class GistGateway implements DataGateway {
 				kind: "missing",
 				message: "There is no gist selected to sync with. Choose a gist to resume syncing.",
 			});
+			// The condition is global, but `recordSyncFailure` is per scope — and the banner only
+			// needs one entry to render. Mark the other scope too, or the header's indicator keeps
+			// reporting the workspace as fine while the banner says nothing is syncing.
+			this.setSyncStatus(TodoScope.workspace, "error");
 			return;
 		}
 
@@ -793,11 +854,167 @@ export class GistGateway implements DataGateway {
 		this._messages.next({ type: MessageActionsToWebview.updateGitHubSyncInfo, payload: info });
 	}
 
-	private emitSyncing(isSyncing: boolean): void {
+	/**
+	 * Live sync state per scope, for the header's indicator. The PWA has no local-only mode, so
+	 * these start at "offline" and stay there only until the first reconcile.
+	 *
+	 * Tracked here rather than derived on demand because the interesting state is "dirty": an
+	 * edit that is in local state and IndexedDB but not yet on the gist, which is exactly the
+	 * window `scheduleUserPush`/`scheduleWorkspacePush` open and no single value elsewhere
+	 * records.
+	 */
+	private userStatus: SyncStatusValue = "offline";
+	private workspaceStatus: SyncStatusValue = "offline";
+	/** Whether a scope owes the gist a push — see markDirty below. */
+	private pendingUserPush = false;
+	private pendingWorkspacePush = false;
+	/**
+	 * Whether a scope has ever completed a round trip this session. Without it "no failure and
+	 * nothing owed" reads as "synced", which is wrong before the first reconcile — and reachable,
+	 * because clearing a failure re-settles the scope: tapping Reconnect on a dead token turned
+	 * the indicator green over a gist this device had never reached.
+	 */
+	private userEverSynced = false;
+	private workspaceEverSynced = false;
+
+	/** One scope's current status. */
+	private statusOf(scope: TodoScope.user | TodoScope.workspace): SyncStatusValue {
+		return scope === TodoScope.user ? this.userStatus : this.workspaceStatus;
+	}
+
+	private setSyncStatus(
+		scope: TodoScope.user | TodoScope.workspace,
+		status: SyncStatusValue
+	): void {
+		if (scope === TodoScope.user) {
+			this.userStatus = status;
+		} else {
+			this.workspaceStatus = status;
+		}
+		// Always re-evaluate: `emitSyncStatus` dedupes on the whole payload, which the status
+		// alone does not determine — `canRetry` comes from the failure maps, and those change
+		// under an unchanged status (a `missing` failure replacing an `auth` one, say).
+		this.emitSyncStatus();
+	}
+
+	/**
+	 * Records that a scope holds an edit the gist does not have yet — the window the debounced
+	 * push opens, and the one a still-owed retry keeps open.
+	 *
+	 * A reconcile already on the network keeps showing "syncing": the round trip is the more
+	 * informative state, and the flag outlives it, so {@link settleSyncStatus} falls back to
+	 * "dirty" when that reconcile ends.
+	 */
+	private markDirty(scope: TodoScope.user | TodoScope.workspace): void {
+		if (scope === TodoScope.user) {
+			this.pendingUserPush = true;
+		} else {
+			this.pendingWorkspacePush = true;
+		}
+		const status = this.statusOf(scope);
+		// "syncing" and "error" both outrank this. Syncing is the more informative of the two
+		// live states and settles into "dirty" on its own; a reported failure has to stay on
+		// screen, or every edit made while sync is broken would swap the red glyph — and its
+		// "try again" — for an amber one that says nothing is wrong.
+		if (status !== "syncing" && status !== "error") {
+			this.setSyncStatus(scope, "dirty");
+		}
+	}
+
+	/**
+	 * Ends a reconcile on the state the scope is actually in, rather than on a bare "not
+	 * syncing": a reported failure, an edit still owed to the gist, or settled.
+	 *
+	 * Reads the failure maps rather than taking a parameter so every exit path — success,
+	 * either failure branch, a throw — settles the same way, and so a failure `recordSyncFailure`
+	 * deliberately suppressed as transient stays "dirty" instead of flashing an error the banner
+	 * is not showing either.
+	 */
+	private settleSyncStatus(scope: TodoScope.user | TodoScope.workspace): void {
+		if (this.syncFailures.has(scope) || this.persistFailures.has(scope)) {
+			this.setSyncStatus(scope, "error");
+			return;
+		}
+		const pending = scope === TodoScope.user ? this.pendingUserPush : this.pendingWorkspacePush;
+		if (pending) {
+			this.setSyncStatus(scope, "dirty");
+			return;
+		}
+		// Nothing owed and nothing failing is only "synced" if a round trip has actually
+		// happened; before that it is still the pre-first-sync state.
+		const everSynced =
+			scope === TodoScope.user ? this.userEverSynced : this.workspaceEverSynced;
+		this.setSyncStatus(scope, everSynced ? "synced" : "offline");
+	}
+
+	/** Records that a scope has reached the gist, so it can legitimately report "synced". */
+	private noteSynced(scope: TodoScope.user | TodoScope.workspace): void {
+		if (scope === TodoScope.user) {
+			this.userEverSynced = true;
+		} else {
+			this.workspaceEverSynced = true;
+		}
+	}
+
+	/** The payload last sent, so an unchanged one is not re-posted. */
+	private lastEmittedStatus: SyncStatusInfo | undefined;
+
+	private emitSyncStatus(): void {
+		const payload: SyncStatusInfo = {
+			// Either scope on the network keeps the scope-agnostic "Sync all now" spinner going.
+			isSyncing: this.userStatus === "syncing" || this.workspaceStatus === "syncing",
+			user: this.scopeStatus(TodoScope.user, this.userStatus),
+			workspace: this.scopeStatus(TodoScope.workspace, this.workspaceStatus),
+		};
+		const previous = this.lastEmittedStatus;
+		if (
+			previous &&
+			previous.isSyncing === payload.isSyncing &&
+			previous.user.status === payload.user.status &&
+			previous.user.canRetry === payload.user.canRetry &&
+			previous.workspace.status === payload.workspace.status &&
+			previous.workspace.canRetry === payload.workspace.canRetry
+		) {
+			return;
+		}
+		this.lastEmittedStatus = payload;
 		this._messages.next({
 			type: MessageActionsToWebview.updateSyncStatus,
-			payload: { isSyncing },
+			payload,
 		});
+	}
+
+	/**
+	 * Pairs a status with whether a manual sync is worth offering for it.
+	 *
+	 * The retryability comes from the recorded failure, not from the status: `recordSyncFailure`
+	 * withholds `canRetry` from a revoked token or a deleted gist precisely because re-sending
+	 * fails again, and the banner offers Reconnect or the gist chooser instead. An indicator that
+	 * offered "try again" for those would sit beside a banner that pointedly does not, and each
+	 * press would spend another round trip on a request that cannot succeed.
+	 *
+	 * A status of "error" with nothing in either map — `retrySync`'s no-gist branch does this to
+	 * the scope it is not reporting against — is deliberately not retryable: the fix is choosing
+	 * a gist, which only the banner offers.
+	 */
+	private scopeStatus(
+		scope: TodoScope.user | TodoScope.workspace,
+		status: SyncStatusValue
+	): SyncScopeStatus {
+		if (status === "dirty") {
+			return { status, canRetry: true };
+		}
+		if (status !== "error") {
+			return { status, canRetry: false };
+		}
+		// OR across both maps, exactly as the banner does (`publishSyncFailure` picks the most
+		// actionable entry). Taking only the sync failure meant a revoked token beside a blocked
+		// IndexedDB write showed a banner *with* a working "Try again" and an indicator that
+		// refused the click — the divergence this pairing exists to prevent.
+		const canRetry =
+			(this.syncFailures.get(scope)?.canRetry ?? false) ||
+			(this.persistFailures.get(scope)?.canRetry ?? false);
+		return { status, canRetry };
 	}
 
 	// --- sync ---
@@ -807,6 +1024,7 @@ export class GistGateway implements DataGateway {
 	}
 
 	private scheduleUserPush(): void {
+		this.markDirty(TodoScope.user);
 		if (this.userPushTimer) {
 			clearTimeout(this.userPushTimer);
 		}
@@ -826,6 +1044,7 @@ export class GistGateway implements DataGateway {
 	}
 
 	private scheduleWorkspacePush(): void {
+		this.markDirty(TodoScope.workspace);
 		if (this.workspacePushTimer) {
 			clearTimeout(this.workspacePushTimer);
 		}
@@ -915,13 +1134,17 @@ export class GistGateway implements DataGateway {
 		if (!engine || !fileName) {
 			return;
 		}
-		this.emitSyncing(true);
+		this.setSyncStatus(TodoScope.user, "syncing");
+		// This run is the push the flag was standing in for; anything that re-arms one below
+		// (a mid-flight edit, keep-both, a retry) sets it again.
+		this.pendingUserPush = false;
 		try {
 			const local: GlobalGistData = { userTodos: this.user.todos };
 			const generation = this.userGeneration;
 			const res = await engine.reconcileUser(fileName, local);
 			if (res.success && res.data) {
 				this.userRetries = 0;
+				this.noteSynced(TodoScope.user);
 				// A round trip got through, so any standing failure notice is stale.
 				this.clearSyncFailure(TodoScope.user);
 				// An edit landed while we were on the network, so `res.data.data` was merged from
@@ -973,23 +1196,34 @@ export class GistGateway implements DataGateway {
 				// is inside the success path — so without this the change waits for an unrelated
 				// trigger. The edit is still in local state and the cache, so a retry is safe.
 				this.scheduleUserRetry();
+				// The change is still only local, and a retry is armed — so this is the dirty state,
+				// not an error one. `recordSyncFailure` promotes it to "error" if the failures keep
+				// coming, which is the same threshold the banner uses.
+				this.markDirty(TodoScope.user);
 				this.recordSyncFailure(TodoScope.user, res.error, { retryable: true });
 			} else {
 				// Non-retryable: a deleted gist, a rejected payload. No retry will help, and
 				// falling through silently here is what let the app accept edits forever without
 				// ever saying they were going nowhere.
+				//
+				// Still marked as owing a push: this run cleared the flag on the way in, and only
+				// a confirmed round trip may leave it clear. Otherwise a later failure-clear — the
+				// banner's Reconnect does exactly that — settles the scope to "synced" over an
+				// edit that never left the device.
+				this.markDirty(TodoScope.user);
 				this.recordSyncFailure(TodoScope.user, res.error, { retryable: false });
 			}
 		} catch (error: unknown) {
 			// A throw never reaches the SyncResult branches above, and every caller invokes this
 			// through `void this.enqueue(...)`, which discards the rejection. Report it here or it
 			// reaches no one — the spinner would simply stop as if the sync had worked.
+			this.markDirty(TodoScope.user);
 			this.recordSyncFailure(TodoScope.user, undefined, {
 				retryable: true,
 				message: this.unexpectedSyncMessage(TodoScope.user, error),
 			});
 		} finally {
-			this.emitSyncing(false);
+			this.settleSyncStatus(TodoScope.user);
 		}
 	}
 
@@ -999,7 +1233,9 @@ export class GistGateway implements DataGateway {
 		if (!engine || !fileName) {
 			return;
 		}
-		this.emitSyncing(true);
+		this.setSyncStatus(TodoScope.workspace, "syncing");
+		// See reconcileUser.
+		this.pendingWorkspacePush = false;
 		try {
 			// Round-trip the per-file todos we last saw: the PWA never edits them, but sending
 			// `{}` would make the merge treat them as locally deleted and wipe them from the gist.
@@ -1012,6 +1248,7 @@ export class GistGateway implements DataGateway {
 			const res = await engine.reconcileWorkspace(fileName, local);
 			if (res.success && res.data) {
 				this.workspaceRetries = 0;
+				this.noteSynced(TodoScope.workspace);
 				// See reconcileUser.
 				this.clearSyncFailure(TodoScope.workspace);
 				// See reconcileUser. The workspace counter also covers `filesData`, so this keeps
@@ -1075,19 +1312,23 @@ export class GistGateway implements DataGateway {
 			} else if (res.error?.retryable) {
 				// See reconcileUser.
 				this.scheduleWorkspaceRetry();
+				// See reconcileUser.
+				this.markDirty(TodoScope.workspace);
 				this.recordSyncFailure(TodoScope.workspace, res.error, { retryable: true });
 			} else {
 				// See reconcileUser.
+				this.markDirty(TodoScope.workspace);
 				this.recordSyncFailure(TodoScope.workspace, res.error, { retryable: false });
 			}
 		} catch (error: unknown) {
 			// See reconcileUser.
+			this.markDirty(TodoScope.workspace);
 			this.recordSyncFailure(TodoScope.workspace, undefined, {
 				retryable: true,
 				message: this.unexpectedSyncMessage(TodoScope.workspace, error),
 			});
 		} finally {
-			this.emitSyncing(false);
+			this.settleSyncStatus(TodoScope.workspace);
 		}
 	}
 
@@ -1602,6 +1843,16 @@ export class GistGateway implements DataGateway {
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
 		await this.tokenStore.clearFileSelections();
+		// The failures and statuses described the gist we just left — a banner about a gist the
+		// user has abandoned, and "synced" against one this device has never contacted, over the
+		// list being emptied below. Reset after the queue drains, for the same reason as the
+		// clear above; the statuses go last because `resetSyncFailures` re-settles them.
+		this.resetSyncFailures();
+		// The new gist has not been reached yet, whatever the old one managed.
+		this.userEverSynced = false;
+		this.workspaceEverSynced = false;
+		this.setSyncStatus(TodoScope.user, "offline");
+		this.setSyncStatus(TodoScope.workspace, "offline");
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
 		this.filesData = {};
@@ -1611,6 +1862,11 @@ export class GistGateway implements DataGateway {
 	}
 
 	private cancelPendingPushes(): void {
+		// Whatever was owed is being abandoned along with the session or the gist, so the scopes
+		// are no longer dirty — leaving the flags set would make the next reconcile settle on
+		// "dirty" for a push that will never run.
+		this.pendingUserPush = false;
+		this.pendingWorkspacePush = false;
 		if (this.userPushTimer) {
 			clearTimeout(this.userPushTimer);
 			this.userPushTimer = undefined;
@@ -1820,6 +2076,16 @@ export class GistGateway implements DataGateway {
 			// old gist's conflicts into the store we just cleared.
 			await this.clearConflicts();
 		});
+		// Again, now that the queue has drained. The reconcile that just finished settled its
+		// scope and may have recorded a failure — both of which describe the session we have
+		// already torn down, and the first reset above ran before it could.
+		this.resetSyncFailures();
+		// This is a session that really has ended, so here the pre-first-sync state is the truth.
+		// Last, because `resetSyncFailures` re-settles the statuses.
+		this.userEverSynced = false;
+		this.workspaceEverSynced = false;
+		this.setSyncStatus(TodoScope.user, "offline");
+		this.setSyncStatus(TodoScope.workspace, "offline");
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
 		this.filesData = {};
@@ -1880,9 +2146,6 @@ export class GistGateway implements DataGateway {
 		if (this.gistId) {
 			window.open(this.client.getGistUrl(this.gistId), "_blank", "noopener");
 		}
-	}
-	syncNow(): void {
-		void this.pullAll();
 	}
 
 	// --- MCP (no host) ---

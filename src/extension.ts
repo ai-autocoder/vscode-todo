@@ -11,7 +11,7 @@ import { importCommand } from "./todo/importer";
 import { ImportFormats } from "./todo/todoTypes";
 import { TodoViewProvider } from "./panels/TodoViewProvider";
 import { getConfig } from "./utilities/config";
-import { notifyGitHubSyncInfo, reloadScopeData } from "./utilities/syncUtils";
+import { notifyGitHubSyncInfo, notifySyncStatus, reloadScopeData } from "./utilities/syncUtils";
 import createStore, {
 	actionTrackerActions,
 	currentFileActions,
@@ -41,7 +41,7 @@ import {
 	upsertFilesDataPathEntry,
 	updateDataForRenamedFile,
 } from "./todo/todoUtils";
-import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands, SyncStatus } from "./sync";
+import { GitHubAuthManager, GitHubApiClient, SyncManager, SyncCommands } from "./sync";
 import { messagesToWebview } from "./panels/message";
 import { WebviewVisibilityCoordinator } from "./sync/WebviewVisibilityCoordinator";
 import McpServerHost from "./mcp/McpServerHost";
@@ -80,11 +80,10 @@ export async function activate(context: ExtensionContext) {
 		updateSyncStatus(event.scope, event.status);
 		updateStatusBarItem(store.getState());
 
-		// Notify webviews of sync status
-		const isSyncing = event.status === SyncStatus.Syncing;
-		const message = messagesToWebview.updateSyncStatus(isSyncing);
-		TodoViewProvider.currentProvider?.updateSyncStatus(isSyncing);
-		HelloWorldPanel.currentPanel?.updateSyncStatus(isSyncing);
+		// Notify webviews of sync status. Both scopes go out on every change: the header's
+		// indicator shows the *current tab's* scope, which is not necessarily the one that just
+		// changed, so a per-event payload would leave the other scope's glyph stale.
+		notifySyncStatus(syncManager);
 		notifyGitHubSyncInfo(context);
 	});
 	context.subscriptions.push(syncStatusListener);
@@ -346,9 +345,33 @@ function handleTodoChange(
 	const userMode = context.globalState.get<string>("syncMode", "profile-local");
 	const workspaceMode = context.workspaceState.get<string>("syncMode", "local");
 
+	// A load is not an edit. `currentFile/loadData` reaches here on every editor tab switch and
+	// `user`/`workspace` `loadData` on every remote pull; `pinFile` only toggles a local flag the
+	// gist does not carry. None of them leaves the gist behind, so the push stays scheduled but
+	// the scope is only marked Dirty for an action that actually changed synced data — otherwise
+	// the indicator turned amber, and the status bar showed a warning, on every file click.
+	//
+	// Reducer names arrive slice-prefixed (`user/loadData`), except `deleteCompleted`, which the
+	// reducer writes bare — so compare the last segment rather than the whole string.
+	//
+	// `loadData` is also how an import and a file rename/delete apply their changes, so those
+	// three do not light the indicator until the scheduled push starts — at most one debounce
+	// interval later, and nothing is lost, since the push itself is scheduled either way. That
+	// is the better half of the trade: eleven of the sixteen `loadData` dispatch sites are real
+	// loads (activation, an editor tab switch, a remote pull, a profile-sync change), and
+	// treating those as edits would flash "unsaved changes" — the one state that invites a
+	// pointless click — at startup and after every incoming sync.
+	const actionName = sliceState.lastActionType.split("/").pop() ?? "";
+	const changedSyncedData = actionName !== "loadData" && actionName !== "pinFile";
 	if (sliceState.scope === TodoScope.user && userMode === "github") {
+		if (changedSyncedData) {
+			syncManager.markDirty("user");
+		}
 		syncManager.triggerDebounceSync("user");
 	} else if ((sliceState.scope === TodoScope.workspace || sliceState.scope === TodoScope.currentFile) && workspaceMode === "github") {
+		if (changedSyncedData) {
+			syncManager.markDirty("workspace");
+		}
 		syncManager.triggerDebounceSync("workspace");
 	}
 

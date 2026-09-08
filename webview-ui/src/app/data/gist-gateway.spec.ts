@@ -10,7 +10,10 @@ import {
 } from "@vsc-todo/core";
 import { TodoScope } from "../../../../src/todo/todoTypes";
 import { GistGateway, type SyncFailureState } from "./gist-gateway";
-import { MessageActionsToWebview } from "../../../../src/panels/message";
+import {
+	MessageActionsToWebview,
+	type SyncStatusInfo,
+} from "../../../../src/panels/message";
 import {
 	fileConflictKey,
 	type PendingConflictView,
@@ -543,6 +546,454 @@ describe("GistGateway lastActionType scope prefix", () => {
  *
  * `captureFileConflicts` therefore stores the two *resolutions*.
  */
+
+/**
+ * The header's sync indicator can only be as honest as what the gateway reports, and the state
+ * it exists for — "this edit is not on GitHub yet" — is the one nothing used to record: the old
+ * payload was a single `isSyncing` boolean, so an unpushed change and a settled one looked
+ * identical.
+ *
+ * `pushDebounceMs` is set high in `beforeEach`, so a scheduled push stays scheduled for the whole
+ * test: that is the dirty window, held open deliberately rather than raced.
+ */
+describe("GistGateway sync status reporting", () => {
+	interface Internals {
+		engine: unknown;
+		userFile: string | undefined;
+		workspaceFile: string | undefined;
+		token: string | undefined;
+		gistId: string | undefined;
+		user: { todos: Todo[] };
+		userStatus: string;
+		workspaceStatus: string;
+		retrySync(): void;
+		startManualSync(options: { forgetSuppressedFailures: boolean }): void;
+		refresh(): Promise<void>;
+		consecutiveSyncFailures: Map<TodoScope.user | TodoScope.workspace, number>;
+		reconcileUser(): Promise<void>;
+		scheduleUserPush(): void;
+		cancelPendingPushes(): void;
+		resetSyncFailures(): void;
+		notePersistFailure(scope: TodoScope.user | TodoScope.workspace, error: unknown): void;
+		recordSyncFailure(
+			scope: TodoScope.user | TodoScope.workspace,
+			error: SyncError | undefined,
+			options: { retryable: boolean; kind?: string; message?: string }
+		): void;
+	}
+
+	let gateway: GistGateway;
+	let internals: Internals;
+	let statuses: SyncStatusInfo[];
+
+	const failure = (type: SyncErrorType, retryable: boolean): SyncError => ({
+		type,
+		message: "stub failure",
+		timestamp: new Date().toISOString(),
+		retryable,
+	});
+
+	/** See the sibling block: a success has to carry both conflict lists or the reconcile throws. */
+	function withUserResult(result: SyncResult<unknown>): void {
+		internals.engine = {
+			reconcileUser: () => Promise.resolve(result),
+			persistLocalUser: () => Promise.resolve(),
+			reconcileWithLocalEdits: (_a: unknown, b: unknown) => b,
+		};
+	}
+
+	function ok(): SyncResult<unknown> {
+		return {
+			success: true,
+			data: { data: { userTodos: [] }, conflicts: [], fileConflicts: [] },
+		};
+	}
+
+	beforeEach(() => {
+		gateway = new GistGateway({
+			clientId: "test-client",
+			deviceFlowProxyUrl: "https://example.invalid",
+			pushDebounceMs: 60_000,
+		});
+		internals = gateway as unknown as Internals;
+		internals.userFile = "user-todos.json";
+		internals.workspaceFile = "workspace-default.json";
+		internals.token = "stub-token";
+		internals.gistId = "stub-gist";
+
+		statuses = [];
+		gateway.messages.subscribe((m) => {
+			const message = m as { type: string; payload?: unknown };
+			if (message.type === MessageActionsToWebview.updateSyncStatus) {
+				statuses.push(message.payload as SyncStatusInfo);
+			}
+		});
+	});
+
+	afterEach(() => {
+		// The 60s debounce timer would otherwise outlive the spec.
+		internals.cancelPendingPushes();
+	});
+
+	function latest(): SyncStatusInfo {
+		return statuses[statuses.length - 1];
+	}
+
+	it("reports a scope dirty as soon as an edit schedules a push", () => {
+		internals.scheduleUserPush();
+
+		expect(latest().user.status).toBe("dirty");
+		// And says a manual sync would help, since the change is simply not pushed yet.
+		expect(latest().user.canRetry).toBeTrue();
+	});
+
+	it("leaves the other scope alone", () => {
+		internals.scheduleUserPush();
+
+		expect(latest().workspace.status).toBe("offline");
+	});
+
+	it("reports syncing while on the network, then synced", async () => {
+		withUserResult(ok());
+
+		await internals.reconcileUser();
+
+		expect(statuses.map((s) => s.user.status)).toEqual(["syncing", "synced"]);
+		// The scope-agnostic flag the sync menu's spinner rides on.
+		expect(statuses[0].isSyncing).toBeTrue();
+		expect(latest().isSyncing).toBeFalse();
+	});
+
+	it("settles a scope that was dirty back to synced once the push lands", async () => {
+		internals.scheduleUserPush();
+		expect(latest().user.status).toBe("dirty");
+		withUserResult(ok());
+
+		await internals.reconcileUser();
+
+		expect(latest().user.status).toBe("synced");
+		// Nothing left to sync, so nothing to offer.
+		expect(latest().user.canRetry).toBeFalse();
+	});
+
+	it("reports an error once the failure is one the banner would also show", async () => {
+		// A revoked token is reported on the first failure, so one reconcile is enough.
+		withUserResult({ success: false, error: failure(SyncErrorType.AuthError, true) });
+
+		await internals.reconcileUser();
+
+		expect(latest().user.status).toBe("error");
+	});
+
+	/**
+	 * The indicator's retry has to follow the gateway's own judgement. `recordSyncFailure`
+	 * withholds `canRetry` from a revoked token because re-sending it only fails again — the
+	 * banner offers Reconnect instead — so an indicator that reported this as retryable would
+	 * put a dead "try again" beside that live button.
+	 */
+	it("does not call a revoked token retryable", async () => {
+		withUserResult({ success: false, error: failure(SyncErrorType.AuthError, true) });
+
+		await internals.reconcileUser();
+
+		expect(latest().user.status).toBe("error");
+		expect(latest().user.canRetry).toBeFalse();
+	});
+
+	it("calls a transient failure retryable once it is reported", async () => {
+		// Suppressed while retries remain, so drive it past the threshold; a network blip really
+		// can come good on a retry, which is the case that must stay actionable.
+		withUserResult({ success: false, error: failure(SyncErrorType.NetworkError, true) });
+
+		await internals.reconcileUser();
+		await internals.reconcileUser();
+		await internals.reconcileUser();
+
+		expect(latest().user.status).toBe("error");
+		expect(latest().user.canRetry).toBeTrue();
+	});
+
+	it("stays dirty rather than erroring on a blip the banner is suppressing", async () => {
+		// A transient failure with retries left reports nothing, so the indicator must not claim
+		// a failure the banner is deliberately not showing. The edit is still unpushed: dirty.
+		withUserResult({ success: false, error: failure(SyncErrorType.NetworkError, true) });
+
+		await internals.reconcileUser();
+
+		expect(latest().user.status).toBe("dirty");
+	});
+
+	it("keeps a reported error up when the user edits again", async () => {
+		withUserResult({ success: false, error: failure(SyncErrorType.AuthError, true) });
+		await internals.reconcileUser();
+
+		internals.scheduleUserPush();
+
+		// Downgrading to "dirty" here would swap a red glyph for an amber one that says nothing is
+		// wrong, on every edit made while sync is broken.
+		expect(latest().user.status).toBe("error");
+	});
+
+	it("does not report a scope synced while a mid-flight edit is still owed", async () => {
+		internals.engine = {
+			reconcileUser: () => {
+				// The edit lands while the reconcile is on the network — the case the engine's
+				// re-merge exists for, and the one that leaves a push still owed afterwards.
+				internals.scheduleUserPush();
+				return Promise.resolve(ok());
+			},
+			persistLocalUser: () => Promise.resolve(),
+			reconcileWithLocalEdits: (_a: unknown, b: unknown) => b,
+		};
+
+		await internals.reconcileUser();
+
+		expect(latest().user.status).toBe("dirty");
+	});
+
+	it("drops a scope back to offline when the session ends", async () => {
+		withUserResult(ok());
+		await internals.reconcileUser();
+		expect(latest().user.status).toBe("synced");
+
+		await gateway.disconnectGitHub();
+
+		expect(latest().user.status).toBe("offline");
+		expect(latest().workspace.status).toBe("offline");
+		expect(latest().isSyncing).toBeFalse();
+	});
+
+	/**
+	 * "Sync all now" and the indicator both land here, and both are presses a user makes when a
+	 * sync looks stuck — so they take the guarded path rather than a bare `pullAll()`, which
+	 * refills the retry budgets the automatic backoff needs and stops repeat presses stacking
+	 * four-to-eight gist requests each.
+	 */
+	/**
+	 * Reconnect clears the banner mid-session (`connectGitHub` calls `resetSyncFailures` before
+	 * running the device flow), and an edit can still be owed at that moment. Calling that "not
+	 * synced yet" would put a passive grey glyph over an edit that exists only on the device —
+	 * the app-looks-healthy-while-sync-is-dead state the indicator exists to remove.
+	 */
+	it("keeps an owed edit visible when a reconnect clears the banner", async () => {
+		// A *non-retryable* failure deliberately: the retryable branch marks the scope dirty on
+		// its own (it re-arms a push), which would make this pass without the edit below.
+		withUserResult({ success: false, error: failure(SyncErrorType.NotFoundError, false) });
+		await internals.reconcileUser();
+		expect(latest().user.status).toBe("error");
+		internals.scheduleUserPush();
+
+		internals.resetSyncFailures();
+
+		expect(latest().user.status).toBe("dirty");
+	});
+
+	/**
+	 * The banner ORs retryability across the sync- and persist-failure maps, so the indicator
+	 * has to as well: a revoked token beside a blocked IndexedDB write showed a banner *with* a
+	 * working "Try again" and an indicator that refused the click.
+	 */
+	it("offers a retry when either failure says one would help", async () => {
+		withUserResult({ success: false, error: failure(SyncErrorType.AuthError, true) });
+		await internals.reconcileUser();
+		expect(latest().user.canRetry).toBeFalse();
+
+		// A local write failure is always retryable — the retry re-runs the write.
+		internals.notePersistFailure(TodoScope.user, new Error("blocked"));
+
+		expect(latest().user.status).toBe("error");
+		expect(latest().user.canRetry).toBeTrue();
+	});
+
+	/**
+	 * `canRetry` is part of the payload, so it has to be part of what decides whether to send
+	 * one. Dedupe on the status string alone left the webview holding a stale retryability and
+	 * offering "try again" for a failure the gateway had since reclassified.
+	 */
+	it("re-sends a status whose retryability changed", async () => {
+		withUserResult({ success: false, error: failure(SyncErrorType.NetworkError, true) });
+		await internals.reconcileUser();
+		await internals.reconcileUser();
+		await internals.reconcileUser();
+		expect(latest().user.canRetry).toBeTrue();
+		const before = statuses.length;
+
+		// Same status, different retryability: a failure no retry can fix.
+		internals.recordSyncFailure(TodoScope.user, undefined, {
+			retryable: false,
+			kind: "missing",
+			message: "no gist",
+		});
+
+		expect(statuses.length).toBeGreaterThan(before);
+		expect(latest().user.status).toBe("error");
+		expect(latest().user.canRetry).toBeFalse();
+	});
+
+	it("does not re-send an identical payload", () => {
+		internals.scheduleUserPush();
+		const count = statuses.length;
+
+		internals.scheduleUserPush();
+		internals.scheduleUserPush();
+
+		expect(statuses.length).toBe(count);
+	});
+
+	/**
+	 * "Sync all now" and the banner's retry share one guarded entry point, but not the same
+	 * treatment of the suppression streak. This pins the routing decision only; the guard and
+	 * the budget reset inside that body are covered by the two tests below.
+	 */
+	it("routes both manual syncs through one entry point, with different suppression handling", () => {
+		const calls: Array<{ forgetSuppressedFailures: boolean }> = [];
+		internals.startManualSync = (options) => {
+			calls.push(options);
+		};
+
+		gateway.syncNow();
+		gateway.retrySync();
+
+		expect(calls.length).toBe(2);
+		// The banner's retry starts from a clean streak because its failure is already reported;
+		// "Sync all now" must not, or repeat presses would hold `recordSyncFailure` below its
+		// threshold forever and the failure would never be reported at all.
+		expect(calls[0].forgetSuppressedFailures).toBeFalse();
+		expect(calls[1].forgetSuppressedFailures).toBeTrue();
+	});
+
+	/**
+	 * Asserted on the counter rather than on a resulting banner: `startManualSync` kicks off a
+	 * real `refresh()` whose reconciles are not awaited here, so a test that drove the streak to
+	 * its threshold through the UI would depend on microtask interleaving. `refresh` is stubbed
+	 * for the same reason — this is about the counter, not about what a sync then does.
+	 */
+	it("leaves the suppression streak alone for a header-initiated sync", async () => {
+		internals.refresh = () => Promise.resolve();
+		withUserResult({ success: false, error: failure(SyncErrorType.NetworkError, true) });
+		await internals.reconcileUser();
+		expect(internals.consecutiveSyncFailures.get(TodoScope.user)).toBe(1);
+
+		gateway.syncNow();
+
+		// Cleared here, the streak could never reach MAX_SYNC_RETRIES, so a transient failure
+		// would stay suppressed forever and the user would never be told sync was broken.
+		expect(internals.consecutiveSyncFailures.get(TodoScope.user)).toBe(1);
+	});
+
+	it("clears the streak for a banner-initiated retry, whose failure is already reported", async () => {
+		internals.refresh = () => Promise.resolve();
+		withUserResult({ success: false, error: failure(SyncErrorType.NetworkError, true) });
+		await internals.reconcileUser();
+
+		gateway.retrySync();
+
+		expect(internals.consecutiveSyncFailures.has(TodoScope.user)).toBeFalse();
+	});
+
+	it("ignores a second manual sync while the first is still running", () => {
+		let refreshes = 0;
+		// Never settles, so the guard stays closed for the duration of the test.
+		internals.refresh = () => {
+			refreshes++;
+			return new Promise(() => {});
+		};
+
+		gateway.syncNow();
+		gateway.syncNow();
+		gateway.syncNow();
+
+		// Each press is another four-to-eight gist requests; pressing again is the obvious
+		// response to a sync that looks stuck.
+		expect(refreshes).toBe(1);
+	});
+
+	/**
+	 * "No failure and nothing owed" is not the same as "synced". Clearing a failure re-settles
+	 * the scope, and Reconnect clears failures mid-session — so without a record of an actual
+	 * round trip, tapping Connect or Reconnect reported the indicator green over a gist this
+	 * device had never reached.
+	 *
+	 * No reconcile here on purpose: this is the fresh-session state, where nothing is owed and
+	 * nothing has failed, and the only thing separating it from a settled scope is whether a
+	 * round trip has happened.
+	 */
+	it("does not report synced before a round trip has happened", () => {
+		internals.resetSyncFailures();
+
+		expect(latest().user.status).toBe("offline");
+		expect(latest().workspace.status).toBe("offline");
+	});
+
+	/**
+	 * Only a confirmed round trip may leave a scope owing nothing. The reconcile clears the
+	 * pending flag on the way in, so a failure that does not restore it lets the next
+	 * failure-clear — the banner's Reconnect — report "synced" over an edit that never left.
+	 */
+	it("keeps an edit owed when the reconcile that would have pushed it failed", async () => {
+		withUserResult(ok());
+		await internals.reconcileUser();
+		internals.scheduleUserPush();
+		// The push that was owed now fails for good: a deleted gist.
+		withUserResult({ success: false, error: failure(SyncErrorType.NotFoundError, false) });
+		await internals.reconcileUser();
+
+		internals.resetSyncFailures();
+
+		expect(latest().user.status).toBe("dirty");
+	});
+
+	it("keeps an edit owed when the reconcile threw", async () => {
+		withUserResult(ok());
+		await internals.reconcileUser();
+		internals.scheduleUserPush();
+		internals.engine = {
+			reconcileUser: () => Promise.reject(new Error("boom")),
+			persistLocalUser: () => Promise.resolve(),
+			reconcileWithLocalEdits: (_a: unknown, b: unknown) => b,
+		};
+		await internals.reconcileUser();
+
+		internals.resetSyncFailures();
+
+		expect(latest().user.status).toBe("dirty");
+	});
+
+	/**
+	 * Clearing failures while a round trip is on the network must not announce a result for it —
+	 * the spinner would stop and the glyph would go green mid-sync.
+	 */
+	it("leaves a reconcile on the network to report its own outcome", async () => {
+		let settle: (() => void) | undefined;
+		internals.engine = {
+			reconcileUser: () =>
+				new Promise((resolve) => {
+					settle = () => resolve(ok());
+				}),
+			persistLocalUser: () => Promise.resolve(),
+			reconcileWithLocalEdits: (_a: unknown, b: unknown) => b,
+		};
+		const inFlight = internals.reconcileUser();
+		expect(latest().user.status).toBe("syncing");
+
+		internals.resetSyncFailures();
+
+		expect(latest().user.status).toBe("syncing");
+		settle?.();
+		await inFlight;
+		expect(latest().user.status).toBe("synced");
+	});
+
+	it("reports synced once a round trip has happened", async () => {
+		withUserResult(ok());
+		await internals.reconcileUser();
+
+		internals.resetSyncFailures();
+
+		expect(latest().user.status).toBe("synced");
+	});
+});
+
 describe("GistGateway file conflict records", () => {
 	interface FileInternals {
 		filesData: TodoFilesData;

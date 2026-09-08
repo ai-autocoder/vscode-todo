@@ -29,6 +29,9 @@
 	--vscode-descriptionForeground: #9d9d9d;
 	--vscode-disabledForeground: #cccccc80;
 	--vscode-errorForeground: #f14c4c;
+	/* The header's sync indicator tints its dirty state with this; VS Code supplies it to the
+	   extension webview, so only the PWA needs the value. */
+	--vscode-charts-yellow: #d7ba7d;
 	--vscode-focusBorder: #0078d4;
 	--vscode-contrastBorder: transparent;
 
@@ -105,6 +108,7 @@ body.light {
 	--vscode-descriptionForeground: #3b3b3b99;
 	--vscode-disabledForeground: #3b3b3b80;
 	--vscode-errorForeground: #e51400;
+	--vscode-charts-yellow: #b5891a;
 	--vscode-focusBorder: #005fb8;
 
 	--vscode-editor-background: #ffffff;

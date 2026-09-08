@@ -45,6 +45,19 @@ export class SyncManager {
 	// Sync operation guards to prevent concurrent sync operations
 	private userSyncInProgress: boolean = false;
 	private workspaceSyncInProgress: boolean = false;
+	/**
+	 * A sync that arrived while one was already running, to be re-run once it finishes. One flag,
+	 * not a count: any number of missed triggers are satisfied by a single fresh sync.
+	 */
+	private userSyncQueued: boolean = false;
+	private workspaceSyncQueued: boolean = false;
+	/**
+	 * An edit that landed while a sync was on the network. The in-flight run reports Synced from
+	 * the snapshot it started with, which would bury the edit under a green "up to date" until
+	 * the push that edit armed came round — so the status is restored to Dirty when it lands.
+	 */
+	private userEditedWhileSyncing: boolean = false;
+	private workspaceEditedWhileSyncing: boolean = false;
 
 	// Event emitters for status changes
 	private onStatusChangeEmitter = new vscode.EventEmitter<{
@@ -103,6 +116,12 @@ export class SyncManager {
 
 	/**
 	 * Trigger debounced sync after local changes
+	 *
+	 * Deliberately does NOT set the Dirty status, even though a scheduled push is exactly that
+	 * state: this runs for *loads* too — an editor tab switch dispatches `currentFile/loadData`,
+	 * and a remote pull dispatches `user`/`workspace` `loadData` — and neither owes the gist
+	 * anything. The caller knows which action it is reacting to, so it calls {@link markDirty}
+	 * itself; see handleTodoChange in extension.ts.
 	 */
 	public triggerDebounceSync(scope: "user" | "workspace"): void {
 		if (scope === "user") {
@@ -129,6 +148,11 @@ export class SyncManager {
 		const gistId = getGistId();
 
 		if (!gistId) {
+			// The scope is in GitHub mode with nowhere to sync to — the gist id is a plain user
+			// setting and can be cleared at any time. Say so: without this the Dirty the edit set
+			// is never moved off, and the change sits behind a permanent "changes not yet on
+			// GitHub" that no sync can clear.
+			this.updateStatus(scope, SyncStatus.Error);
 			return {
 				success: false,
 				error: {
@@ -151,9 +175,16 @@ export class SyncManager {
 	 * Sync global scope
 	 */
 	private async syncUser(gistId: string): Promise<SyncResult<void>> {
-		// Guard: prevent concurrent sync operations
+		// Guard: prevent concurrent sync operations. Remember the miss rather than dropping it:
+		// the in-flight sync is working from a snapshot taken before whatever triggered this one,
+		// so returning without rescheduling loses that change until some unrelated edit happens
+		// to sync it — and the in-flight run finishes by reporting Synced, so the UI would call
+		// it settled. Rescheduling from here instead would drive itself: the new timer hits this
+		// same guard and arms another, every debounce interval for as long as the sync lasts —
+		// unbounded, since `showConflictDialog` holds the flag while it waits on the user.
 		if (this.userSyncInProgress) {
-			console.log(`[SyncManager] User sync already in progress, skipping`);
+			console.log(`[SyncManager] User sync already in progress, queueing one re-run`);
+			this.userSyncQueued = true;
 			return { success: true };
 		}
 
@@ -349,6 +380,13 @@ export class SyncManager {
 			};
 		} finally {
 			this.userSyncInProgress = false;
+			this.settleEditDuringSync("user");
+			// A trigger that arrived while this one held the guard. Re-run it now the flag is
+			// clear, debounced so a burst of them still costs one sync.
+			if (this.userSyncQueued) {
+				this.userSyncQueued = false;
+				this.triggerDebounceSync("user");
+			}
 		}
 	}
 
@@ -472,9 +510,10 @@ export class SyncManager {
 	 * Sync workspace scope
 	 */
 	private async syncWorkspace(gistId: string): Promise<SyncResult<void>> {
-		// Guard: prevent concurrent sync operations
+		// Guard: see syncUser.
 		if (this.workspaceSyncInProgress) {
-			console.log(`[SyncManager] Workspace sync already in progress, skipping`);
+			console.log(`[SyncManager] Workspace sync already in progress, queueing one re-run`);
+			this.workspaceSyncQueued = true;
 			return { success: true };
 		}
 
@@ -798,6 +837,12 @@ export class SyncManager {
 			};
 		} finally {
 			this.workspaceSyncInProgress = false;
+			this.settleEditDuringSync("workspace");
+			// See syncUser.
+			if (this.workspaceSyncQueued) {
+				this.workspaceSyncQueued = false;
+				this.triggerDebounceSync("workspace");
+			}
 		}
 	}
 
@@ -929,9 +974,126 @@ export class SyncManager {
 	}
 
 	/**
-	 * Update sync status and emit event
+	 * Records that a scope holds an edit the gist does not have yet.
+	 *
+	 * Leaves Syncing and Error alone. A reconcile already on the network is the more informative
+	 * state and reports its own outcome when it lands; a reported failure has to stay on screen,
+	 * or every edit made while sync is broken would replace it with a milder state that says
+	 * nothing is wrong. (The PWA's gateway applies the same two exceptions, in `markDirty`.)
+	 *
+	 * Trusts the caller that an edit happened. A reducer that returns early — `toggleTodo` for an
+	 * id a stale webview click refers to — still reaches the caller with the *previous* action's
+	 * `lastActionType`, so a dispatch that changed nothing can mark the scope dirty. The push it
+	 * schedules then settles the scope, so the cost is a brief wrong glyph, not a wrong sync.
+	 */
+	public markDirty(scope: "user" | "workspace"): void {
+		const current = this.getStatus(scope);
+		if (current === SyncStatus.Syncing) {
+			// Remembered rather than shown: the round trip in progress is the more useful state,
+			// but it will end by reporting Synced from a snapshot that predates this edit.
+			if (scope === "user") {
+				this.userEditedWhileSyncing = true;
+			} else {
+				this.workspaceEditedWhileSyncing = true;
+			}
+			return;
+		}
+		if (current === SyncStatus.Error) {
+			return;
+		}
+		this.updateStatus(scope, SyncStatus.Dirty);
+	}
+
+	/**
+	 * Restores Dirty after a sync that finished while an edit was waiting behind it. Runs from
+	 * the sync's `finally`, after the status it set.
+	 */
+	private settleEditDuringSync(scope: "user" | "workspace"): void {
+		const edited = scope === "user" ? this.userEditedWhileSyncing : this.workspaceEditedWhileSyncing;
+		if (!edited) {
+			return;
+		}
+		if (scope === "user") {
+			this.userEditedWhileSyncing = false;
+		} else {
+			this.workspaceEditedWhileSyncing = false;
+		}
+		// Not over a failure: that is the more important thing to report, and the edit is still
+		// owed either way.
+		if (this.getStatus(scope) !== SyncStatus.Error) {
+			this.updateStatus(scope, SyncStatus.Dirty);
+		}
+	}
+
+	/**
+	 * Drops a scope's pending sync, for one that has just left GitHub mode.
+	 *
+	 * Without this the debounce armed by the last edit still fires — `sync()` re-checks the gist
+	 * id but not the mode — and reports Syncing, then Synced or Error, for a list that no longer
+	 * syncs anywhere: exactly the stale status {@link resetStatus} exists to clear.
+	 */
+	public cancelPendingSync(scope: "user" | "workspace"): void {
+		if (scope === "user") {
+			if (this.globalDebounceTimer) {
+				clearTimeout(this.globalDebounceTimer);
+				this.globalDebounceTimer = undefined;
+			}
+			this.userSyncQueued = false;
+			this.userEditedWhileSyncing = false;
+		} else {
+			if (this.workspaceDebounceTimer) {
+				clearTimeout(this.workspaceDebounceTimer);
+				this.workspaceDebounceTimer = undefined;
+			}
+			this.workspaceSyncQueued = false;
+			this.workspaceEditedWhileSyncing = false;
+		}
+	}
+
+	/**
+	 * Whether a scope currently syncs with GitHub. Read from the same internal storage the
+	 * sync-mode commands write, which is where the mode lives — it is deliberately not a setting.
+	 */
+	private isGitHubMode(scope: "user" | "workspace"): boolean {
+		return scope === "user"
+			? this.context.globalState.get<string>("syncMode", "profile-local") === "github"
+			: this.context.workspaceState.get<string>("syncMode", "local") === "github";
+	}
+
+	/**
+	 * Returns a scope to the pre-sync state, for one that has just left GitHub mode.
+	 *
+	 * Nothing else does this, and the statuses outlive the mode: a scope switched to Local while
+	 * Dirty kept a status bar warning for a list that no longer syncs anywhere — and the warning
+	 * stayed visible because `isGitHubEnabled` there is true whenever *either* scope is on GitHub.
+	 */
+	public resetStatus(scope: "user" | "workspace"): void {
+		this.updateStatus(scope, SyncStatus.Offline);
+	}
+
+	/**
+	 * Update sync status and emit event.
+	 *
+	 * No-ops when the status is unchanged. Every listener does real work — the status bar
+	 * re-renders, and `notifySyncStatus`/`notifyGitHubSyncInfo` re-read configuration, both
+	 * memento stores and both gist caches, then post to every open webview — and since
+	 * `triggerDebounceSync` began setting Dirty, a run of edits would repeat all of that per
+	 * edit with nothing to show for it.
 	 */
 	private updateStatus(scope: "user" | "workspace", status: SyncStatus): void {
+		// A scope that is no longer in GitHub mode has no sync state to report. `cancelPendingSync`
+		// stops the scheduled syncs, but one already past the in-progress guard still runs to
+		// completion — worst case parked in `showConflictDialog`, which waits on the user — and
+		// would land its Synced or Error afterwards. The status bar gates its glyph on *either*
+		// scope being on GitHub, so that left a permanent warning about a list that no longer
+		// syncs anywhere, with no future sync to clear it. Offline still passes: that is the reset.
+		if (status !== SyncStatus.Offline && !this.isGitHubMode(scope)) {
+			return;
+		}
+		const current = scope === "user" ? this.globalStatus : this.workspaceStatus;
+		if (current === status) {
+			return;
+		}
 		if (scope === "user") {
 			this.globalStatus = status;
 		} else {
@@ -957,6 +1119,11 @@ export class SyncManager {
 	 * Dispose timers and resources
 	 */
 	public dispose(): void {
+		// Nothing left to re-run once the timers are gone.
+		this.userSyncQueued = false;
+		this.workspaceSyncQueued = false;
+		this.userEditedWhileSyncing = false;
+		this.workspaceEditedWhileSyncing = false;
 		this.stopPolling("user");
 		this.stopPolling("workspace");
 		if (this.globalDebounceTimer) {

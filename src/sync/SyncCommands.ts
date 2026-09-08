@@ -19,7 +19,13 @@ import { StoreState, TodoScope } from "../todo/todoTypes";
 import { userActions, workspaceActions, editorFocusAndRecordsActions, currentFileActions } from "../todo/store";
 import StorageSyncManager from "../storage/StorageSyncManager";
 import { getWorkspaceFilesWithRecords } from "../todo/todoUtils";
-import { reloadScopeData, clearWorkspaceOverride, notifyGitHubStatusChange, notifyGitHubSyncInfo } from "../utilities/syncUtils";
+import {
+	reloadScopeData,
+	clearWorkspaceOverride,
+	notifyGitHubStatusChange,
+	notifyGitHubSyncInfo,
+	notifySyncStatus,
+} from "../utilities/syncUtils";
 import { getGistId } from "../utilities/syncConfig";
 import { WebviewVisibilityCoordinator } from "./WebviewVisibilityCoordinator";
 
@@ -127,6 +133,16 @@ export class SyncCommands {
 			// Stop polling
 			this.syncManager.stopPolling("user");
 			this.syncManager.stopPolling("workspace");
+
+			// Both scopes just reverted to a local mode, so they owe the same cleanup as a mode
+			// switch: drop the pending syncs and the statuses they would report. Left behind, the
+			// stale Error or Dirty reappears in the status bar the moment GitHub is re-enabled,
+			// between the mode write and the first Syncing.
+			this.syncManager.cancelPendingSync("user");
+			this.syncManager.cancelPendingSync("workspace");
+			this.syncManager.resetStatus("user");
+			this.syncManager.resetStatus("workspace");
+			notifySyncStatus(this.syncManager);
 
 			// Notify webviews
 			notifyGitHubStatusChange(false);
@@ -462,6 +478,16 @@ export class SyncCommands {
 		// Stop polling
 		this.syncManager.stopPolling("user");
 
+		// Drop the sync status with the mode, and the sync that would put it back. Both outlive
+		// the mode otherwise: a scope switched away while Dirty kept a status bar warning for a
+		// list that no longer syncs anywhere (and `isGitHubEnabled` there stays true while the
+		// *other* scope is on GitHub, so the warning had nothing to clear it), while the debounce
+		// the last edit armed still fired and reported Syncing, then Synced or Error, for that
+		// same list — `sync()` re-checks the gist id, not the mode.
+		this.syncManager.cancelPendingSync("user");
+		this.syncManager.resetStatus("user");
+		notifySyncStatus(this.syncManager);
+
 		// Notify visibility coordinator
 		this.visibilityCoordinator?.updateSyncModes();
 		notifyGitHubSyncInfo(this.context);
@@ -512,6 +538,11 @@ export class SyncCommands {
 
 		// Stop polling
 		this.syncManager.stopPolling("workspace");
+
+		// See applyUserSyncMode.
+		this.syncManager.cancelPendingSync("workspace");
+		this.syncManager.resetStatus("workspace");
+		notifySyncStatus(this.syncManager);
 
 		// Notify visibility coordinator
 		this.visibilityCoordinator?.updateSyncModes();

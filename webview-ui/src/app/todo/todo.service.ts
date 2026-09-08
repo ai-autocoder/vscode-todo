@@ -5,6 +5,7 @@ import {
 	MessageActionsToWebview,
 	GitHubSyncInfo,
 	McpStatus,
+	SyncStatusInfo,
 	messagesFromWebview,
 	UserSyncMode,
 	WorkspaceSyncMode,
@@ -94,6 +95,16 @@ export class TodoService {
 	});
 
 	private _isSyncingSource = new BehaviorSubject<boolean>(false);
+	/**
+	 * Per-scope sync state, for the header's indicator. "offline" until the host says otherwise:
+	 * in the extension that is a scope not in GitHub mode (where the indicator stays hidden), and
+	 * in the PWA it is the moment before the first reconcile.
+	 */
+	private _syncStatusSource = new BehaviorSubject<SyncStatusInfo>({
+		isSyncing: false,
+		user: { status: "offline", canRetry: false },
+		workspace: { status: "offline", canRetry: false },
+	});
 	private _nowSource = new BehaviorSubject<number>(Date.now());
 	private _mcpStatusSource = new BehaviorSubject<McpStatus>({
 		enabled: false,
@@ -146,6 +157,7 @@ export class TodoService {
 	hasGistId = this._hasGistIdSource.asObservable();
 	gitHubSyncInfo = this._gitHubSyncInfoSource.asObservable();
 	isSyncing = this._isSyncingSource.asObservable();
+	syncStatus = this._syncStatusSource.asObservable();
 	now = this._nowSource.asObservable();
 	mcpStatus = this._mcpStatusSource.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
@@ -312,7 +324,10 @@ export class TodoService {
 		this._gitHubSyncInfoSource.next(payload);
 	}
 
-	private handleUpdateSyncStatus(payload: { isSyncing: boolean }) {
+	private handleUpdateSyncStatus(payload: SyncStatusInfo) {
+		this._syncStatusSource.next(payload);
+		// Kept as its own stream: the sync menu's spinner is deliberately scope-agnostic, so it
+		// must not follow the current tab the way the indicator does.
 		this._isSyncingSource.next(payload.isSyncing);
 	}
 
