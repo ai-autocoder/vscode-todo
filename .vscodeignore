@@ -55,6 +55,7 @@ docs/**
 GEMINI.md
 AGENTS.md
 CLAUDE.md
+ARCHITECTURE.md
 .gemini/**
 .github/**
 

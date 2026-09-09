@@ -79,6 +79,8 @@ VS Code Todo
 <p align="center">
   <a href="#getting-started">Getting started</a>
   |
+  <a href="https://github.com/ai-autocoder/vscode-todo/blob/master/ARCHITECTURE.md">Architecture</a>
+  |
   <a href="https://github.com/ai-autocoder/vscode-todo/issues">Report an issue</a>
 </p>
 
@@ -102,6 +104,7 @@ VS Code Todo
   - [Status Bar Integration](#status-bar-integration)
   - [Import from JSON / Markdown](#import-from-json--markdown)
   - [Export to JSON / Markdown](#export-to-json--markdown)
+- [Architecture](https://github.com/ai-autocoder/vscode-todo/blob/master/ARCHITECTURE.md)
 - [Contributing](#contributing)
 - [License](#license)
 - [Support](#support)
