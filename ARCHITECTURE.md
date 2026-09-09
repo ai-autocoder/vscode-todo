@@ -97,7 +97,7 @@ The repo is organized by where code runs.
 | Directory | Contents | Ships as |
 | --- | --- | --- |
 | [`src/`](src/extension.ts) | Extension host, TypeScript compiled to CommonJS | VSIX (`out/src/**`) |
-| [`webview-ui/`](webview-ui/angular.json) | One Angular 21 app, two build configurations | Inside the VSIX, and on Cloudflare Pages |
+| [`webview-ui/`](webview-ui/angular.json) | One Angular 21 app, two shipped builds (plus a dev configuration) | Inside the VSIX, and on Cloudflare Pages |
 | [`packages/core/`](packages/core/src/index.ts) | Model, merge, sync engine, GitHub clients, IndexedDB stores; no runtime dependencies | Never published; compiled into both apps |
 | [`worker/`](worker/src/index.ts) | Device-flow CORS proxy | Cloudflare Workers |
 
@@ -119,7 +119,7 @@ On the desktop the extension host owns all data. The webview only renders it and
 - loads stored lists;
 - registers the sidebar view ([`TodoViewProvider`](src/panels/TodoViewProvider.ts)) and the editor-tab panel ([`HelloWorldPanel`](src/panels/HelloWorldPanel.ts)).
 
-**Store.** [`store.ts`](src/todo/store.ts) holds five Redux Toolkit slices. `user` and `workspace` share one reducer object; `currentFile` reuses it and adds `pinFile`.
+**Store.** [`store.ts`](src/todo/store.ts) holds five Redux Toolkit slices. `user` and `workspace` share one reducer object; `currentFile` reuses it, overrides `loadData` with its own payload shape, and adds `pinFile`.
 
 | Slice | Holds |
 | --- | --- |
@@ -176,12 +176,12 @@ The PWA is not a second UI. It is the webview built with a different configurati
 | | Extension build | PWA build (`pwa` configuration in [`angular.json`](webview-ui/angular.json)) |
 | --- | --- | --- |
 | Index | `index.html` → `<app-root>` | [`index.pwa.html`](webview-ui/src/index.pwa.html) → `<app-pwa-shell>` |
-| Environment | `pwa: false` | [`environment.pwa.ts`](webview-ui/src/environments/environment.pwa.ts): client id, proxy URL |
+| Environment | `environment.prod.ts` (`pwa: false`), swapped by the `production` configuration | [`environment.pwa.ts`](webview-ui/src/environments/environment.pwa.ts): client id, proxy URL |
 | Bootstrap | [`bootstrap.ts`](webview-ui/src/bootstrap.ts) → `AppModule` | [`bootstrap.pwa.ts`](webview-ui/src/bootstrap.pwa.ts) → `PwaAppModule` |
 | Data provider | [`data.providers.ts`](webview-ui/src/app/data/data.providers.ts) → `VsCodeGateway` | [`data.providers.pwa.ts`](webview-ui/src/app/data/data.providers.pwa.ts) → `GistGateway` |
 | Extra stylesheet | none | [`vscode-theme.css`](webview-ui/src/pwa/vscode-theme.css) |
 | Service worker, manifest, Pages headers | no | yes |
-| Output hashing | none, so the host loads `main.js` etc. by name | all |
+| Output hashing | none, because the `build` script passes `--output-hashing=none`, so the host loads `main.js` and friends by name | all |
 
 **How the unmodified UI talks to a gist.** The seam is the message protocol:
 
@@ -230,7 +230,7 @@ Both apps need a token with the `gist` scope. They get it differently: one runs 
 
 | | Extension | PWA |
 | --- | --- | --- |
-| Mechanism | VS Code GitHub provider, `getSession("github", ["gist"])` ([`GitHubAuthManager.ts`](src/sync/GitHubAuthManager.ts)) | OAuth 2.0 Device Authorization Grant (RFC 8628) against a GitHub OAuth App ([`deviceFlow.ts`](packages/core/src/deviceFlow.ts)) |
+| Mechanism | VS Code GitHub provider, `getSession("github", ["gist"])` ([`GitHubAuthManager.ts`](src/sync/GitHubAuthManager.ts)) | OAuth 2.0 Device Authorization Grant (RFC 8628) with a public GitHub client id ([`deviceFlow.ts`](packages/core/src/deviceFlow.ts)) |
 | Secret | none handled | none; the client id is public |
 | Token storage | VS Code SecretStorage | IndexedDB, plaintext |
 | Invalid token | checked with `GET /gists` | next gist call returns 401/403; banner offers Reconnect |
@@ -289,8 +289,8 @@ GitHub's device-flow endpoints on github.com send no CORS headers, so a browser 
 
 | Control | Behaviour |
 | --- | --- |
-| Paths | Only `/login/device/code` and `/login/oauth/access_token`; anything else gets 404 |
-| Methods | `POST` forwarded, `OPTIONS` answered with 204; others get 405 |
+| Methods, checked first | `POST` is forwarded, `OPTIONS` answered with 204; any other method gets 405 |
+| Paths | A `POST` is forwarded only to `/login/device/code` or `/login/oauth/access_token`; any other path gets 404 |
 | Origins | `ALLOWED_ORIGINS = "https://plans-app.pages.dev"` (commit 24d6c9f). `Access-Control-Allow-Origin` echoes a listed origin, otherwise names the first listed one |
 | Client id | Optional `CLIENT_ID`: a body with a different `client_id` gets 403. Commented out in [`wrangler.toml`](worker/wrangler.toml) |
 | Upstream failure | 502 `upstream_unreachable`; GitHub's status codes pass through |
@@ -370,17 +370,18 @@ Only a genuine "file not found" lets a write skip the comparison. A network erro
 stateDiagram-v2
   [*] --> Offline
   Offline --> Syncing: first sync starts
+  Offline --> Dirty: edit before the first sync
   Synced --> Dirty: local edit
   Dirty --> Syncing: debounce, poll or focus
+  Dirty --> Error: GitHub mode with no gist id configured
   Synced --> Syncing: poll or focus
   Syncing --> Synced: reconcile succeeded
   Syncing --> Dirty: edit landed mid-sync, or conflict decision deferred
   Syncing --> Error: reconcile failed
   Error --> Syncing: retry or next trigger
-  Synced --> Offline: scope leaves GitHub mode
 ```
 
-An edit during `Error` leaves `Error` showing, because the failure is the more important news.
+Two rules sit on top of the diagram. An edit during `Error` leaves `Error` showing, because the failure is the more important news. Any state returns to `Offline` when the scope leaves GitHub mode, which is the one status `resetStatus` may always set.
 
 **Errors and truncation.** Both HTTP clients map 401/403 → auth, 404 → not found, 422 → validation, 429 → rate limit. GitHub also uses 403 for secondary rate limits: the PWA tells them apart by the response text, the extension reports them as auth errors.
 
@@ -393,7 +394,7 @@ The merge compares each todo, by id, with its baseline version. Only a todo chan
 **The base** is `lastCleanRemoteData`, with three exceptions:
 
 - bootstrap and seeding use an empty base, so everything counts as an addition;
-- a verified-write retry uses the remote it first read;
+- a verified-write retry uses the remote read immediately before the write it is retrying;
 - folding in an edit made during a sync uses the snapshot the reconcile started from.
 
 **Per-item decisions** ("changed" means `!isEqual` with the base version):
@@ -492,7 +493,7 @@ The extension can expose the lists to local AI agents over the Model Context Pro
 | `readOnly` | `true` | Write tools refuse |
 | `allowedScopes` | all three | Other scopes refuse |
 | `token` | empty, meaning no auth | If set, requires `Bearer`, compared with `crypto.timingSafeEqual` |
-| `Origin` | — | Absent is allowed (CLI clients); present must be loopback on the server's port, which blocks DNS rebinding |
+| `Origin` | — | Absent is allowed (CLI clients); a present origin must be loopback, which blocks DNS rebinding. Its port is checked only when a fixed port is configured and the origin carries one |
 | Sessions | 50 | Least recently used is evicted |
 
 **Why HTTP rather than stdio** *(inferred)*. A stdio server is a process the MCP client launches. This server's data lives inside an already-running extension host, so a stdio server would need a second process plus IPC back into VS Code. HTTP lets the extension own the lifecycle and lets several agents connect.
@@ -574,7 +575,7 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 
 **Security**
 
-- **PWA token.** Plaintext in IndexedDB, and `gist` covers every gist in the account. Disconnect does not revoke it.
+- **PWA token.** Plaintext in IndexedDB, and `gist` covers every gist in the account. Disconnect does not revoke it, and nothing refreshes it: if the registered GitHub app issues expiring tokens, users have to reconnect by hand.
 - **Mermaid rendering.** Mermaid runs with `securityLevel: "loose"` ([`app.module.ts`](webview-ui/src/app/app.module.ts)) on the same origin as the token. Rendered content comes only from the user's own gist.
 - **Worker protection is CORS-only** unless `CLIENT_ID` is set.
 - **MCP auth is off by default.** Once enabled, any local process can call the server unless a token is set.
