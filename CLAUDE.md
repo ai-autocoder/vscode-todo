@@ -14,6 +14,13 @@ KaTeX) webview + TypeScript/Node extension host with Redux Toolkit.
 
 ## Architecture
 
+**Keep [ARCHITECTURE.md](ARCHITECTURE.md) current.** It is the design doc for the whole system —
+the four directories, the gist sync engine and merge, auth, the Worker, the MCP server, testing
+and deployment. After a change that alters any of that (a new component or deployable, a change
+to the sync/merge/conflict rules, the message contract, the build or deploy pipeline, or a
+decision in its ADR table), update the affected section in the same PR. Its test counts and file
+citations are checked facts, so re-verify rather than guess.
+
 Two halves communicating over VS Code's webview messaging:
 - **Extension host** (`src/`) — TypeScript, Redux store, VS Code APIs
 - **Webview UI** (`webview-ui/`) — Angular SPA
