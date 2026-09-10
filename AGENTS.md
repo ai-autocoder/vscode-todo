@@ -19,7 +19,7 @@ Because there are two source roots, tsc's inferred root is the repo root, so out
 the test glob is `out/src/test/**`.
 
 ## Build, Test, and Development Commands
-- Install all deps: `npm run install:all` (root + webview + core).
+- Install all deps: `npm run install:all` (root + webview + core + worker).
 - Build extension: `npm run compile` (emits to `out/src/`). Watch: `npm run watch`.
 - Lint extension: `npm run lint`.
 - Test extension: `npm test`.
