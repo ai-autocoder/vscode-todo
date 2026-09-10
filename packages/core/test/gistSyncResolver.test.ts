@@ -192,7 +192,8 @@ describe("GistSyncEngine conflict resolver", () => {
 				const collision = todos[0];
 				return {
 					todos: new Map([[collision.todoId, collision.local]]),
-					extraTodos: [{ ...collision.remote!, id: 999 }],
+					// Keyed by the conflict it was raised from, so it lands beside that item.
+					extraTodos: new Map([[collision.todoId, [{ ...collision.remote!, id: 999 }]]]),
 				} satisfies ConflictDecisions;
 			},
 		});

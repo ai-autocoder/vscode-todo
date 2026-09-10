@@ -362,7 +362,7 @@ Only a genuine "file not found" lets a write skip the comparison. A network erro
 | Overlap | Per-scope in-progress flag; a trigger mid-sync queues one re-run | One promise queue for every reconcile |
 | Edit during a sync | Recovered from the cache, then merged into the result with the snapshot as base (`reconcileWithLocalEdits`) | Detected by a generation counter, then the same merge |
 | Durability | Every edit is written to the memento cache | Every edit is written to IndexedDB immediately, baseline untouched |
-| Failure | Scope shows Error; polling continues | Retries at 3 s × 2ⁿ, up to 3 times; banner says auth, missing gist or other |
+| Failure | Scope shows Error; polling continues | Retries at 3 s × 2ⁿ, up to 3 times; banner says auth, damaged file, missing gist or other |
 
 **Status.** Each scope reports one of five states. The status bar shows the most urgent scope; the header shows the current tab's.
 
@@ -434,7 +434,11 @@ Decisions must be sparse rather than a finished list. When the extension returne
 
 `resolveFileConflict` settles only the conflicting ids, so both sides' additions to a file survive (commit f34ef26). `filesDataPaths` merges as a union, never dropping an alias either side still has.
 
-**Order.** `threeWayMerge` computes a position-aware order, but every engine path then applies `mergeWithPreservedPositions`, which restores base order for existing items and appends new ones. A one-sided sync keeps its order. After a merge, additions move to the end and reorders revert. This is a known bug (§18).
+**Order.** `threeWayMerge` returns an `order` — the merged list as todo ids — alongside the items. Local order is the skeleton: it is what the user of this device last saw and arranged, so a todo created at the top stays at the top and a drag-and-drop reorder survives. Items only the remote holds are spliced in beside the neighbours they have there (`findInsertionIndex`). A conflicted id holds its slot even before anything settles it, so a resolution lands where the item sits rather than at the end. The extension's resolver returns keep-both copies keyed by the conflict they came from, and each is placed directly after it; the PWA settles an `id-collision` itself and appends its copy to the end of the list ([`gist-gateway.ts`](webview-ui/src/app/data/gist-gateway.ts)). `assembleMerged` builds the final list from that skeleton, and every engine path goes through it.
+
+Nothing detects "both devices reordered the same items", and nothing should: with no per-item position in the data model the two orders can only be picked between, so the one in front of the user wins. The other device pulls it down on its next sync and the two converge.
+
+This replaced `mergeWithPreservedPositions`, which rebuilt the list in *base* order and appended everything else — the one order guaranteed to be stale, since both sides have by definition changed since. Until then every merging sync sent additions to the bottom and undid reorders.
 
 **Canonical equality.** `isEqual` compares JSON with object keys sorted and array order kept, and `serialize` writes the same sorted form. A todo parsed from the gist and one built in code have different key orders. Key-order-sensitive comparison flagged untouched items as modified, pushed identical content every reconcile, and raised phantom conflicts (commits f8fe3c9, 218411c).
 
@@ -443,7 +447,7 @@ Decisions must be sparse rather than a finished list. When the extension returne
 - **Timestamps.** The model has no `updatedAt` and device clocks differ. Commit 09273c0 replaced timestamp-based detection with content comparison against a tracked clean remote to stop false conflicts.
 - **Revisions.** A gist revision covers the whole file and cannot be made a precondition for a write, so it could detect a concurrent change but not prevent it, or say which items changed. *(inferred)*
 
-The costs: every device needs a baseline, edits to different fields of one todo still conflict, and order is not merged.
+The costs: every device needs a baseline, edits to different fields of one todo still conflict, and two reorders of the same items are picked between rather than merged.
 
 **Worked example.** The gist and both devices start from the same baseline.
 
@@ -508,17 +512,19 @@ Three suites on three runners guard three layers. CI runs them all, plus both An
 
 | Suite | Runner | Cases | Protects |
 | --- | --- | --- | --- |
-| [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 223 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export |
-| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 136 | Shared components, `GistGateway`, conflict review, PWA shell |
-| [`src/test`](src/test/sync/syncManagerConcurrency.test.ts) | Mocha in real VS Code (`@vscode/test`) | 195 | `SyncManager` concurrency and status, cache-key compatibility, cross-peer equality, truncation, MCP request gates |
+| [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 253 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export |
+| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 138 | Shared components, `GistGateway`, conflict review, PWA shell |
+| [`src/test`](src/test/sync/syncManagerConcurrency.test.ts) | Mocha in real VS Code (`@vscode/test`) | 197 | `SyncManager` concurrency and status, cache-key compatibility, cross-peer equality, truncation, MCP request gates |
 
-Counts are declared test cases (`it(`/`test(` call sites; none generated in loops or skipped) as of 15 Sep 2026.
+Counts are declared test cases (`it(`/`test(` call sites; none generated in loops or skipped) as of 17 Sep 2026.
 
 **Regression tests follow the bugs.**
 
 - [`gistSyncConcurrency.test.ts`](packages/core/test/gistSyncConcurrency.test.ts) pairs "loses the edit without the guard" with "keeps it with the guard".
 - [`gistSyncRegression.test.ts`](packages/core/test/gistSyncRegression.test.ts) names the data-loss scenarios.
-- [`crossPeerEquality.test.ts`](src/test/sync/crossPeerEquality.test.ts) checks that both peers write identical bytes.
+- [`crossPeerEquality.test.ts`](src/test/sync/crossPeerEquality.test.ts) checks that both peers write identical bytes, and agree on order.
+- [`gistSyncOrdering.test.ts`](packages/core/test/gistSyncOrdering.test.ts) pins the ordering rule (§12) on every merging path, including convergence between two peers.
+- [`gistSyncMalformed.test.ts`](packages/core/test/gistSyncMalformed.test.ts) pins that a damaged gist file stops the sync instead of being read as a deletion, at each of the three read sites.
 
 **CI** runs three parallel jobs:
 
@@ -551,7 +557,7 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 | Device flow for PWA sign-in | Redirect-based code flow; pasted access token | A public client cannot hold a secret; device flow needs only the client id | User types a code; needs a CORS proxy |
 | Worker as a CORS shim only | Auth backend with sessions; third-party proxy | Nothing to protect: no secrets, no state, gist traffic goes direct | Extra deployable; CORS-only origin check; previews cannot sign in |
 | Shared core compiled into both apps | Duplicated logic; published npm package | Peers writing one file must agree; separate copies drifted into phantom conflicts and lost writes (218411c) | Relative-import seam; core changes need an extension release |
-| Content-based three-way merge | Last-write-wins; timestamps; CRDTs | Replaced timestamp detection that raised false conflicts (09273c0). *(inferred)* Keeps plain JSON compatible with existing gists | Per-device baseline; same-item field edits conflict; order not merged |
+| Content-based three-way merge | Last-write-wins; timestamps; CRDTs | Replaced timestamp detection that raised false conflicts (09273c0). *(inferred)* Keeps plain JSON compatible with existing gists | Per-device baseline; same-item field edits conflict; two reorders are picked between |
 | PWA: `prefer-local`, review later | Blocking dialog | Sync runs on focus, often just before the phone backgrounds the app (0044a73) | Other device's version overwritten until reviewed |
 | Extension: blocking quick picks | Settle now, review later | *(inferred)* The user is at the editor; the dialog predates the PWA (6b35f52) | Sync waits on the user |
 | One Angular app, two builds | Separate mobile app | *(inferred)* One implementation of Markdown, Mermaid, KaTeX, tags and drag-and-drop | Shared edits change both surfaces |
@@ -565,11 +571,8 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 **Correctness**
 
 - **Lost update still possible.** The gist API has no compare-and-swap, so a push landing between `pushVerified`'s re-read and its `PATCH` is overwritten, and the other device later pulls the overwrite.
-- **Merges reset list order** (bug, §12).
-- **An unreadable gist file reads as an empty list** (bug). `parseGlobal` and `parseWorkspace` return an empty list for invalid JSON or a missing top-level key.
-  - An unchanged device then pulls "everything deleted".
-  - A device with edits pushes its merge over the broken file.
-  - Recovery is through gist revision history.
+- **Order between two reorders is picked, not merged** (§12). The data model has no per-item position, so when both devices rearrange the same items one arrangement has to win; local's does.
+- **An unreadable gist file stops the sync** rather than syncing a deletion. `parseGlobal` and `parseWorkspace` validate what they read — JSON, top-level shape, and a usable `id` on every todo (a finite number, or a non-empty string, which older builds' import path could mint and so still exists in the wild; the importer now replaces a non-numeric id) — and a failure aborts before any merge or write with a non-retryable `CorruptDataError`, leaving cache, baseline and the gist untouched. Checked at all three read sites: the reconcile's first read, the seed re-check, and `pushVerified`'s verifying re-read. Recovery is through the gist's revision history: the PWA's banner links to it directly, and the extension shows the failure once per damaged file with a **View Gist** action (`SyncManager.reportCorruptFile`) — needed because polled and debounced syncs discard their results, so only a manual sync would otherwise report anything. The parsers used to answer "unreadable" with an empty list, which the engine cannot tell from a genuine deletion — so an unchanged device pulled "everything deleted", and a device with edits pushed its survivors over the broken file.
 - **Duplicated logic outside core** (§13) can still drift.
 - **Profile Sync registration** (`setKeysForSync`) happens only at activation.
 

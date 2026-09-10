@@ -18,6 +18,7 @@ import {
 	WorkspaceSyncMode,
 	SyncStatus,
 	SyncResult,
+	SyncError,
 	SyncErrorType,
 	SyncConstants,
 	StorageKeys,
@@ -61,6 +62,16 @@ export class SyncManager {
 	 */
 	private userEditedWhileSyncing: boolean = false;
 	private workspaceEditedWhileSyncing: boolean = false;
+	/**
+	 * Gist files already reported as damaged, as `scope:gistId:fileName`. Cleared the moment that
+	 * file parses again, so the message comes once per problem rather than once per poll.
+	 *
+	 * Keyed by the file rather than by scope alone: pointing a scope at a different gist, or at a
+	 * different file in the same gist, is a different problem, and a scope-keyed flag would
+	 * silence it — for good, since a damaged file can never produce the clean read that would
+	 * clear the flag. See {@link reportCorruptFile}.
+	 */
+	private readonly reportedCorruptFiles = new Set<string>();
 
 	// Event emitters for status changes
 	private onStatusChangeEmitter = new vscode.EventEmitter<{
@@ -285,8 +296,14 @@ export class SyncManager {
 			const res = await engine.reconcileUser(fileName, snapshot);
 			if (!res.success || !res.data) {
 				this.updateStatus("user", this.statusForFailure(res.error?.type));
+				this.reportCorruptFile("user", gistId, fileName, res.error);
 				return { success: false, error: res.error };
 			}
+			// The reconcile came back with data, so the file parsed. Cleared here rather than at
+			// the end of the sync because this is where the evidence is: a later step throwing
+			// does not make the file unreadable again, and leaving the flag set would silence the
+			// next genuine corruption of it.
+			this.reportedCorruptFiles.delete(corruptKey("user", gistId, fileName));
 
 			let reconciled = res.data.data;
 
@@ -407,8 +424,11 @@ export class SyncManager {
 			const res = await engine.reconcileWorkspace(fileName, snapshot);
 			if (!res.success || !res.data) {
 				this.updateStatus("workspace", this.statusForFailure(res.error?.type));
+				this.reportCorruptFile("workspace", gistId, fileName, res.error);
 				return { success: false, error: res.error };
 			}
+			// See the user scope: cleared on the read that proves the file parses, not at the end.
+			this.reportedCorruptFiles.delete(corruptKey("workspace", gistId, fileName));
 
 			let reconciled = res.data.data;
 
@@ -501,6 +521,57 @@ export class SyncManager {
 	 */
 	private statusForFailure(type: SyncErrorType | undefined): SyncStatus {
 		return type === SyncErrorType.ConflictError ? SyncStatus.Dirty : SyncStatus.Error;
+	}
+
+	/**
+	 * Tells the user their gist file is damaged, from a sync they did not ask for.
+	 *
+	 * Every other failure is either transient or self-announcing, and the red indicator is enough
+	 * until they next sync by hand. This one is neither: the engine has stopped syncing that
+	 * scope, no retry can change that, and it stays that way until a person restores the file on
+	 * github.com. Polling and debounced pushes discard their results — only the manual "Sync Now"
+	 * command reports errors — so without this the scope would just go quiet and stay quiet.
+	 *
+	 * Once per damaged file, not once per poll, so a three-minute poll cannot turn a standing
+	 * problem into a standing interruption. A sync the user asked for answers them regardless —
+	 * see {@link forgetCorruptReports}, which the command calls first.
+	 */
+	private reportCorruptFile(
+		scope: "user" | "workspace",
+		gistId: string,
+		fileName: string,
+		error: SyncError | undefined
+	): void {
+		if (error?.type !== SyncErrorType.CorruptDataError) {
+			return;
+		}
+		const key = corruptKey(scope, gistId, fileName);
+		if (this.reportedCorruptFiles.has(key)) {
+			return;
+		}
+		this.reportedCorruptFiles.add(key);
+		void vscode.window
+			.showErrorMessage(`Todo sync stopped: ${error.message}`, "View Gist")
+			.then((action) => {
+				if (action === "View Gist") {
+					// Through the command rather than building the URL here: it is the same button
+					// the error dialog and the menu use, and it already handles the gist id having
+					// been cleared since this failure.
+					void vscode.commands.executeCommand("vsc-todo.viewGistOnGitHub");
+				}
+			});
+	}
+
+	/**
+	 * Drops the record of which damaged files have been reported, so the next failure speaks
+	 * again.
+	 *
+	 * For a sync the user asked for. The suppression above exists to keep a three-minute poll
+	 * quiet, not to leave a deliberate "Sync Now" with nothing but a red icon — and since this
+	 * class now owns the message, the command does not show one of its own.
+	 */
+	public forgetCorruptReports(): void {
+		this.reportedCorruptFiles.clear();
 	}
 
 	/**
@@ -708,4 +779,9 @@ export class SyncManager {
 		this.onStatusChangeEmitter.dispose();
 		this.onDataDownloadedEmitter.dispose();
 	}
+}
+
+/** Key for {@link SyncManager}'s record of damaged files: a scope alone is not specific enough. */
+function corruptKey(scope: "user" | "workspace", gistId: string, fileName: string): string {
+	return `${scope}:${gistId}:${fileName}`;
 }

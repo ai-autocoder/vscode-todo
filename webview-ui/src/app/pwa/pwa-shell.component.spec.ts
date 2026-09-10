@@ -174,3 +174,56 @@ describe("PwaShellComponent — naming a new list", () => {
 		expect(chooseFiles).toHaveBeenCalledWith("user-todos.json", "workspace-home.json");
 	});
 });
+
+/**
+ * A gist file core refuses to read is the one sync failure the app cannot recover from on its
+ * own: retrying re-reads the same bytes, and the fix is a person restoring the file from the
+ * gist's revision history. The banner has to say so and lead there.
+ */
+describe("PwaShellComponent — a damaged gist file", () => {
+	let fixture: ComponentFixture<PwaShellComponent>;
+	let syncFailure: BehaviorSubject<unknown>;
+
+	const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+	const banner = (): HTMLElement | null => host().querySelector(".sync-failure");
+	const links = (): HTMLAnchorElement[] =>
+		Array.from(host().querySelectorAll(".sync-failure-actions a"));
+	const buttons = (): HTMLButtonElement[] =>
+		Array.from(host().querySelectorAll(".sync-failure-actions button"));
+
+	beforeEach(async () => {
+		const connection = new BehaviorSubject<GistConnectionState>({ phase: "disconnected" });
+		const gateway = fakeGateway(connection, jasmine.createSpy("chooseFiles"));
+		syncFailure = (gateway as unknown as { syncFailure: BehaviorSubject<unknown> }).syncFailure;
+
+		await TestBed.configureTestingModule({
+			declarations: [PwaShellComponent],
+			imports: [CommonModule, FormsModule],
+			providers: [{ provide: DATA_GATEWAY, useValue: gateway }],
+			schemas: [CUSTOM_ELEMENTS_SCHEMA],
+		}).compileComponents();
+
+		fixture = TestBed.createComponent(PwaShellComponent);
+		fixture.detectChanges();
+		await fixture.whenStable();
+	});
+
+	it("shows the failure and links to the gist's revisions, with no retry offered", () => {
+		syncFailure.next({
+			phase: "failing",
+			kind: "data",
+			message: "Could not read user-todos.json from the gist: it is not valid JSON.",
+			canRetry: false,
+		});
+		fixture.detectChanges();
+
+		expect(banner()?.textContent).toContain("user-todos.json");
+		expect(links().length).toBe(1);
+		expect(links()[0].href).toBe(
+			"https://gist.github.com/0123456789abcdef0123456789abcdef/revisions"
+		);
+		// "Try again" would re-read the same bytes; "Reconnect" and "Choose a gist" are the wrong
+		// diagnosis and would send the user off to change a setting that is not the problem.
+		expect(buttons().length).toBe(0);
+	});
+});

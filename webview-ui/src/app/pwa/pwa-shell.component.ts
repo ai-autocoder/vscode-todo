@@ -416,8 +416,23 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		const state = this.syncFailureState;
 		return (
 			state.phase === "failing" &&
-			(state.kind === "auth" || state.kind === "missing" || state.canRetry)
+			(state.kind === "auth" ||
+				state.kind === "missing" ||
+				(state.kind === "data" && !!this.gistRevisionsUrl) ||
+				state.canRetry)
 		);
+	}
+
+	/**
+	 * Where a damaged gist file can be recovered from. GitHub keeps every revision of a gist, so
+	 * the version from before the damage is still there — which is the only repair for a file
+	 * this app now refuses to read, and something no button here can do on the user's behalf.
+	 *
+	 * Undefined when no gist is selected, in which case there is nothing to link to.
+	 */
+	get gistRevisionsUrl(): string | undefined {
+		const gistId = this.gateway?.currentGistId;
+		return gistId ? `https://gist.github.com/${gistId}/revisions` : undefined;
 	}
 
 	/** Retries a failed sync, from the banner. */

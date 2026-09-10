@@ -5,9 +5,9 @@
  */
 
 import { Todo, TodoFilesData, TodoFilesDataPaths } from "./todoTypes";
-// Type-only import (erased at runtime, so no circular dependency). ConflictSet is defined
-// canonically in threeWayMerge; we reuse it here for WorkspaceMergeResult.
-import type { ConflictSet } from "./threeWayMerge";
+// Type-only import (erased at runtime, so no circular dependency). ConflictSet and MergeResult
+// are defined canonically in threeWayMerge; we reuse them here for WorkspaceMergeResult.
+import type { ConflictSet, MergeResult } from "./threeWayMerge";
 
 /**
  * Sync modes for global scope
@@ -149,6 +149,16 @@ export enum SyncErrorType {
 	InvalidGistIdError = "invalid-gist-id",
 	FileNotFoundError = "file-not-found",
 	ValidationError = "validation",
+	/**
+	 * The gist file was read, but its content is not something this app can understand — invalid
+	 * JSON, the wrong shape, or todos without ids.
+	 *
+	 * Deliberately not a {@link ValidationError}: that one means GitHub rejected what *we* sent
+	 * (a 422, empty content), which no amount of looking at the gist explains. This one means the
+	 * file on GitHub is damaged, nothing was synced, and the repair is a human restoring it from
+	 * the gist's revision history — a different message and a different button.
+	 */
+	CorruptDataError = "corrupt-data",
 	UnknownError = "unknown",
 }
 
@@ -218,14 +228,16 @@ export const GitHubAPI = {
  * Workspace-specific merge result for three-way merge
  */
 export interface WorkspaceMergeResult {
-	/** Workspace todos that were successfully auto-merged */
-	autoMergedWorkspaceTodos: Todo[];
+	/**
+	 * The workspace todo list's merge: auto-merged items, conflicts, and the ordering they
+	 * belong in. Carried whole rather than split into separate fields because the items and
+	 * the order have to be assembled together — see `assembleMerged`.
+	 */
+	workspaceMerge: MergeResult;
 	/** Files data that was successfully auto-merged */
 	autoMergedFilesData: TodoFilesData;
 	/** Files path aliases that were successfully auto-merged */
 	autoMergedFilesDataPaths: TodoFilesDataPaths;
-	/** Workspace todo conflicts that require user resolution */
-	workspaceConflicts: ConflictSet[];
 	/** File path conflicts (file added/removed/modified in conflicting ways) */
 	fileConflicts: FileConflictSet[];
 }
@@ -255,12 +267,7 @@ export interface FileConflictSet {
 	 * those raw arrays each lack the other side’s additions to the file, and a file conflict is
 	 * settled by policy without ever showing the user the items, so the loss would be silent.
 	 */
-	itemMerge?: {
-		/** Items of this file that merged cleanly; only `conflicts` need a policy decision. */
-		autoMerged: Todo[];
-		/** Item-level conflicts within this file, in the same shape as a todo-list merge. */
-		conflicts: ConflictSet[];
-	};
+	itemMerge?: MergeResult;
 }
 
 /**

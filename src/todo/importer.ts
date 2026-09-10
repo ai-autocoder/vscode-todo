@@ -352,7 +352,14 @@ function initMissingTodoProperties(validImportData: TodoPartialInput[]): Todo[] 
         const tags = normalizeTags(todo.tags);
         return {
             ...todo,
-            id: todo.id || generateUniqueId(validImportData),
+            // Replaced unless it is genuinely a number. Only a *falsy* id used to be replaced, so a
+            // string id in a hand-written import file survived all the way onto the gist — where the
+            // model, the gist schema and the MCP tools all declare `id: number`, and the MCP output
+            // schema then rejects the whole page rather than the one item. Kept in step with the
+            // sibling copy in packages/core/src/importExport.ts.
+            id: typeof todo.id === "number" && Number.isFinite(todo.id)
+                ? todo.id
+                : generateUniqueId(validImportData),
             text: todo.text.trim(),
             completed: todo.completed ?? false,
             isMarkdown: todo.isMarkdown ?? false,

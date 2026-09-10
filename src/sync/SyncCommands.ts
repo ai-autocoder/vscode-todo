@@ -1004,6 +1004,11 @@ export class SyncCommands {
 				cancellable: false,
 			},
 			async () => {
+				// A sync the user asked for answers them even if they have been told before. The
+				// manager suppresses a repeat "this file is damaged" so a three-minute poll cannot
+				// nag; pressing Sync Now is the opposite of a poll.
+				this.syncManager.forgetCorruptReports();
+
 				// Sync both scopes if enabled
 				const userResult = userMode === "github"
 					? await this.syncManager.sync("user")
@@ -1041,6 +1046,13 @@ export class SyncCommands {
 				message = `${scope} sync failed: ${error.message}`;
 				actions = ["View Gist", "Retry Sync"];
 				break;
+			case SyncErrorType.CorruptDataError:
+				// Already reported, with the file name and a View Gist button, by
+				// `SyncManager.reportCorruptFile` — which covers polled and debounced syncs too,
+				// where nothing reads the result. Showing a second, near-identical error here
+				// would stack two dialogs with the same message and the same button on the one
+				// path that does read it.
+				return;
 			case SyncErrorType.AuthError:
 				message = `${scope} sync failed: Authentication error. Please reconnect GitHub.`;
 				actions = ["Connect GitHub"];

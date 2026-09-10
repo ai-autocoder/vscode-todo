@@ -12,7 +12,7 @@ import { isEqual } from "./pure";
 import {
 	threeWayMerge,
 	threeWayMergeWorkspace,
-	mergeWithPreservedPositions,
+	assembleMerged,
 	resolveFileConflict,
 	ConflictSet,
 } from "./threeWayMerge";
@@ -21,6 +21,7 @@ import {
 	GlobalGistData,
 	WorkspaceGistData,
 	FileConflictSet,
+	SyncError,
 	SyncErrorType,
 	SyncResult,
 } from "./syncTypes";
@@ -74,15 +75,20 @@ export interface ConflictDecisions {
 	/** Winning list per conflicting file path (workspace scope). */
 	files?: Map<string, Todo[] | null>;
 	/**
-	 * Extra todos to add to the merged list, for a resolver that wants to keep *both* versions.
+	 * Extra todos to add to the merged list, keyed by the conflicting todo id they were raised
+	 * from — for a resolver that wants to keep *both* versions.
 	 *
 	 * An `id-collision` is the case that needs this: the two todos were created independently on
 	 * the two devices and merely drew the same random id, so they are not versions of each other
 	 * and picking a side destroys a real item. Keeping both means re-adding one under a fresh id,
 	 * which no per-id decision can express. Ids must not already be in use — pick them with
 	 * `generateUniqueId` over the `knownIds` the resolver was handed.
+	 *
+	 * Keyed rather than a flat list so each copy can be placed next to the item it came from.
+	 * Appended at the end instead, a "keep both" splits the pair across the list and reads as an
+	 * unrelated todo that appeared at the bottom.
 	 */
-	extraTodos?: Todo[];
+	extraTodos?: Map<number, Todo[]>;
 }
 
 /**
@@ -144,7 +150,6 @@ export interface ReconcileResult<T> {
 	fileConflicts: FileConflictSet[];
 }
 
-const EMPTY_GLOBAL: GlobalGistData = { userTodos: [] };
 const emptyWorkspace = (): WorkspaceGistData => ({ workspaceTodos: [], filesData: {}, filesDataPaths: {} });
 
 /** Union of the todo ids across the lists a merge saw; handed to a {@link ConflictResolver}. */
@@ -257,15 +262,11 @@ export class GistSyncEngine {
 		reconciled: GlobalGistData,
 		currentLocal: GlobalGistData
 	): { data: GlobalGistData; conflicts: ConflictSet[] } {
-		const { autoMerged, conflicts } = threeWayMerge(
-			snapshot.userTodos,
-			currentLocal.userTodos,
-			reconciled.userTodos
-		);
-		const resolved = this.resolve(conflicts);
+		const merge = threeWayMerge(snapshot.userTodos, currentLocal.userTodos, reconciled.userTodos);
+		const { picks, extras } = this.resolve(merge.conflicts);
 		return {
-			data: { userTodos: mergeWithPreservedPositions(autoMerged, resolved, snapshot.userTodos) },
-			conflicts,
+			data: { userTodos: assembleMerged(merge, picks, extras) },
+			conflicts: merge.conflicts,
 		};
 	}
 
@@ -290,19 +291,15 @@ export class GistSyncEngine {
 			currentLocal.filesDataPaths ?? {},
 			reconciled.filesDataPaths ?? {}
 		);
-		const resolvedWs = this.resolve(result.workspaceConflicts);
+		const { picks, extras } = this.resolve(result.workspaceMerge.conflicts);
 		const finalFilesData = this.resolveFiles(result.autoMergedFilesData, result.fileConflicts);
 		return {
 			data: {
-				workspaceTodos: mergeWithPreservedPositions(
-					result.autoMergedWorkspaceTodos,
-					resolvedWs,
-					snapshot.workspaceTodos
-				),
+				workspaceTodos: assembleMerged(result.workspaceMerge, picks, extras),
 				filesData: finalFilesData,
 				filesDataPaths: result.autoMergedFilesDataPaths,
 			},
-			conflicts: result.workspaceConflicts,
+			conflicts: result.workspaceMerge.conflicts,
 			fileConflicts: result.fileConflicts,
 		};
 	}
@@ -344,8 +341,11 @@ export class GistSyncEngine {
 	 * A {@link ConflictResolver}'s decision wins where it made one. Everything else falls back to
 	 * the active policy — which is also the whole path when no resolver is configured.
 	 */
-	private resolve(conflicts: ConflictSet[], decisions?: ConflictDecisions): Todo[] {
-		const resolved: Todo[] = [];
+	private resolve(
+		conflicts: ConflictSet[],
+		decisions?: ConflictDecisions
+	): { picks: Map<number, Todo>; extras?: Map<number, Todo[]> } {
+		const picks = new Map<number, Todo>();
 		for (const c of conflicts) {
 			const pick = decisions?.todos?.has(c.todoId)
 				? decisions.todos.get(c.todoId) ?? null
@@ -353,15 +353,13 @@ export class GistSyncEngine {
 					? c.remote
 					: c.local;
 			if (pick) {
-				resolved.push(pick);
+				picks.set(c.todoId, pick);
 			}
+			// A pick of null is a deletion the winning side made: leave the id out entirely, and
+			// `assembleMerged` leaves its slot unfilled.
 		}
-		// Keep-both copies. These carry ids that are in neither base nor either side, so
-		// `mergeWithPreservedPositions` appends them after everything that was in base.
-		for (const extra of decisions?.extraTodos ?? []) {
-			resolved.push(extra);
-		}
-		return resolved;
+		// Keep-both copies ride along keyed by the conflict they came from, so they land beside it.
+		return { picks, extras: decisions?.extraTodos };
 	}
 
 	/**
@@ -395,15 +393,15 @@ export class GistSyncEngine {
 			empty: () => ({ userTodos: [] }),
 			parse: parseGlobal,
 			merge: async (base, local, remote) => {
-				const { autoMerged, conflicts } = threeWayMerge(base.userTodos, local.userTodos, remote.userTodos);
+				const merge = threeWayMerge(base.userTodos, local.userTodos, remote.userTodos);
 				const decisions = await this.decide(
-					conflicts,
+					merge.conflicts,
 					[],
 					idsIn(base.userTodos, local.userTodos, remote.userTodos)
 				);
-				const resolved = this.resolve(conflicts, decisions);
-				const finalTodos = mergeWithPreservedPositions(autoMerged, resolved, base.userTodos);
-				return { merged: { userTodos: finalTodos }, conflicts, fileConflicts: [] };
+				const { picks, extras } = this.resolve(merge.conflicts, decisions);
+				const finalTodos = assembleMerged(merge, picks, extras);
+				return { merged: { userTodos: finalTodos }, conflicts: merge.conflicts, fileConflicts: [] };
 			},
 		});
 	}
@@ -439,7 +437,7 @@ export class GistSyncEngine {
 				// come out of a single merge, so asking twice would make the user answer half a
 				// decision, then the other half.
 				const decisions = await this.decide(
-					result.workspaceConflicts,
+					result.workspaceMerge.conflicts,
 					result.fileConflicts,
 					// Per-file ids are included: a keep-both copy must be unique across everything
 					// this gist file holds, not just the workspace list it was raised from.
@@ -452,12 +450,8 @@ export class GistSyncEngine {
 						...Object.values(remote.filesData ?? {})
 					)
 				);
-				const resolvedWs = this.resolve(result.workspaceConflicts, decisions);
-				const finalWorkspaceTodos = mergeWithPreservedPositions(
-					result.autoMergedWorkspaceTodos,
-					resolvedWs,
-					base.workspaceTodos
-				);
+				const { picks, extras } = this.resolve(result.workspaceMerge.conflicts, decisions);
+				const finalWorkspaceTodos = assembleMerged(result.workspaceMerge, picks, extras);
 				const finalFilesData = this.resolveFiles(
 					result.autoMergedFilesData,
 					result.fileConflicts,
@@ -468,7 +462,11 @@ export class GistSyncEngine {
 					filesData: finalFilesData,
 					filesDataPaths: result.autoMergedFilesDataPaths,
 				};
-				return { merged, conflicts: result.workspaceConflicts, fileConflicts: result.fileConflicts };
+				return {
+					merged,
+					conflicts: result.workspaceMerge.conflicts,
+					fileConflicts: result.fileConflicts,
+				};
 			},
 		});
 	}
@@ -479,7 +477,7 @@ export class GistSyncEngine {
 		localData: T,
 		strategy: {
 			empty: () => T;
-			parse: (raw: string) => T;
+			parse: (raw: string) => ParseResult<T>;
 			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
@@ -510,7 +508,7 @@ export class GistSyncEngine {
 		localData: T,
 		strategy: {
 			empty: () => T;
-			parse: (raw: string) => T;
+			parse: (raw: string) => ParseResult<T>;
 			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
@@ -526,7 +524,14 @@ export class GistSyncEngine {
 		const remoteRead = await this.client.readFile(this.gistId, fileName);
 		let remoteData: T | null;
 		if (remoteRead.success) {
-			remoteData = strategy.parse(remoteRead.data ?? "");
+			// A file we cannot understand stops the reconcile here, before any merge and before
+			// any write. Cache and baseline are left exactly as they were, so nothing is lost on
+			// this device and the next sync of a restored file behaves as if this never happened.
+			const parsed = strategy.parse(remoteRead.data ?? "");
+			if (!parsed.ok) {
+				return { success: false, error: unreadableError(fileName, parsed.reason) };
+			}
+			remoteData = parsed.data;
 		} else if (remoteRead.error?.type === SyncErrorType.FileNotFoundError) {
 			remoteData = null;
 		} else {
@@ -541,7 +546,13 @@ export class GistSyncEngine {
 		if (remoteData === null) {
 			const recheck = await this.client.readFile(this.gistId, fileName);
 			if (recheck.success) {
-				const created = strategy.parse(recheck.data ?? "");
+				// Content we cannot parse is not permission to overwrite it — it is a file with
+				// something in it that this device does not understand.
+				const parsed = strategy.parse(recheck.data ?? "");
+				if (!parsed.ok) {
+					return { success: false, error: unreadableError(fileName, parsed.reason) };
+				}
+				const created = parsed.data;
 				const { merged, conflicts, fileConflicts } = await strategy.merge(
 					strategy.empty(),
 					localData,
@@ -623,7 +634,7 @@ export class GistSyncEngine {
 		conflicts: ConflictSet[],
 		fileConflicts: FileConflictSet[],
 		strategy: {
-			parse: (raw: string) => T;
+			parse: (raw: string) => ParseResult<T>;
 			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
@@ -652,7 +663,17 @@ export class GistSyncEngine {
 				return { success: false, error: recheck.error };
 			}
 
-			const current = recheck.success ? strategy.parse(recheck.data ?? "") : undefined;
+			// Same rule as the reconcile's first read: unparseable content is not a concurrent
+			// edit to merge with, and it is certainly not an empty file to write over. Bail with
+			// the remote and the baseline untouched.
+			let current: T | undefined;
+			if (recheck.success) {
+				const parsed = strategy.parse(recheck.data ?? "");
+				if (!parsed.ok) {
+					return { success: false, error: unreadableError(fileName, parsed.reason) };
+				}
+				current = parsed.data;
+			}
 
 			if (current !== undefined && !isEqual(current, base)) {
 				this.logger?.(
@@ -708,7 +729,7 @@ export class GistSyncEngine {
 		localData: T,
 		strategy: {
 			empty: () => T;
-			parse: (raw: string) => T;
+			parse: (raw: string) => ParseResult<T>;
 			merge: (base: T, local: T, remote: T) => Promise<{ merged: T; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] }>;
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
@@ -785,32 +806,169 @@ function sortObjectKeys(value: unknown): unknown {
 	return sorted;
 }
 
-function parseGlobal(raw: string): GlobalGistData {
-	const trimmed = raw?.trim();
-	if (!trimmed) {
-		return { ...EMPTY_GLOBAL };
+/**
+ * A gist file that was read, or the reason it could not be understood.
+ *
+ * The distinction is the whole point. These parsers used to answer "unreadable" with an empty
+ * list, and an empty list is indistinguishable from the other device having deleted everything —
+ * so a damaged file was synced as a deletion: pulled over healthy local todos, and, where this
+ * device had edits of its own, merged as "remote deleted all of these" and pushed back over the
+ * damaged file, destroying whatever the revision history had not yet lost.
+ */
+type ParseResult<T> = { ok: true; data: T } | { ok: false; reason: string };
+
+/**
+ * Checks a list read from a gist file is one the merge can actually key by id.
+ *
+ * Only `id` is required, not the whole {@link Todo} shape: the merge is keyed by id and nothing
+ * else, an item without one silently collapses into its neighbours, and every other field has a
+ * sane absence. Validating the rest would mean rejecting files written by a version of the app
+ * whose model has moved on, which is a worse failure than rendering a todo with no text.
+ *
+ * And "usable" is the test, not "numeric" — deliberately, and it must stay that way.
+ *
+ * The model says `id: number`, but for years the import path replaced only a *falsy* id, so a
+ * string in a hand-written import file survived onto the gist. Files written by those builds are
+ * still out there, which is what makes the tolerance necessary — `initMissingTodoProperties` no
+ * longer mints them, but it cannot go back and fix the ones already written. A string keys a
+ * `Map` perfectly well and both peers read it the same way, whereas rejecting one would kill the
+ * sync permanently, with no recovery — the offending todo is in local state too, so restoring
+ * the file from the revision history only gets it pushed back out again.
+ *
+ * So: do not tighten this to `number` on the grounds that the importer is now strict. The
+ * importer being strict is about new data; this is about data that already exists.
+ *
+ * @returns the reason the list is unusable, or null when it is fine
+ */
+function invalidListReason(list: unknown, label: string): string | null {
+	if (!Array.isArray(list)) {
+		return `"${label}" is missing or is not a list`;
 	}
-	try {
-		const parsed = JSON.parse(trimmed) as Partial<GlobalGistData>;
-		return { userTodos: Array.isArray(parsed.userTodos) ? (parsed.userTodos as Todo[]) : [] };
-	} catch {
-		return { ...EMPTY_GLOBAL };
+	for (let i = 0; i < list.length; i++) {
+		const item = list[i] as Partial<Todo> | null;
+		if (typeof item !== "object" || item === null || Array.isArray(item)) {
+			return `"${label}" holds something that is not a todo (item ${i + 1})`;
+		}
+		const id: unknown = item.id;
+		const usableId =
+			(typeof id === "number" && Number.isFinite(id)) || (typeof id === "string" && id !== "");
+		if (!usableId) {
+			return `a todo in "${label}" has no usable id (item ${i + 1})`;
+		}
 	}
+	return null;
 }
 
-function parseWorkspace(raw: string): WorkspaceGistData {
+/** True for a JSON object — the shape every gist file and every map inside one has. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Parses the JSON envelope shared by both scopes.
+ *
+ * An empty file counts as damage, not as an empty list: neither peer can produce one, because
+ * both clients refuse to write empty content (GitHub requires at least one byte, and a file
+ * emptied through the API is removed rather than blanked). So whatever emptied it was not a
+ * sync, and reading it as "everything was deleted" would finish the job.
+ */
+function parseEnvelope(raw: string): ParseResult<Record<string, unknown>> {
 	const trimmed = raw?.trim();
 	if (!trimmed) {
-		return emptyWorkspace();
+		return { ok: false, reason: "the file is empty" };
 	}
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(trimmed) as Partial<WorkspaceGistData>;
-		return {
-			workspaceTodos: Array.isArray(parsed.workspaceTodos) ? (parsed.workspaceTodos as Todo[]) : [],
-			filesData: (parsed.filesData as TodoFilesData) ?? {},
-			filesDataPaths: (parsed.filesDataPaths as TodoFilesDataPaths) ?? {},
-		};
+		parsed = JSON.parse(trimmed);
 	} catch {
-		return emptyWorkspace();
+		return { ok: false, reason: "it is not valid JSON" };
 	}
+	if (!isPlainObject(parsed)) {
+		return { ok: false, reason: "it does not hold a JSON object" };
+	}
+	return { ok: true, data: parsed };
+}
+
+function parseGlobal(raw: string): ParseResult<GlobalGistData> {
+	const envelope = parseEnvelope(raw);
+	if (!envelope.ok) {
+		return envelope;
+	}
+	// Bracketed because the envelope is an index signature: the webview build turns on
+	// `noPropertyAccessFromIndexSignature`, and it compiles this file too.
+	const userTodos = envelope.data["userTodos"];
+	const reason = invalidListReason(userTodos, "userTodos");
+	if (reason) {
+		return { ok: false, reason };
+	}
+	return { ok: true, data: { userTodos: userTodos as Todo[] } };
+}
+
+function parseWorkspace(raw: string): ParseResult<WorkspaceGistData> {
+	const envelope = parseEnvelope(raw);
+	if (!envelope.ok) {
+		return envelope;
+	}
+	const { workspaceTodos, filesData, filesDataPaths } = envelope.data;
+
+	const listReason = invalidListReason(workspaceTodos, "workspaceTodos");
+	if (listReason) {
+		return { ok: false, reason: listReason };
+	}
+
+	// `filesData` and `filesDataPaths` may be absent — a workspace file written by an older
+	// build, or hand-edited, legitimately lacks them, and an absent map is an empty one. Present
+	// but not a map is damage.
+	if (filesData !== undefined && !isPlainObject(filesData)) {
+		return { ok: false, reason: `"filesData" is not a map of file paths` };
+	}
+	for (const [path, todos] of Object.entries(filesData ?? {})) {
+		const reason = invalidListReason(todos, `filesData["${path}"]`);
+		if (reason) {
+			return { ok: false, reason };
+		}
+	}
+
+	if (filesDataPaths !== undefined && !isPlainObject(filesDataPaths)) {
+		return { ok: false, reason: `"filesDataPaths" is not a map of file paths` };
+	}
+	for (const [path, entry] of Object.entries(filesDataPaths ?? {})) {
+		if (!isPlainObject(entry)) {
+			return { ok: false, reason: `"filesDataPaths[\\"${path}\\"]" is not a path alias entry` };
+		}
+		for (const key of ["absPaths", "relPaths"] as const) {
+			const paths = entry[key];
+			// Iterated bare by `mergeFilesDataPaths`, so anything but a list of strings throws
+			// there instead of failing here, where it can be explained.
+			if (paths !== undefined && (!Array.isArray(paths) || paths.some((p) => typeof p !== "string"))) {
+				return { ok: false, reason: `"filesDataPaths[\\"${path}\\"].${key}" is not a list of paths` };
+			}
+		}
+	}
+
+	return {
+		ok: true,
+		data: {
+			workspaceTodos: workspaceTodos as Todo[],
+			filesData: (filesData as TodoFilesData) ?? {},
+			filesDataPaths: (filesDataPaths as TodoFilesDataPaths) ?? {},
+		},
+	};
+}
+
+/**
+ * The failure a damaged remote file produces.
+ *
+ * Not retryable: re-reading the same bytes gets the same answer, and the only fix is a person
+ * restoring the file, so a client that backs off and tries again is just hiding the problem.
+ */
+function unreadableError(fileName: string, reason: string): SyncError {
+	return {
+		type: SyncErrorType.CorruptDataError,
+		message:
+			`Could not read ${fileName} from the gist: ${reason}. Nothing was synced, and your ` +
+			`todos on this device are untouched. Restore the file from the gist's revision history on github.com.`,
+		timestamp: new Date().toISOString(),
+		retryable: false,
+	};
 }

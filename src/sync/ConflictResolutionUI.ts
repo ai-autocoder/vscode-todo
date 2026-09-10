@@ -466,7 +466,9 @@ export class ConflictResolutionUI {
 		knownIds: number[]
 	): ConflictDecisions {
 		const todos = new Map<number, Todo | null>();
-		const extraTodos: Todo[] = [];
+		// Keyed by the conflict each copy came from, so the engine can place it next to that item
+		// instead of at the bottom of the list.
+		const extraTodos = new Map<number, Todo[]>();
 		// Ids handed out here must not collide with each other either, so the pool grows as we go.
 		const pool = knownIds.map((id) => ({ id }));
 
@@ -496,11 +498,14 @@ export class ConflictResolutionUI {
 				todos.set(conflict.todoId, conflict.local);
 				const newId = generateUniqueId(pool);
 				pool.push({ id: newId });
-				extraTodos.push({ ...conflict.remote, id: newId });
+				extraTodos.set(conflict.todoId, [
+					...(extraTodos.get(conflict.todoId) ?? []),
+					{ ...conflict.remote, id: newId },
+				]);
 			}
 		}
 
-		return extraTodos.length > 0 ? { todos, extraTodos } : { todos };
+		return extraTodos.size > 0 ? { todos, extraTodos } : { todos };
 	}
 
 	/**

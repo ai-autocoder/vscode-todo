@@ -156,9 +156,11 @@ export type GistConnectionState =
  * `kind` drives the recovery offered, because they are not the same:
  *   - `auth`    — the token was revoked, expired, or lost its gist scope. Reconnect.
  *   - `missing` — the gist (or its file) is gone. Pick another gist.
+ *   - `data`    — the gist file is there but cannot be read. Only a person can fix it, from the
+ *                 file's revision history on github.com.
  *   - `other`   — rate limit, offline, or a server fault. Retrying is the only move.
  */
-export type SyncFailureKind = "auth" | "missing" | "other";
+export type SyncFailureKind = "auth" | "missing" | "data" | "other";
 
 export type SyncFailureState =
 	| { phase: "ok" }
@@ -574,6 +576,13 @@ export class GistGateway implements DataGateway {
 			case SyncErrorType.InvalidGistIdError:
 			case SyncErrorType.FileNotFoundError:
 				return "missing";
+			case SyncErrorType.CorruptDataError:
+				// The gist file itself cannot be parsed, so core refused to sync rather than read
+				// the damage as "everything was deleted". Nothing here can repair it, so the banner
+				// sends the user to the revision history instead of offering a retry that would
+				// only re-read the same bytes. (A `ValidationError` is the other direction —
+				// GitHub rejecting what we sent — and stays "other".)
+				return "data";
 			default:
 				return "other";
 		}
@@ -749,7 +758,7 @@ export class GistGateway implements DataGateway {
 			return;
 		}
 
-		const severity: Record<SyncFailureKind, number> = { auth: 0, missing: 1, other: 2 };
+		const severity: Record<SyncFailureKind, number> = { auth: 0, data: 1, missing: 2, other: 3 };
 		const worst = failures.reduce((a, b) => (severity[a.kind] <= severity[b.kind] ? a : b));
 		// Retrying is offered if *any* failure could benefit, since one button covers them all.
 		const canRetry = failures.some((f) => f.canRetry);
@@ -768,6 +777,12 @@ export class GistGateway implements DataGateway {
 				return "GitHub rejected the sync — the token has expired, been revoked, or lost access. Your todos are still on this device, but they are not syncing.";
 			case "missing":
 				return "The gist this app syncs with could not be found. Your todos are still on this device, but they are not syncing.";
+			case "data":
+				// Core's message names the file and what is wrong with it, which is exactly what
+				// someone about to open the revision history needs.
+				return `${
+					error?.message ?? "The gist file could not be read."
+				} Syncing is paused until it is readable again.`;
 			default:
 				// Covers both directions on purpose: a failed pull means edits from VS Code or
 				// another device are not arriving either, and the failure can happen before any

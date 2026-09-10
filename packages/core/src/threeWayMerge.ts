@@ -6,10 +6,19 @@ import { WorkspaceMergeResult, FileConflictSet } from "./syncTypes";
  * Result of a three-way merge operation
  */
 export interface MergeResult {
-	/** Todos that were successfully auto-merged */
+	/** Todos that were successfully auto-merged, in {@link order}. */
 	autoMerged: Todo[];
 	/** Conflicts that require user resolution */
 	conflicts: ConflictSet[];
+	/**
+	 * The merged list's ordering, as todo ids — including the conflicted ones, which hold their
+	 * slot even though no version of them is chosen yet.
+	 *
+	 * This is the skeleton the final list must be built on: feed it, plus whatever settled the
+	 * conflicts, to {@link assembleMerged}. Rebuilding from any other order (the base array, say)
+	 * appends every addition at the bottom and undoes every reorder either side made.
+	 */
+	order: number[];
 }
 
 /**
@@ -37,6 +46,15 @@ export interface ConflictSet {
  * - Auto-merges non-conflicting changes
  * - Preserves positional intent from both local and remote
  * - Returns conflicts only when true overlaps exist
+ *
+ * Ordering rule: **local order is the skeleton**, and items only the remote holds are spliced in
+ * next to the neighbours they have there. Local order wins because it is the arrangement the
+ * user of this device last saw and made — including a fresh todo at the top, which is where
+ * `createPosition: top` puts it. Nothing detects "both devices reordered the same items", and
+ * nothing should: with no per-item position in the data model the two orders cannot be merged,
+ * only picked between, and picking the one in front of the user is the answer that never
+ * surprises. The other device's arrangement is not lost so much as superseded — its next sync
+ * pulls this order down, and both peers converge on it.
  *
  * @param base - The last known clean remote state (baseline for comparison)
  * @param local - Current local state (may include uncommitted changes)
@@ -137,107 +155,138 @@ export function threeWayMerge(base: Todo[], local: Todo[], remote: Todo[]): Merg
 		}
 	}
 
-	// Second pass: Build position-aware merge result
-	const autoMerged: Todo[] = [];
-	const addedIds = new Set<number>();
+	// Second pass: Build the position-aware ordering, and the item settled at each slot.
+	//
+	// A conflicted id takes a slot here too, with no item behind it: whatever settles the
+	// conflict later has to land where the item actually sits, not at the bottom of the list.
+	const settled = new Map<number, Todo>();
+	const order: number[] = [];
+	const placed = new Set<number>();
 
 	// Walk through local array to preserve local positions and additions
 	for (const localTodo of local) {
-		if (processedIds.has(localTodo.id)) {
-			continue; // Skip conflicted items
+		const id = localTodo.id;
+
+		// One slot per id. A list holding the same id twice is malformed — nothing this app
+		// writes can produce it, but a hand-edited gist can — and without this the second copy
+		// would overwrite the first in `settled` while keeping both slots, so the merged list
+		// would carry that todo twice and the other one not at all.
+		if (placed.has(id)) {
+			continue;
 		}
 
-		const baseTodo = baseMap.get(localTodo.id);
-		const remoteTodo = remoteMap.get(localTodo.id);
+		if (processedIds.has(id)) {
+			// Conflicted: reserve the slot, leave the item for `assembleMerged`.
+			order.push(id);
+			placed.add(id);
+			continue;
+		}
+
+		const baseTodo = baseMap.get(id);
+		const remoteTodo = remoteMap.get(id);
 
 		if (!baseTodo && !remoteTodo) {
 			// CASE 1: Only in local (added locally) - preserve local position
-			autoMerged.push(localTodo);
-			addedIds.add(localTodo.id);
+			settled.set(id, localTodo);
 		} else if (baseTodo && remoteTodo) {
 			// CASE 6: In all three - check which version to use
 			const remoteModified = !isEqual(baseTodo, remoteTodo);
-			const todoToAdd = remoteModified ? remoteTodo : localTodo;
-			autoMerged.push(todoToAdd);
-			addedIds.add(localTodo.id);
+			settled.set(id, remoteModified ? remoteTodo : localTodo);
 		} else if (baseTodo && !remoteTodo) {
-			// CASE 3a: Deleted remotely, local unchanged - already handled, skip
-		} else if (!baseTodo && remoteTodo) {
+			// CASE 3a: Deleted remotely, local unchanged - accept the deletion, claim no slot
+			continue;
+		} else {
 			// CASE 5a: Added on both sides with same content - add once
-			autoMerged.push(localTodo);
-			addedIds.add(localTodo.id);
+			settled.set(id, localTodo);
 		}
+
+		order.push(id);
+		placed.add(id);
 	}
 
 	// Walk through remote array to add remote-only items, preserving remote positions
 	for (let i = 0; i < remote.length; i++) {
 		const remoteTodo = remote[i];
+		const id = remoteTodo.id;
 
-		if (addedIds.has(remoteTodo.id) || processedIds.has(remoteTodo.id)) {
-			continue; // Already added or conflicted
+		if (placed.has(id)) {
+			continue; // Already placed by the local walk
 		}
 
-		const baseTodo = baseMap.get(remoteTodo.id);
-		const localTodo = localMap.get(remoteTodo.id);
+		const baseTodo = baseMap.get(id);
+		const localTodo = localMap.get(id);
+		// A conflict the local side has no version of (delete-edit) reaches this walk unplaced.
+		// It gets a slot by its remote neighbours, exactly like a remote-only addition, so a
+		// resolution that revives it lands where the remote has it rather than at the end.
+		const conflicted = processedIds.has(id);
 
-		if (!baseTodo && !localTodo) {
-			// CASE 2: Only in remote (added remotely) - preserve remote position
-			// Find insertion index based on surrounding items in remote array
-			const insertIndex = findInsertionIndex(autoMerged, remote, i, addedIds);
-			autoMerged.splice(insertIndex, 0, remoteTodo);
-			addedIds.add(remoteTodo.id);
-		} else if (baseTodo && !localTodo) {
+		if (!conflicted && (baseTodo || localTodo)) {
 			// CASE 4a: Deleted locally, remote unchanged - already handled, skip
+			continue;
+		}
+
+		// CASE 2: Only in remote (added remotely) - preserve remote position
+		// Find insertion index based on surrounding items in remote array
+		const insertIndex = findInsertionIndex(order, remote, i, placed);
+		order.splice(insertIndex, 0, id);
+		placed.add(id);
+		if (!conflicted) {
+			settled.set(id, remoteTodo);
 		}
 	}
 
-	return { autoMerged, conflicts };
+	const autoMerged = order.flatMap((id) => {
+		const todo = settled.get(id);
+		return todo ? [todo] : [];
+	});
+
+	return { autoMerged, conflicts, order };
 }
 
 /**
  * Finds the appropriate insertion index for a remote-only item
  * based on its surrounding items (anchors) in the remote array
  *
- * @param autoMerged - Current merged result array
+ * @param order - Ordering built so far, as todo ids
  * @param remote - Remote array
  * @param remoteIndex - Index of item to insert in remote array
- * @param addedIds - Set of IDs already in autoMerged
+ * @param placed - Set of IDs already in `order`
  * @returns Index where the item should be inserted
  */
 function findInsertionIndex(
-	autoMerged: Todo[],
+	order: number[],
 	remote: Todo[],
 	remoteIndex: number,
-	addedIds: Set<number>
+	placed: Set<number>
 ): number {
-	// Find the closest previous item in remote that exists in autoMerged (anchor before)
+	// Find the closest previous item in remote that is already placed (anchor before)
 	let prevAnchorId: number | null = null;
 	for (let i = remoteIndex - 1; i >= 0; i--) {
-		if (addedIds.has(remote[i].id)) {
+		if (placed.has(remote[i].id)) {
 			prevAnchorId = remote[i].id;
 			break;
 		}
 	}
 
-	// Find the closest next item in remote that exists in autoMerged (anchor after)
+	// Find the closest next item in remote that is already placed (anchor after)
 	let nextAnchorId: number | null = null;
 	for (let i = remoteIndex + 1; i < remote.length; i++) {
-		if (addedIds.has(remote[i].id)) {
+		if (placed.has(remote[i].id)) {
 			nextAnchorId = remote[i].id;
 			break;
 		}
 	}
 
-	// Find positions of anchors in autoMerged
+	// Find positions of anchors in the ordering
 	let prevAnchorIndex = -1;
-	let nextAnchorIndex = autoMerged.length;
+	let nextAnchorIndex = order.length;
 
 	if (prevAnchorId !== null) {
-		prevAnchorIndex = autoMerged.findIndex((t) => t.id === prevAnchorId);
+		prevAnchorIndex = order.indexOf(prevAnchorId);
 	}
 
 	if (nextAnchorId !== null) {
-		nextAnchorIndex = autoMerged.findIndex((t) => t.id === nextAnchorId);
+		nextAnchorIndex = order.indexOf(nextAnchorId);
 	}
 
 	// Insert after the previous anchor (or at the beginning if no prev anchor)
@@ -250,12 +299,12 @@ function findInsertionIndex(
 			return nextAnchorIndex;
 		}
 		return insertPos;
-	} else if (nextAnchorIndex < autoMerged.length) {
+	} else if (nextAnchorIndex < order.length) {
 		// No prev anchor, insert before next anchor
 		return nextAnchorIndex;
 	} else {
 		// No anchors found, append at end (fallback)
-		return autoMerged.length;
+		return order.length;
 	}
 }
 
@@ -291,41 +340,60 @@ export function formatMergeSummary(result: MergeResult, base: Todo[]): string {
 }
 
 /**
- * Merges auto-merged todos with user-resolved conflict todos while preserving their original positions.
+ * Builds the final list from a merge and whatever settled its conflicts, on the merge's own
+ * {@link MergeResult.order}.
  *
- * The function reconstructs the final array based on the original order from the base array:
- * - Todos that existed in base maintain their relative positions
- * - Newly added todos (not in base) are appended at the end
+ * The ordering is the merge's, not the base's. This used to rebuild from the base array — base
+ * order first, everything else appended — which threw away the position-aware order the merge
+ * had just worked out: every addition landed at the bottom however the user had asked for them
+ * to be created, and any drag-and-drop reorder on either device was undone the next time a sync
+ * had to merge. The base is the one order that is certainly stale, since it is by definition
+ * what both sides have since changed.
  *
- * @param autoMerged - Todos that were successfully auto-merged (may include modified, added, or kept todos)
- * @param resolved - Todos from conflicts that user resolved
- * @param base - The original base array used as reference for ordering
- * @returns Final merged array with preserved positions
+ * @param merge - The merge whose `order` and `autoMerged` items form the skeleton
+ * @param resolved - The winning version per conflicted id; an id left out is one no side kept
+ * @param extras - Extra copies to keep, keyed by the conflict they were raised from; each lands
+ *   directly after that item, which is the only place a "keep both" reads as a pair
+ * @returns Final merged array
  */
-export function mergeWithPreservedPositions(autoMerged: Todo[], resolved: Todo[], base: Todo[]): Todo[] {
-	// Create maps for quick lookup
-	const autoMergedMap = new Map(autoMerged.map((t) => [t.id, t]));
-	const resolvedMap = new Map(resolved.map((t) => [t.id, t]));
-
-	// Combine into single map (resolved takes precedence over autoMerged)
-	const combinedMap = new Map([...autoMergedMap, ...resolvedMap]);
-
-	// Build result array preserving base order
+export function assembleMerged(
+	merge: MergeResult,
+	resolved: Map<number, Todo>,
+	extras?: Map<number, Todo[]>
+): Todo[] {
+	const auto = new Map(merge.autoMerged.map((t) => [t.id, t]));
 	const result: Todo[] = [];
+	const emitted = new Set<number>();
 
-	// First, add todos that existed in base, maintaining their order
-	for (const baseTodo of base) {
-		const merged = combinedMap.get(baseTodo.id);
-		if (merged) {
-			result.push(merged);
-			combinedMap.delete(baseTodo.id); // Mark as processed
+	const emit = (todo: Todo): void => {
+		if (emitted.has(todo.id)) {
+			return;
 		}
-		// If not in combined map, it was deleted - skip it
+		result.push(todo);
+		emitted.add(todo.id);
+	};
+
+	for (const id of merge.order) {
+		// A conflicted id with no entry in `resolved` is one whose winning side deleted it, so
+		// the slot simply goes unfilled and the deletion stands.
+		const todo = resolved.get(id) ?? auto.get(id);
+		if (todo) {
+			emit(todo);
+		}
+		for (const extra of extras?.get(id) ?? []) {
+			emit(extra);
+		}
 	}
 
-	// Then, append any newly added todos (not in base)
-	for (const todo of combinedMap.values()) {
-		result.push(todo);
+	// Anything keyed to an id this merge never saw still has to land somewhere: a resolver is
+	// free to hand back items of its own, and dropping them here would delete them silently.
+	for (const todo of resolved.values()) {
+		emit(todo);
+	}
+	for (const list of extras?.values() ?? []) {
+		for (const todo of list) {
+			emit(todo);
+		}
 	}
 
 	return result;
@@ -366,10 +434,9 @@ export function threeWayMergeWorkspace(
 	);
 
 	return {
-		autoMergedWorkspaceTodos: workspaceMergeResult.autoMerged,
+		workspaceMerge: workspaceMergeResult,
 		autoMergedFilesData: filesDataMergeResult.autoMerged,
 		autoMergedFilesDataPaths: filesDataPathsMergeResult,
-		workspaceConflicts: workspaceMergeResult.conflicts,
 		fileConflicts: filesDataMergeResult.conflicts,
 	};
 }
@@ -552,18 +619,17 @@ export function resolveFileConflict(conflict: FileConflictSet, prefer: "local" |
 		return pick;
 	}
 
-	const resolved: Todo[] = [];
+	const resolved = new Map<number, Todo>();
 	for (const itemConflict of conflict.itemMerge.conflicts) {
 		const side = prefer === "remote" ? itemConflict.remote : itemConflict.local;
 		if (side) {
-			resolved.push(side);
+			resolved.set(itemConflict.todoId, side);
 		}
 		// else: the preferred side deleted this todo, so the deletion stands.
 	}
 
-	// Same positioning rule as the workspace-todo path: base order for anything that was in
-	// base, additions appended after it.
-	return mergeWithPreservedPositions(conflict.itemMerge.autoMerged, resolved, conflict.base ?? []);
+	// Same positioning rule as the workspace-todo path: the per-item merge's own order.
+	return assembleMerged(conflict.itemMerge, resolved);
 }
 
 /**
@@ -637,10 +703,7 @@ export function formatWorkspaceMergeSummary(
 	const parts: string[] = [];
 
 	// Workspace todos summary
-	const workspaceSummary = formatMergeSummary(
-		{ autoMerged: result.autoMergedWorkspaceTodos, conflicts: result.workspaceConflicts },
-		baseWorkspaceTodos
-	);
+	const workspaceSummary = formatMergeSummary(result.workspaceMerge, baseWorkspaceTodos);
 	if (workspaceSummary !== "No changes") {
 		parts.push(`Workspace: ${workspaceSummary}`);
 	}

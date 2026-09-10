@@ -172,6 +172,23 @@ describe("initMissingTodoProperties tags (mirrors extension)", () => {
 		);
 		expect(allInvalid.tags).toBeUndefined();
 	});
+
+	it("replaces an id that is not a number", () => {
+		// A hand-written import file can carry anything. Only a *falsy* id used to be replaced,
+		// so `"42"` reached the store and then the gist — where the model, the gist schema and
+		// the MCP tools all declare `id: number`, and the MCP output schema rejects the whole
+		// page rather than the one item.
+		const [stringId] = initMissingTodoProperties(
+			[{ text: "task", id: "42" } as unknown as TodoPartialInput],
+			fixedNow
+		);
+		expect(typeof stringId.id).toBe("number");
+		expect(stringId.id).not.toBe(42);
+
+		// A real id is still kept as it is.
+		const [kept] = initMissingTodoProperties([{ text: "task", id: 7 }], fixedNow);
+		expect(kept.id).toBe(7);
+	});
 });
 
 describe("isImportObject (mirrors extension)", () => {

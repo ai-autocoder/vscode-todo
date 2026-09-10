@@ -947,9 +947,12 @@ describe("resolveFileConflict settles only the conflicting todos", () => {
 		expect(conflict.conflictType).toBe("file-edit-edit");
 		// Only id 1 is the policy's to decide; the two additions already settled on their own.
 		expect(conflict.itemMerge?.conflicts.map((c) => c.todoId)).toEqual([1]);
+		// Id 1 holds a slot in `order` even though nothing has settled it yet, so the remote-only
+		// addition anchors after it — the same placement it would get if id 1 had merged cleanly.
+		expect(conflict.itemMerge?.order).toEqual([1, 7, 2]);
 		expect(conflict.itemMerge?.autoMerged.map((t) => t.text)).toEqual([
-			"local add",
 			"remote add",
+			"local add",
 		]);
 	});
 

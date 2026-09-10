@@ -114,6 +114,25 @@ suite("Cross-peer equality and merge", () => {
 		assert.strictEqual(byId.get(2), "todo Y (edited in the PWA)", "remote edit kept");
 	});
 
+	/**
+	 * Order is part of what the two peers have to agree on. Both run this merge, so if the
+	 * extension put a new todo at the top and the PWA's next reconcile rebuilt the list in some
+	 * other order, the two would push each other's arrangements back and forth forever.
+	 */
+	test("a todo added at the top stays at the top through a merge", () => {
+		const base = [reducerOrderTodo(1, "todo X"), reducerOrderTodo(2, "todo Y")];
+		// The extension's `createPosition: top` puts the new todo first.
+		const local = [reducerOrderTodo(3, "todo Z"), ...base];
+		const remote = afterPwaRoundTrip([base[0], { ...base[1], text: "todo Y (edited in the PWA)" }]);
+
+		const result = threeWayMerge(base, local, remote);
+
+		assert.deepStrictEqual(
+			result.autoMerged.map((t) => t.text),
+			["todo Z", "todo X", "todo Y (edited in the PWA)"]
+		);
+	});
+
 	test("a genuine edit-edit conflict is still reported", () => {
 		const base = [reducerOrderTodo(1, "todo X")];
 		const local = [{ ...base[0], text: "mine" }];

@@ -40,6 +40,19 @@
 		<button class="primary" *ngIf="syncFailureState.kind === 'missing'" (click)="pickAnotherGist()">
 			Choose a gist
 		</button>
+		<!--
+			A damaged file is repaired on github.com, not here: GitHub keeps every revision of the
+			gist, so the last good one is a click away.
+		-->
+		<a
+			class="primary link-button"
+			*ngIf="syncFailureState.kind === 'data' && gistRevisionsUrl"
+			[href]="gistRevisionsUrl"
+			target="_blank"
+			rel="noopener"
+		>
+			View gist history
+		</a>
 		<!-- `canRetry` is false wherever retrying cannot succeed; see `recordSyncFailure`. -->
 		<button *ngIf="syncFailureState.canRetry" (click)="retrySync()">Try again</button>
 	</div>

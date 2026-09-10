@@ -367,6 +367,25 @@ describe("GistGateway sync failure reporting", () => {
 		expect(state.canRetry).toBe(false);
 	});
 
+	it("reports a damaged gist file at once, with no retry to press", async () => {
+		// Core refuses to sync a file it cannot parse rather than reading it as a deletion. That
+		// never fixes itself, so it must not wait out the transient-failure streak, and retrying
+		// would only re-read the same bytes.
+		withUserResult({ success: false, error: failure(SyncErrorType.CorruptDataError, false) });
+
+		await internals.reconcileUser();
+
+		const state = latest();
+		expect(state.phase).toBe("failing");
+		if (state.phase !== "failing") {
+			return;
+		}
+		expect(state.kind).toBe("data");
+		expect(state.canRetry).toBe(false);
+		// Core's message names the file and what is wrong with it; the banner must not swallow it.
+		expect(state.message).toContain("stub failure");
+	});
+
 	it("keeps a revoked token visible when a local write also fails", async () => {
 		// Both are keyed by scope. Sharing one map let the persist failure overwrite the `auth`
 		// entry, which silently removed the "Reconnect" button — the user's only way out.

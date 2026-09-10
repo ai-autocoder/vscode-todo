@@ -176,9 +176,12 @@ suite("resolveFileConflict settles only the conflicting todos", () => {
 			conflict.itemMerge?.conflicts.map((c) => c.todoId),
 			[1]
 		);
+		// Id 1 holds a slot in `order` even though nothing has settled it yet, so the PWA's
+		// addition anchors after it — the same placement it would get if id 1 had merged cleanly.
+		assert.deepStrictEqual(conflict.itemMerge?.order, [1, 7, 2]);
 		assert.deepStrictEqual(textsOf(conflict.itemMerge?.autoMerged), [
-			"added in vscode",
 			"added in pwa",
+			"added in vscode",
 		]);
 	});
 
