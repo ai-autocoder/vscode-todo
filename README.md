@@ -9,6 +9,10 @@ VS Code Todo
 <h3 align="center">Todo lists, notes, markdown checklists, and reusable AI prompts for Visual Studio Code with GitHub Gist sync.</h3>
 
 <p align="center">
+  Also runs on your phone: <strong><a href="https://plans-app.pages.dev">plans-app.pages.dev</a></strong> — no VS Code required.
+</p>
+
+<p align="center">
   <!-- VS Code Marketplace -->
   <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
     <img
@@ -60,6 +64,12 @@ VS Code Todo
   <!-- Project meta -->
 
 <p align="center">
+  <a href="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml">
+    <img
+      alt="CI"
+      src="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml/badge.svg?branch=master"
+    />
+  </a>
   <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" />
   <a href="https://prettier.io/">
     <img
@@ -111,7 +121,9 @@ VS Code Todo
 
 ## Introduction
 
-**VS Code Todo** is a todo list and note-taking extension for Visual Studio Code. Capture tasks, checklists, and notes with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting, organized by profile, workspace, or file and accessible from the status bar or activity bar. Sync via GitHub Gist or VS Code Settings Sync, and store reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
+**VS Code Todo** is a todo list and note-taking extension for Visual Studio Code, with a companion web app at **[plans-app.pages.dev](https://plans-app.pages.dev)** that opens the same lists on your phone.
+
+Capture tasks, checklists, and notes with Markdown, Mermaid diagrams, KaTeX math, and syntax highlighting, organized by profile, workspace, or file and accessible from the status bar or activity bar. Sync via GitHub Gist or VS Code Settings Sync, and store reusable AI prompts, code review checklists, and meeting note templates alongside your tasks.
 
 ## Getting Started
 
