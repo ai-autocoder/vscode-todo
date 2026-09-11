@@ -138,6 +138,13 @@ export class TodoService {
 		[TodoScope.currentFile]: new Subject<SelectionCommand>(),
 	};
 
+	/** See {@link consumeLocalAdd}. */
+	private _pendingLocalAdd: Record<TodoScope, boolean> = {
+		[TodoScope.user]: false,
+		[TodoScope.workspace]: false,
+		[TodoScope.currentFile]: false,
+	};
+
 	private _activeEditorMap: Record<TodoScope, BehaviorSubject<number | null>> = {
 		[TodoScope.user]: new BehaviorSubject<number | null>(null),
 		[TodoScope.workspace]: new BehaviorSubject<number | null>(null),
@@ -364,7 +371,25 @@ export class TodoService {
 	}
 
 	addTodo(...args: Parameters<typeof messagesFromWebview.addTodo>) {
+		this._pendingLocalAdd[args[0]] = true;
 		vscode.postMessage(messagesFromWebview.addTodo(...args));
+	}
+
+	/**
+	 * Whether the slice about to arrive for `scope` is the answer to an add made *here*, in the
+	 * composer. The host cannot tell us: `todo_add_item` over MCP dispatches the very same
+	 * `addTodo` and reaches the webview as the same `"<scope>/addTodo"`, so without this flag an
+	 * agent writing todos in the background would scroll the list out from under whoever is
+	 * reading it.
+	 *
+	 * Reading consumes it, and the list consumes on every slice rather than only on an add, so a
+	 * composer add the host refuses (no workspace open, say) cannot leave the flag set for some
+	 * later, unrelated arrival to claim.
+	 */
+	consumeLocalAdd(scope: TodoScope): boolean {
+		const pending = this._pendingLocalAdd[scope];
+		this._pendingLocalAdd[scope] = false;
+		return pending;
 	}
 
 	deleteTodo(...args: Parameters<typeof messagesFromWebview.deleteTodo>) {
