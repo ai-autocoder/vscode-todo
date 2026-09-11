@@ -11,6 +11,7 @@ import {
 	inject,
 	OnInit,
 	QueryList,
+	ViewChild,
 	ViewChildren,
 	HostListener,
 } from "@angular/core";
@@ -68,6 +69,7 @@ export class TodoList implements OnInit, AfterViewInit {
 	@ViewChildren("dragItem", { read: ElementRef }) private dragItemEls!: QueryList<
 		ElementRef<HTMLElement>
 	>;
+	@ViewChild("listScroll", { read: ElementRef }) private listScrollEl?: ElementRef<HTMLElement>;
 	isDragging = false;
 	/**
 	 * Touch drag only begins after a long press, so a plain swipe scrolls the list instead of
@@ -81,6 +83,12 @@ export class TodoList implements OnInit, AfterViewInit {
 	private selectionAnchorId: number | null = null;
 
 	enterAnimationEnabledActions: string[] = ["addTodo", "toggleTodo", "undoDelete"];
+	/**
+	 * Actions after which the item that just appeared is scrolled into view. With the default
+	 * `createPosition: bottom` a new todo lands past the end of a list that already fills the
+	 * panel, so its enter animation played off-screen and adding looked like nothing happened.
+	 */
+	private readonly revealNewItemActions = new Set<string>(["addTodo"]);
 
 	private searchQuery = "";
 	private readonly searchEffect = effect(() => {
@@ -170,6 +178,7 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	pullTodos() {
 		const prevRects = this.isInitialized ? this.snapshotRects() : new Map<number, DOMRect>();
+		const prevIds = new Set(this.todos.map((todo) => todo.id));
 		const query = this.todoService.normalizedSearchQuery();
 		this.searchQuery = query;
 		const suppressAnimations = query.length > 0 && !this.isInitialized;
@@ -190,6 +199,8 @@ export class TodoList implements OnInit, AfterViewInit {
 		if (this.shouldRunReorderAnimation()) {
 			this.animateReorder(prevRects);
 		}
+
+		this.revealNewItem(prevIds);
 	}
 
 	private applyFilter(
@@ -767,6 +778,56 @@ export class TodoList implements OnInit, AfterViewInit {
 			totalCount: 0,
 		});
 	}
+
+	/**
+	 * Brings a freshly added item into view so its enter animation is actually seen.
+	 *
+	 * "New" is whatever is in the rendered list now and was not there before the pull — which
+	 * covers both `createPosition` values without caring which one is configured, and skips an
+	 * add that the active filter hides.
+	 */
+	private revealNewItem(prevIds: Set<number>): void {
+		if (!this.isInitialized || this.isDragging) return;
+		if (!this.lastActionName || !this.revealNewItemActions.has(this.lastActionName)) return;
+
+		const added = this.todos.find((todo) => !prevIds.has(todo.id));
+		if (!added) return;
+
+		// Deferred by one frame so the reorder FLIP — whose own callback is registered first, in
+		// animateReorder — measures the rows before anything scrolls; it compares each row's
+		// position against a snapshot taken before the pull, and a scroll in between would be read
+		// as movement and animated away. The row's height is already final either way: the enter
+		// animation only moves opacity and transform.
+		requestAnimationFrame(() => this.scrollItemIntoView(added.id));
+	}
+
+	private scrollItemIntoView(id: number): void {
+		const container = this.listScrollEl?.nativeElement;
+		const item = this.dragItemEls?.find(
+			(ref) => ref.nativeElement.getAttribute("data-id") === String(id)
+		)?.nativeElement;
+		if (!container || !item) return;
+
+		const itemRect = item.getBoundingClientRect();
+		const containerRect = container.getBoundingClientRect();
+		// A little breathing room so the row does not sit flush against the edge it scrolled from.
+		const margin = 8;
+
+		let delta = 0;
+		if (itemRect.bottom > containerRect.bottom - margin) {
+			delta = itemRect.bottom - containerRect.bottom + margin;
+		} else if (itemRect.top < containerRect.top + margin) {
+			delta = itemRect.top - containerRect.top - margin;
+		}
+		if (delta === 0) return;
+
+		if (typeof container.scrollBy === "function") {
+			container.scrollBy({ top: delta, behavior: "smooth" });
+		} else {
+			container.scrollTop += delta;
+		}
+	}
+
 	// --- FLIP helpers ---
 	private snapshotRects(): Map<number, DOMRect> {
 		const map = new Map<number, DOMRect>();

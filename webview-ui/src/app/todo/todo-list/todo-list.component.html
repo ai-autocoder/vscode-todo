@@ -4,6 +4,7 @@
 >
   <div class="todo-list-scroll">
     <div
+      #listScroll
       cdkDropList
       (cdkDropListDropped)="onDrop($event)"
       [cdkDropListSortPredicate]="sortPredicate"
