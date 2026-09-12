@@ -76,6 +76,9 @@
 							"namedChunks": true
 						},
 						"pwa": {
+							"outputPath": {
+								"base": "build-pwa"
+							},
 							"index": {
 								"input": "src/index.pwa.html",
 								"output": "index.html"

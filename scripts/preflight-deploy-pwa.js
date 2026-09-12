@@ -2,13 +2,15 @@
 /**
  * Preflight for `npm run deploy:pwa`.
  *
- * The extension build (`build:webview`) and the PWA build (`build:webview:pwa`) both emit to
- * `webview-ui/build`, and the extension build runs with `--output-hashing=none`. Its unhashed
- * `main.js` / `styles.css` are therefore *not* replaced by a later hashed PWA build — they sit
- * alongside it and get uploaded, so a release can carry files from the wrong target.
+ * The PWA build owns `webview-ui/build-pwa`; the extension build owns `webview-ui/build`.
+ * They were one directory, and because the Angular builder clears its output path, whichever
+ * target ran last simply replaced the other. That cut both ways: an extension build wiped the
+ * bundle a deploy was about to upload, and a PWA build left `webview-ui/build` holding hashed
+ * PWA output with no `main.js` at all — which `vsce package` would then ship as the extension
+ * webview. Separate directories are the fix; this clear is only belt and braces, so a deploy
+ * uploads nothing but what this build produced.
  *
- * Clearing the directory first makes each deploy start from nothing but the PWA build. The
- * commit/branch line is printed so the deployed revision is visible in the log before the
+ * The commit/branch line is printed so the deployed revision is visible in the log before the
  * upload starts, which is what makes a wrong-revision release obvious after the fact.
  */
 
@@ -18,11 +20,11 @@ const { join, resolve } = require("node:path");
 
 /** This file lives in <repo>/scripts, so the repo root is always one level up. */
 const repoRoot = resolve(__dirname, "..");
-const buildDir = join(repoRoot, "webview-ui", "build");
+const buildDir = join(repoRoot, "webview-ui", "build-pwa");
 
 if (existsSync(buildDir)) {
 	rmSync(buildDir, { recursive: true, force: true });
-	console.log("  preflight: cleared webview-ui/build (shared by the extension and PWA builds)");
+	console.log("  preflight: cleared webview-ui/build-pwa");
 }
 
 // Report what is about to be built. Never fail the deploy on this — it is diagnostics only.

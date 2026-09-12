@@ -91,12 +91,17 @@ succeeded while shipping nothing.
 ### `webview-ui/` is shared — most edits hit both surfaces
 
 The extension webview and the PWA are **two builds of one Angular app**, not separate UIs.
-`npm run build:webview` and `build:pwa` differ only by:
+`npm run build:webview` and `build:pwa` differ by:
 
 - `index.html` → `index.pwa.html`
 - three `fileReplacements`: `environments/environment.ts`, `bootstrap.ts`,
   `app/data/data.providers.ts` → their `.pwa` variants
 - one extra prepended stylesheet, `src/pwa/vscode-theme.css`
+- a separate output directory: `build/browser` vs `build-pwa/browser`
+
+Plus the service worker, web manifest, app icons, the Cloudflare Pages `_headers` and
+`_redirects` files, and hashed filenames the `pwa` configuration adds. The table in
+ARCHITECTURE.md §7 is the complete list.
 
 **PWA-only** paths (safe to change without touching the extension): `src/pwa/**`,
 `src/app/pwa/**`, `src/*.pwa.*`, `src/environments/environment.pwa.ts`.
@@ -112,8 +117,14 @@ supplies the `--vscode-*` theme vars that `vscode-theme.css` only *polyfills* fo
   so a release means running `npm run deploy:pwa` yourself.
 - The PWA is a **static Pages site**; `wrangler deploy` (no `pages`) publishes the *worker*
   and never touches the UI.
-- The Angular build emits to `webview-ui/build/browser` (not `build/`) — that nested dir is
-  what gets uploaded.
+- **The two targets have separate output directories**, so neither build clobbers the other:
+  the extension build emits to `webview-ui/build/browser`, the PWA build to
+  `webview-ui/build-pwa/browser` (set by `outputPath` on the `pwa` configuration in
+  `angular.json`). Note the nested `browser/` — that inner dir is what gets uploaded, not
+  `build-pwa/` itself. They shared one directory until then, and since the Angular builder
+  clears its output path, a PWA build left `webview-ui/build` full of hashed PWA output that
+  `vsce package` would ship as the extension webview. Packaging no longer depends on what
+  happens to be on disk either: `vscode:prepublish` runs `build:webview` itself.
 - Pages routes the apex domain to its **production branch, `main`**. Deploying with any
   other `--branch` lands as a preview on a hash subdomain and leaves `plans-app.pages.dev`
   untouched, so always pass `--branch main` for a real release.

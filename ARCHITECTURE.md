@@ -180,8 +180,9 @@ The PWA is not a second UI. It is the webview built with a different configurati
 | Bootstrap | [`bootstrap.ts`](webview-ui/src/bootstrap.ts) → `AppModule` | [`bootstrap.pwa.ts`](webview-ui/src/bootstrap.pwa.ts) → `PwaAppModule` |
 | Data provider | [`data.providers.ts`](webview-ui/src/app/data/data.providers.ts) → `VsCodeGateway` | [`data.providers.pwa.ts`](webview-ui/src/app/data/data.providers.pwa.ts) → `GistGateway` |
 | Extra stylesheet | none | [`vscode-theme.css`](webview-ui/src/pwa/vscode-theme.css) |
-| Service worker, manifest, Pages headers | no | yes |
+| Service worker, manifest, app icons, Pages `_headers` and `_redirects` | no | yes — the `pwa` configuration adds `manifest.webmanifest`, `icons`, `_redirects` and `_headers` to `assets`. `_redirects` is the SPA fallback (`/*  /index.html  200`) that serves the app shell for any path that is not a real file |
 | Output hashing | none, because the `build` script passes `--output-hashing=none`, so the host loads `main.js` and friends by name | all |
+| Output directory | `webview-ui/build/browser` | `webview-ui/build-pwa/browser`, set by `outputPath` on the `pwa` configuration. Separate directories, because the builder clears its output path and each build would otherwise delete the other (§16) |
 
 **How the unmodified UI talks to a gist.** The seam is the message protocol:
 
@@ -222,7 +223,7 @@ The user always chooses the gist, and both a user and a workspace file are requi
 
 **Touch layout.** [`vscode-theme.css`](webview-ui/src/pwa/vscode-theme.css) supplies the `--vscode-*` variables VS Code would inject. It puts every mobile rule (48 px targets, larger text, visible row actions) under `@media (pointer: coarse)`, keyed to the pointer rather than the width, so a phone in landscape still gets touch targets.
 
-**Deploy.** `npm run deploy:pwa` clears the build directory both targets share, builds, and uploads with `--branch main` (§16).
+**Deploy.** `npm run deploy:pwa` clears `webview-ui/build-pwa` (the PWA's own output directory, separate from the extension webview's `webview-ui/build` — §16), builds, and uploads that build's `browser/` with `--branch main`.
 
 ## 9. Authentication
 
@@ -549,8 +550,9 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 | `worker/**` | Cloudflare Workers | `npm run deploy:worker` |
 
 - **Core ships twice.** A `packages/core` change needs both a Pages deploy and a Marketplace release.
-- **The VSIX** carries `out/` and `webview-ui/build`; [`.vscodeignore`](.vscodeignore) excludes sources, `packages/**`, tests and docs.
-- **PWA preflight.** [`preflight-deploy-pwa.js`](scripts/preflight-deploy-pwa.js) clears `webview-ui/build` first, because the extension build's unhashed `main.js` would otherwise survive a PWA build and be uploaded (commit bd3a6b6).
+- **Separate output directories.** The extension build emits to `webview-ui/build/browser`, the PWA build to `webview-ui/build-pwa/browser`. They shared one directory until it became clear that the Angular builder clears its output path, so whichever target built last replaced the other — a PWA build left `webview-ui/build` holding hashed PWA output that `vsce package` would ship as the extension webview.
+- **The VSIX** carries `out/` and `webview-ui/build`; [`.vscodeignore`](.vscodeignore) excludes sources, `packages/**`, `worker/**`, `webview-ui/build-pwa/**`, tests and docs. `vscode:prepublish` runs `compile` **and** `build:webview`, so a package never ships whatever webview build happened to be on disk.
+- **PWA preflight.** [`preflight-deploy-pwa.js`](scripts/preflight-deploy-pwa.js) clears `webview-ui/build-pwa` and logs the revision being deployed. It was added in bd3a6b6 to clear the then-shared directory; that commit's stated premise — that the extension's unhashed `main.js` lingers through a PWA build — is wrong, since the builder clears its output path outright.
 - **`--branch main`.** Pages serves the apex domain only from its production branch, so verify releases on `plans-app.pages.dev`, not the per-deployment URL.
 
 ## 17. Key decisions

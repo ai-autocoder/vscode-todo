@@ -19,6 +19,11 @@ src/**
 # Without this its node_modules (vitest, fake-indexeddb) would be packaged into the vsix.
 packages/**
 
+# The Cloudflare Worker is a separate deployable (`npm run deploy:worker`); none of it runs
+# in the extension. Same reason as `packages/**` above, only worse: its node_modules is over
+# 200 MB, and without this rule all of it is packaged into the vsix.
+worker/**
+
 # Ignore all webview-ui files except the build directory
 webview-ui/src/**
 webview-ui/public/**
@@ -26,6 +31,9 @@ webview-ui/scripts/**
 # Karma's compiled test output — ~24 MB, including a full copy of the KaTeX fonts. Only
 # `webview-ui/build/**` (the Angular build the webview actually loads) belongs in the vsix.
 webview-ui/dist/**
+# The PWA build. It has its own output directory precisely so it can never be mistaken for
+# the extension webview; excluding it here means a stray local PWA build cannot reach a vsix.
+webview-ui/build-pwa/**
 webview-ui/README.md
 webview-ui/package.json
 webview-ui/package-lock.json
@@ -37,7 +45,7 @@ webview-ui/karma.conf.js
 webview-ui/tsconfig.app.json
 webview-ui/tsconfig.spec.json
 webview-ui/angular.json
-webview-ui\generate-prism-imports.js
+webview-ui/generate-prism-imports.js
 
 # Ignore Misc
 .yarnrc
