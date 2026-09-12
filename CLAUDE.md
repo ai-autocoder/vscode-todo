@@ -52,10 +52,16 @@ the extension used to keep its own, and the two drifted into a key-order-sensiti
 an unsorted `filesData`, which made identical content read as modified and raised conflicts whose
 "remote" side was the unchanged local value.
 
-Conflicts are resolved through the engine's optional `ConflictResolver`. The extension supplies
-one (blocking quick picks); the PWA supplies none and takes the `prefer-local` policy, recording
-what happened for after-the-fact review. A conflict the resolver leaves undecided falls back to
-the policy — it is never treated as a deletion.
+Conflicts are resolved through the engine's optional `ConflictResolver`. **Both** apps supply
+one, because whichever peer syncs second is the one holding two versions, and a policy is the
+wrong answer when someone is there to ask: the extension uses blocking quick picks
+(`sync/ConflictResolutionUI.ts`), the PWA a blocking dialog
+(`webview-ui/src/app/pwa/conflicts/conflict-prompt.component.ts`). A conflict the resolver leaves
+undecided falls back to the `prefer-local` policy and is recorded for the PWA's review screen; it
+is never treated as a deletion. The PWA declines while the page is hidden, since the engine's
+promise holds the gateway's sync queue and nobody could answer it; the focus handler asks again.
+Cancelling is a stronger answer than declining: it stops the whole pull, where a hidden-page
+decline still lets the other scope reconcile.
 
 ### Redux slices
 `user` (per-profile, synced via profile-sync or GitHub gist), `workspace`,

@@ -1,3 +1,14 @@
+<!--
+	Blocks everything while a reconcile waits on an answer. Rendered before the banners so it
+	comes first in the document too, not only in z-order.
+-->
+@if (conflictPromptRequest) {
+	<app-conflict-prompt
+		[request]="conflictPromptRequest"
+		(decided)="onConflictDecided($event)"
+	></app-conflict-prompt>
+}
+
 @if (showConflictBanner) {
 	<button class="conflict-banner" (click)="openConflictReview()">
 		<span class="conflict-count">{{ conflictViews.length }}</span>

@@ -1,8 +1,12 @@
 import {
+	MemoryCacheStore,
 	mergeFilesData,
 	resolveFileConflict,
+	serialize,
 	SyncErrorType,
+	type ConflictDecisions,
 	type FileConflictSet,
+	type GlobalGistData,
 	type SyncError,
 	type SyncResult,
 	type Todo,
@@ -16,8 +20,10 @@ import {
 } from "../../../../src/panels/message";
 import {
 	fileConflictKey,
+	type ConflictPromptRequest,
 	type PendingConflictView,
 	type PendingFileConflict,
+	type PendingTodoConflict,
 } from "../pwa/conflicts/conflict-types";
 
 /**
@@ -1102,5 +1108,527 @@ describe("GistGateway file conflict records", () => {
 		expect(stored).not.toContain("renamed here");
 		expect(stored).toContain("added here"); // and nothing was collateral
 		expect(stored).toContain("added there");
+	});
+});
+
+/**
+ * The PWA asks before overwriting, the way the extension does.
+ *
+ * It used to supply no `ConflictResolver` at all, so the engine fell through to its prefer-local
+ * policy: whichever peer synced *second* silently replaced the other's version on the gist and
+ * said so only afterwards, in the review banner. These drive the **real** `GistSyncEngine` over a
+ * fake gist so the conflict is produced by the actual merge rather than handed to the gateway
+ * ready-made: the prompt has to fire on the path a second device really takes.
+ *
+ * The four properties that matter:
+ *
+ *  - a conflicting reconcile asks, and the answer is what lands on the gist;
+ *  - a conflict the user answered is NOT also filed under "resolved automatically", and one they
+ *    left alone IS;
+ *  - cancelling writes nothing, and does not look like a failure or re-open itself on a timer;
+ *  - a hidden page never asks, because nobody could answer and the dialog would hold the queue.
+ */
+describe("GistGateway conflict prompt", () => {
+	interface PromptInternals {
+		engine: unknown;
+		client: unknown;
+		cacheStore: unknown;
+		userFile: string | undefined;
+		token: string | undefined;
+		gistId: string | undefined;
+		userRetries: number;
+		user: { todos: Todo[] };
+		createEngine(gistId: string): unknown;
+		reconcileUser(): Promise<void>;
+	}
+
+	const todo = (id: number, text: string): Todo => ({
+		id,
+		text,
+		completed: false,
+		creationDate: "2026-01-01T00:00:00.000Z",
+		isMarkdown: false,
+		isNote: false,
+	});
+
+	/** One gist file, held in memory, so a reconcile can be driven end to end. */
+	class FakeGist {
+		constructor(public content: string) {}
+		readFile(): Promise<SyncResult<string>> {
+			return Promise.resolve({ success: true, data: this.content });
+		}
+		writeFile(_gistId: string, _fileName: string, content: string): Promise<SyncResult<unknown>> {
+			this.content = content;
+			return Promise.resolve({ success: true, data: {} });
+		}
+	}
+
+	const fileName = "user-todos.json";
+	let gateway: GistGateway;
+	let internals: PromptInternals;
+	let gist: FakeGist;
+	let prompts: ConflictPromptRequest[];
+	let views: PendingConflictView[];
+	let failures: SyncFailureState[];
+
+	/** What the gist file holds now, parsed back out. */
+	function remoteTexts(): string[] {
+		return (JSON.parse(gist.content) as GlobalGistData).userTodos.map((t) => t.text);
+	}
+
+	/**
+	 * Drives one reconcile, answering any prompt with `answer`.
+	 *
+	 * Answered from the subscription rather than after the fact because the reconcile is *parked*
+	 * on the answer: awaiting it first would deadlock.
+	 */
+	async function syncAnswering(
+		answer: (request: ConflictPromptRequest) => ConflictDecisions | null
+	): Promise<void> {
+		const sub = gateway.conflictPrompt.subscribe((request) => {
+			if (!request) {
+				return;
+			}
+			prompts.push(request);
+			gateway.answerConflictPrompt(answer(request));
+		});
+		try {
+			await internals.reconcileUser();
+		} finally {
+			sub.unsubscribe();
+		}
+	}
+
+	/** Base on the gist and in the baseline; then each side edits todo 1 differently. */
+	async function diverge(): Promise<void> {
+		gist = new FakeGist(serialize({ userTodos: [todo(1, "base"), todo(2, "untouched")] }));
+		// Swapped in underneath `createEngine` rather than around it: the whole point is that the
+		// gateway's own engine construction attaches the resolver, so building a `GistSyncEngine`
+		// here by hand would test a peer that never asks and pass for the wrong reason.
+		internals.client = gist;
+		internals.cacheStore = new MemoryCacheStore();
+		internals.engine = internals.createEngine("stub-gist");
+		// The first sync seeds the merge baseline: without one the engine bootstraps instead of
+		// merging, and nothing can conflict.
+		await internals.reconcileUser();
+
+		internals.user.todos = [todo(1, "local edit"), todo(2, "untouched")];
+		gist.content = serialize({ userTodos: [todo(1, "remote edit"), todo(2, "untouched")] });
+	}
+
+	beforeEach(async () => {
+		gateway = new GistGateway({
+			clientId: "test-client",
+			deviceFlowProxyUrl: "https://example.invalid",
+			// Any retry timer would have to be armed within the test to be observable.
+			pushDebounceMs: 60_000,
+		});
+		internals = gateway as unknown as PromptInternals;
+		internals.userFile = fileName;
+		internals.token = "stub-token";
+		internals.gistId = "stub-gist";
+
+		prompts = [];
+		views = [];
+		failures = [];
+		gateway.conflicts.subscribe((next) => (views = next));
+		gateway.syncFailure.subscribe((next) => failures.push(next));
+		await diverge();
+	});
+
+	afterEach(() => {
+		gateway.dismissAllConflicts();
+	});
+
+	it("asks about a conflict the merge found, before anything is written", async () => {
+		let contentWhenAsked = "";
+		await syncAnswering((request) => {
+			contentWhenAsked = gist.content;
+			return { todos: new Map([[request.todos[0].todoId, request.todos[0].local]]) };
+		});
+
+		expect(prompts.length).toBe(1);
+		expect(prompts[0].todos.length).toBe(1);
+		expect(prompts[0].todos[0].conflictType).toBe("edit-edit");
+		expect(prompts[0].todos[0].local?.text).toBe("local edit");
+		expect(prompts[0].todos[0].remote?.text).toBe("remote edit");
+		// Nothing had been pushed at the moment the question was put.
+		expect(contentWhenAsked).toContain("remote edit");
+		expect(contentWhenAsked).not.toContain("local edit");
+	});
+
+	it("hands the merge every id it saw, so a keep-both copy can pick a free one", async () => {
+		await syncAnswering(() => ({}));
+
+		expect(prompts[0].knownIds).toContain(1);
+		expect(prompts[0].knownIds).toContain(2);
+	});
+
+	it("pushes the other device's version when that is what the user picked", async () => {
+		await syncAnswering((request) => ({
+			todos: new Map([[request.todos[0].todoId, request.todos[0].remote]]),
+		}));
+
+		expect(remoteTexts()).toContain("remote edit");
+		expect(remoteTexts()).not.toContain("local edit");
+		expect(internals.user.todos.map((t) => t.text)).toContain("remote edit");
+	});
+
+	it("pushes this device's version when that is what the user picked", async () => {
+		await syncAnswering((request) => ({
+			todos: new Map([[request.todos[0].todoId, request.todos[0].local]]),
+		}));
+
+		expect(remoteTexts()).toContain("local edit");
+		expect(internals.user.todos.map((t) => t.text)).toContain("local edit");
+	});
+
+	/**
+	 * The review banner means "the sync decided this for you". A conflict the user just answered
+	 * is not that, and filing it there would report their own choice back as an overwrite to
+	 * undo, with `resolvedValue` set to the local side, which may not even be what they chose.
+	 */
+	it("does not file an answered conflict under resolved-automatically", async () => {
+		await syncAnswering((request) => ({
+			todos: new Map([[request.todos[0].todoId, request.todos[0].remote]]),
+		}));
+
+		expect(views.length).toBe(0);
+	});
+
+	it("files a conflict the user left undecided, since the policy settled it", async () => {
+		// An empty decision map: the dialog was shown and dismissed with Sync, nothing picked.
+		await syncAnswering(() => ({}));
+
+		expect(views.length).toBe(1);
+		const record = views[0].conflict as PendingTodoConflict;
+		expect(record.todoId).toBe(1);
+		// Policy is prefer-local, so that is what was applied and pushed.
+		expect(record.resolvedValue?.text).toBe("local edit");
+		expect(remoteTexts()).toContain("local edit");
+	});
+
+	describe("cancelling", () => {
+		beforeEach(async () => {
+			failures = [];
+			await syncAnswering(() => null);
+		});
+
+		it("leaves the gist untouched", () => {
+			expect(remoteTexts()).toContain("remote edit");
+			expect(remoteTexts()).not.toContain("local edit");
+		});
+
+		it("keeps this device's edit, so nothing is lost by declining", () => {
+			expect(internals.user.todos.map((t) => t.text)).toContain("local edit");
+		});
+
+		/** Backing out deliberately is not a malfunction, and must not raise the failure banner. */
+		it("does not report a sync failure", () => {
+			expect(failures.every((state) => state.phase === "ok")).toBe(true);
+		});
+
+		/** A retry timer would re-open the dialog seconds after it was dismissed. */
+		it("does not arm a retry", () => {
+			expect(internals.userRetries).toBe(0);
+		});
+
+		it("records nothing for review, because nothing was decided or applied", () => {
+			expect(views.length).toBe(0);
+		});
+
+		it("asks again on the next sync", async () => {
+			await syncAnswering((request) => ({
+				todos: new Map([[request.todos[0].todoId, request.todos[0].local]]),
+			}));
+
+			expect(prompts.length).toBe(2);
+			expect(remoteTexts()).toContain("local edit");
+		});
+	});
+
+	/**
+	 * A background tab or a backgrounded phone has nobody to answer, and the reconcile holds the
+	 * gateway's sync queue while it waits, so an unanswerable dialog would stall every later sync
+	 * too. Declining costs nothing: the edit is still local, and the focus handler re-runs the
+	 * sync when the app comes back, which is when the question can actually be put.
+	 */
+	describe("while the page is hidden", () => {
+		let restore: (() => void) | undefined;
+
+		beforeEach(async () => {
+			const original = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+			Object.defineProperty(document, "visibilityState", {
+				configurable: true,
+				get: () => "hidden",
+			});
+			restore = () => {
+				delete (document as unknown as Record<string, unknown>)["visibilityState"];
+				if (original) {
+					Object.defineProperty(Document.prototype, "visibilityState", original);
+				}
+			};
+			failures = [];
+			await syncAnswering(() => ({}));
+		});
+
+		afterEach(() => restore?.());
+
+		it("never asks", () => {
+			expect(prompts.length).toBe(0);
+		});
+
+		it("writes nothing", () => {
+			expect(remoteTexts()).not.toContain("local edit");
+		});
+
+		it("does not report a failure or arm a retry", () => {
+			expect(failures.every((state) => state.phase === "ok")).toBe(true);
+			expect(internals.userRetries).toBe(0);
+		});
+	});
+});
+
+/**
+ * What a cancelled or undeliverable prompt does to the rest of the sync.
+ *
+ * Both of these were bugs found in review, and both are the kind that does not show up in a
+ * unit of one reconcile:
+ *
+ *  - a reconcile parked on the dialog holds the gateway's serialized queue, so anything that
+ *    waits on that queue while a prompt is open hangs. `resetForNewGist` waits on it, and
+ *    releasing the open prompt was not enough: the freed job was usually `pullAll`, whose
+ *    *workspace* leg then raised its own conflicts and parked the queue again, behind the gist
+ *    picker that was covering the dialog. Clearing the session before the wait is what stops it.
+ *  - "Cancel sync" has to mean the pull, not the scope, or the button puts the other scope's
+ *    dialog up in its place and looks like it did nothing. A hidden-page decline is a different
+ *    answer and deliberately does NOT skip: the other file may have nothing in dispute.
+ */
+describe("GistGateway prompt and the sync queue", () => {
+	interface QueueInternals {
+		engine: unknown;
+		client: unknown;
+		cacheStore: unknown;
+		userFile: string | undefined;
+		workspaceFile: string | undefined;
+		token: string | undefined;
+		gistId: string | undefined;
+		user: { todos: Todo[] };
+		workspace: { todos: Todo[] };
+		createEngine(gistId: string): unknown;
+		enqueue(work: () => Promise<void>): Promise<void>;
+		reconcileUser(): Promise<void>;
+		reconcileWorkspace(): Promise<void>;
+		pullAll(): Promise<void>;
+		resetForNewGist(): Promise<void>;
+	}
+
+	const userFile = "user-todos.json";
+	const workspaceFile = "workspace-default.json";
+
+	const todo = (id: number, text: string): Todo => ({
+		id,
+		text,
+		completed: false,
+		creationDate: "2026-01-01T00:00:00.000Z",
+		isMarkdown: false,
+		isNote: false,
+	});
+
+	/** Two files in memory, both diverged, so each scope's reconcile raises a conflict. */
+	class TwoFileGist {
+		files: Record<string, string>;
+		constructor() {
+			this.files = {
+				[userFile]: serialize({ userTodos: [todo(1, "base")] }),
+				[workspaceFile]: serialize({
+					workspaceTodos: [todo(2, "base")],
+					filesData: {},
+					filesDataPaths: {},
+				}),
+			};
+		}
+		readFile(_gistId: string, name: string): Promise<SyncResult<string>> {
+			return Promise.resolve({ success: true, data: this.files[name] });
+		}
+		writeFile(_gistId: string, name: string, content: string): Promise<SyncResult<unknown>> {
+			this.files[name] = content;
+			return Promise.resolve({ success: true, data: {} });
+		}
+	}
+
+	/**
+	 * `MemoryCacheStore` has no `clear()`, which the real `IndexedDbCacheStore` does and
+	 * `resetForNewGist` calls. Wrapping it keeps the engine on the in-memory store while giving
+	 * the gist switch the method it needs.
+	 */
+	class ClearableMemoryCacheStore extends MemoryCacheStore {
+		cleared = 0;
+		async clear(): Promise<void> {
+			this.cleared++;
+		}
+	}
+
+	let gateway: GistGateway;
+	let internals: QueueInternals;
+	let gist: TwoFileGist;
+	let prompts: ConflictPromptRequest[];
+	let sub: { unsubscribe(): void } | undefined;
+
+	/** Answers every prompt with `answer`, for as long as the subscription is up. */
+	function answerWith(answer: () => ConflictDecisions | null): void {
+		sub = gateway.conflictPrompt.subscribe((request) => {
+			if (!request) {
+				return;
+			}
+			prompts.push(request);
+			gateway.answerConflictPrompt(answer());
+		});
+	}
+
+	beforeEach(async () => {
+		gateway = new GistGateway({
+			clientId: "test-client",
+			deviceFlowProxyUrl: "https://example.invalid",
+			pushDebounceMs: 60_000,
+		});
+		internals = gateway as unknown as QueueInternals;
+		internals.userFile = userFile;
+		internals.workspaceFile = workspaceFile;
+		internals.token = "stub-token";
+		internals.gistId = "stub-gist";
+		gist = new TwoFileGist();
+		internals.client = gist;
+		internals.cacheStore = new ClearableMemoryCacheStore();
+		internals.engine = internals.createEngine("stub-gist");
+		prompts = [];
+
+		// Seed a baseline for both files, then diverge both sides of both.
+		await internals.pullAll();
+		internals.user.todos = [todo(1, "local edit")];
+		internals.workspace.todos = [todo(2, "local edit")];
+		gist.files[userFile] = serialize({ userTodos: [todo(1, "remote edit")] });
+		gist.files[workspaceFile] = serialize({
+			workspaceTodos: [todo(2, "remote edit")],
+			filesData: {},
+			filesDataPaths: {},
+		});
+	});
+
+	afterEach(() => {
+		sub?.unsubscribe();
+		gateway.dismissAllConflicts();
+	});
+
+	it("asks about both scopes when the user answers the first", async () => {
+		answerWith(() => ({}));
+
+		await internals.pullAll();
+
+		expect(prompts.length).toBe(2);
+	});
+
+	it("stops the pull when the user cancels, instead of asking about the other scope", async () => {
+		answerWith(() => null);
+
+		await internals.pullAll();
+
+		expect(prompts.length).toBe(1);
+	});
+
+	it("leaves the cancelled pull's workspace file untouched", async () => {
+		answerWith(() => null);
+
+		await internals.pullAll();
+
+		expect(gist.files[workspaceFile]).toContain("remote edit");
+		expect(gist.files[workspaceFile]).not.toContain("local edit");
+	});
+
+	/**
+	 * A hidden page cannot be asked, but that says nothing about the other file. Skipping it
+	 * would strand a workspace list that has nothing in dispute, for as long as the app stayed
+	 * in the background.
+	 */
+	it("still reconciles the other scope when a hidden page could not be asked", async () => {
+		const original = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+		Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+		// Only the user file is in dispute now, so the workspace leg has nothing to ask about and
+		// must complete on its own.
+		gist.files[workspaceFile] = serialize({
+			workspaceTodos: [todo(2, "local edit")],
+			filesData: {},
+			filesDataPaths: {},
+		});
+		internals.workspace.todos = [todo(2, "local edit"), todo(3, "added here")];
+		answerWith(() => ({}));
+
+		try {
+			await internals.pullAll();
+		} finally {
+			delete (document as unknown as Record<string, unknown>)["visibilityState"];
+			if (original) {
+				Object.defineProperty(Document.prototype, "visibilityState", original);
+			}
+		}
+
+		expect(prompts.length).toBe(0);
+		// The user file was declined and not written; the workspace file went through.
+		expect(gist.files[userFile]).not.toContain("local edit");
+		expect(gist.files[workspaceFile]).toContain("added here");
+	});
+
+	/**
+	 * The round-1 deadlock.
+	 *
+	 * Two pushes are queued independently, which is what a debounced edit in each scope
+	 * produces — deliberately NOT `pullAll`, whose cancelled-return would mask this: the second
+	 * job runs `beginConflictRun` of its own, so the first job's cancel does not carry to it.
+	 * Releasing the parked dialog therefore frees job 1 and lets job 2 raise its own conflict
+	 * and park the queue again, behind the gist picker that is covering the dialog, and the
+	 * `await this.enqueue(...)` inside `resetForNewGist` never resolves. Clearing the engine
+	 * before that wait is what makes job 2 return instead.
+	 *
+	 * Verified to hang when the clearing is moved back after the wait.
+	 */
+	it("completes a gist switch while a conflict dialog is open", async () => {
+		// Deliberately never answered, so the queue really is parked when the switch starts.
+		const seen: ConflictPromptRequest[] = [];
+		sub = gateway.conflictPrompt.subscribe((request) => {
+			if (request) {
+				seen.push(request);
+			}
+		});
+
+		const jobs = Promise.all([
+			internals.enqueue(() => internals.reconcileUser()),
+			internals.enqueue(() => internals.reconcileWorkspace()),
+		]);
+		// Let the first reconcile reach the resolver and park.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(seen.length).toBe(1);
+
+		const switched = await Promise.race([
+			internals.resetForNewGist().then(() => "done"),
+			new Promise((resolve) => setTimeout(() => resolve("timed out"), 3000)),
+		]);
+
+		// Asserted before awaiting the jobs: on the regression path job 2 stays parked forever, so
+		// awaiting first would report this as a Jasmine timeout instead of naming the failure.
+		expect(switched).toBe("done");
+		// Release anything still parked, so a failing run cannot leave a dangling promise behind.
+		gateway.answerConflictPrompt(null);
+		await jobs;
+		// And it did not simply move the dialog to the other scope on the way out.
+		expect(seen.length).toBe(1);
+	});
+
+	it("drops the engine before waiting on the queue, so no leg can re-park it", async () => {
+		answerWith(() => null);
+		await internals.resetForNewGist();
+
+		expect(internals.engine).toBeUndefined();
+		expect(internals.userFile).toBeUndefined();
+		expect(internals.workspaceFile).toBeUndefined();
 	});
 });

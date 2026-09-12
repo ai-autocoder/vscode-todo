@@ -1,15 +1,20 @@
 /**
  * Pending sync conflicts, as surfaced to the user in the PWA.
  *
- * The sync engine resolves every conflict itself under its prefer-local policy and has already
- * pushed the result by the time {@link GistGateway} sees it, so these records do not gate the
- * sync — they exist to make a decision that was already taken *visible and reversible*.
- * Reversing one is an ordinary local edit plus a push, not a special sync path.
+ * These are the conflicts the sync settled *without* the user saying so: the ones the up-front
+ * prompt was shown but left undecided, and the ones nobody could be asked about (the page was
+ * hidden, or a re-merge against a mid-flight edit found them after the dialog had closed). The
+ * engine has already applied its prefer-local policy and pushed the result by the time
+ * {@link GistGateway} records them, so they do not gate the sync: they exist to make a decision
+ * that was already taken *visible and reversible*. Reversing one is an ordinary local edit plus
+ * a push, not a special sync path.
+ *
+ * The prompt that runs *before* a write is {@link ConflictPromptRequest}, below.
  *
  * PWA-only: nothing here is reachable from the extension webview build.
  */
 
-import type { Todo } from "@vsc-todo/core";
+import type { ConflictSet, FileConflictSet, Todo } from "@vsc-todo/core";
 
 /**
  * Scope a conflict belongs to. Per-file lists live inside the workspace gist file and are
@@ -19,6 +24,20 @@ export type ConflictScope = "user" | "workspace";
 
 /** Which device's version a choice refers to. */
 export type ConflictSide = "local" | "remote";
+
+/**
+ * What the sync engine is asking about, handed to the up-front prompt.
+ *
+ * Mirrors the argument of the core `ConflictResolver` hook. A reconcile is blocked on the answer
+ * while this is on screen: nothing has been written, and the conflicts here are raw merge output,
+ * not the {@link PendingConflict} records the review screen shows after the fact.
+ */
+export interface ConflictPromptRequest {
+	todos: ConflictSet[];
+	files: FileConflictSet[];
+	/** Every todo id the merge saw, so a keep-both copy can draw an id nothing else uses. */
+	knownIds: number[];
+}
 
 /**
  * Todo fields a per-field merge can pick sides on.

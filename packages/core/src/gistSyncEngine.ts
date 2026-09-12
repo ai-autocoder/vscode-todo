@@ -104,8 +104,9 @@ export interface ConflictDecisions {
  * Conflicts already settled do not come back — the previous decision is in the data being
  * re-merged, so the fresh remote has to disagree with *that* to conflict again.
  *
- * The PWA supplies none of this and keeps the policy path, recording what was decided for
- * after-the-fact review; the extension supplies one and blocks on a quick pick.
+ * Both hosts supply one: the extension blocks on a quick pick, the PWA on a dialog. The PWA's
+ * may answer only some of the conflicts, leaving the rest to the policy and recording those for
+ * after-the-fact review.
  */
 export type ConflictResolver = (conflicts: {
 	todos: ConflictSet[];

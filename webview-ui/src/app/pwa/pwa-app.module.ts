@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import { NgModule } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { AppModule } from "../app.module";
+import { ConflictPromptComponent } from "./conflicts/conflict-prompt.component";
 import { ConflictReviewComponent } from "./conflicts/conflict-review.component";
 import { PwaShellComponent } from "./pwa-shell.component";
 
@@ -12,7 +13,7 @@ import { PwaShellComponent } from "./pwa-shell.component";
  * extension webview at runtime).
  */
 @NgModule({
-	declarations: [PwaShellComponent, ConflictReviewComponent],
+	declarations: [PwaShellComponent, ConflictReviewComponent, ConflictPromptComponent],
 	imports: [CommonModule, FormsModule, AppModule],
 	bootstrap: [PwaShellComponent],
 })

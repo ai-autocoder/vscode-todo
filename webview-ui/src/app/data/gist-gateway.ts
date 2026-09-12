@@ -53,6 +53,7 @@ import {
 	todoMutations,
 	generateUniqueId,
 	recountTodos,
+	type ConflictDecisions,
 	type ConflictSet,
 	type FileConflictSet,
 	resolveFileConflict,
@@ -93,6 +94,7 @@ import {
 import {
 	fileConflictKey,
 	todoConflictKey,
+	type ConflictPromptRequest,
 	type ConflictScope,
 	type PendingConflict,
 	type PendingConflictView,
@@ -295,14 +297,48 @@ export class GistGateway implements DataGateway {
 	readonly connection: Observable<GistConnectionState> = this._connection.asObservable();
 
 	/**
-	 * Conflicts the engine already resolved (prefer-local) and pushed, kept so the user can see
-	 * and reverse those decisions. Newest first; persisted, because sync usually runs on the
-	 * focus event just before a phone backgrounds the app.
+	 * Conflicts the sync settled *without* the user saying so, kept so they can be seen and
+	 * reversed. That is everything the prompt was shown but left undecided, plus everything
+	 * resolved by policy because nobody could be asked (the page was hidden) or because the
+	 * decision came from a re-merge against a mid-flight edit. Conflicts the user answered in the
+	 * prompt are already what they asked for and are deliberately not recorded here.
+	 *
+	 * Newest first; persisted, because sync usually runs on the focus event just before a phone
+	 * backgrounds the app.
 	 */
 	private pendingConflicts: PendingConflict[] = [];
 	private readonly _conflicts = new BehaviorSubject<PendingConflictView[]>([]);
 	/** Pending conflicts, each paired with whether local state has moved on since the sync. */
 	readonly conflicts: Observable<PendingConflictView[]> = this._conflicts.asObservable();
+
+	/**
+	 * The conflict question currently on screen, if any. Null means nothing is being asked.
+	 *
+	 * A reconcile is parked on the engine's `ConflictResolver` hook for as long as this is
+	 * non-null: nothing has been written to the gist and the merge baseline is untouched, which
+	 * is what makes cancelling safe.
+	 */
+	private readonly _conflictPrompt = new BehaviorSubject<ConflictPromptRequest | null>(null);
+	readonly conflictPrompt: Observable<ConflictPromptRequest | null> =
+		this._conflictPrompt.asObservable();
+	/** Resolver for the promise the engine is awaiting. Present only while a prompt is open. */
+	private answerPrompt: ((decisions: ConflictDecisions | null) => void) | undefined;
+	/**
+	 * What the current reconcile's prompt settled. The engine may ask more than once per
+	 * reconcile (it re-merges if the remote moves during the write window), so these accumulate
+	 * across the run and are cleared by {@link beginConflictRun}.
+	 */
+	private readonly decidedTodoIds = new Set<number>();
+	private readonly decidedFilePaths = new Set<string>();
+	/**
+	 * How this run's prompt ended. `"none"` covers both "nothing was asked" and "it was answered".
+	 *
+	 * `"cancelled"` and `"declined"` both mean nothing was written, so neither is a failure and
+	 * neither arms a retry. They differ to {@link pullAll}: a user who cancels means the whole
+	 * pull, so the other scope is not asked either; a hidden page only means *this* question
+	 * could not be put, and the other scope may have nothing in dispute and sync cleanly.
+	 */
+	private promptOutcome: "none" | "cancelled" | "declined" = "none";
 	private readonly _syncFailure = new BehaviorSubject<SyncFailureState>({ phase: "ok" });
 	/** Whether sync has stopped working, so the PWA can say so instead of looking healthy. */
 	readonly syncFailure: Observable<SyncFailureState> = this._syncFailure.asObservable();
@@ -1153,6 +1189,7 @@ export class GistGateway implements DataGateway {
 		// This run is the push the flag was standing in for; anything that re-arms one below
 		// (a mid-flight edit, keep-both, a retry) sets it again.
 		this.pendingUserPush = false;
+		this.beginConflictRun();
 		try {
 			const local: GlobalGistData = { userTodos: this.user.todos };
 			const generation = this.userGeneration;
@@ -1183,7 +1220,7 @@ export class GistGateway implements DataGateway {
 				// Surface what the engine settled on its own. Runs before anything is emitted or
 				// persisted below, because keep-both adds a todo to the slice.
 				const keptBoth = this.captureTodoConflicts("user", [
-					...res.data.conflicts,
+					...this.undecidedTodos(res.data.conflicts),
 					...(remerge?.conflicts ?? []),
 				]);
 				if (this.userGeneration !== generation || keptBoth) {
@@ -1205,6 +1242,13 @@ export class GistGateway implements DataGateway {
 					// the list has to refresh it too or the badge keeps the pre-pull number.
 					this.emitReload();
 				}
+			} else if (this.promptOutcome !== "none") {
+				// The user backed out of the conflict dialog, or the page was hidden so nobody could
+				// be asked. Nothing was written and the baseline is untouched, so this is a
+				// deliberate "not now" rather than a failure: no banner, and no retry timer either,
+				// which would re-open the dialog seconds after it was dismissed. The scope stays
+				// dirty, and the next edit or the next focus asks again.
+				this.markDirty(TodoScope.user);
 			} else if (res.error?.retryable) {
 				// A retryable failure (a remote that would not settle, a transient network error)
 				// leaves the edit unpushed. Nothing else re-arms the push — the stale branch above
@@ -1251,6 +1295,7 @@ export class GistGateway implements DataGateway {
 		this.setSyncStatus(TodoScope.workspace, "syncing");
 		// See reconcileUser.
 		this.pendingWorkspacePush = false;
+		this.beginConflictRun();
 		try {
 			// Round-trip the per-file todos we last saw: the PWA never edits them, but sending
 			// `{}` would make the merge treat them as locally deleted and wipe them from the gist.
@@ -1292,10 +1337,13 @@ export class GistGateway implements DataGateway {
 				// See reconcileUser. File-level conflicts are recorded too: the PWA never renders
 				// those per-file lists, but it is the side that just overwrote one.
 				const keptBoth = this.captureTodoConflicts("workspace", [
-					...res.data.conflicts,
+					...this.undecidedTodos(res.data.conflicts),
 					...(remerge?.conflicts ?? []),
 				]);
-				this.captureFileConflicts([...res.data.fileConflicts, ...(remerge?.fileConflicts ?? [])]);
+				this.captureFileConflicts([
+					...this.undecidedFiles(res.data.fileConflicts),
+					...(remerge?.fileConflicts ?? []),
+				]);
 
 				if (stale || keptBoth) {
 					// See reconcileUser: re-persist after adopting, because the reconcile's own
@@ -1324,6 +1372,9 @@ export class GistGateway implements DataGateway {
 					// File list / counts may have changed too.
 					this.emitReload();
 				}
+			} else if (this.promptOutcome !== "none") {
+				// See reconcileUser.
+				this.markDirty(TodoScope.workspace);
 			} else if (res.error?.retryable) {
 				// See reconcileUser.
 				this.scheduleWorkspaceRetry();
@@ -1386,7 +1437,15 @@ export class GistGateway implements DataGateway {
 	 * apart from local ones.
 	 */
 	private createEngine(gistId: string): GistSyncEngine {
-		return new GistSyncEngine({ client: this.client, gistId, cacheStore: this.cacheStore });
+		return new GistSyncEngine({
+			client: this.client,
+			gistId,
+			cacheStore: this.cacheStore,
+			// Ask before overwriting, the way the extension does. Anything the user leaves
+			// undecided still falls back to the engine's prefer-local policy and is recorded for
+			// the review screen, so a half-answered dialog settles rather than blocking.
+			conflictResolver: (conflicts) => this.askAboutConflicts(conflicts),
+		});
 	}
 
 	/**
@@ -1404,7 +1463,18 @@ export class GistGateway implements DataGateway {
 
 	private async pullAll(): Promise<void> {
 		await this.enqueue(async () => {
+			// Reset here too, not only inside each reconcile: `reconcileUser` returns before its
+			// own reset when there is no engine or file, which would leave the previous run's
+			// outcome to be read as this one's.
+			this.beginConflictRun();
 			await this.reconcileUser();
+			// "Cancel sync" means this pull. Going straight on to put the other scope's dialog up
+			// would make the button look like it had done nothing. A hidden-page decline is not
+			// the same answer and does not skip: the workspace file may have nothing in dispute
+			// and sync cleanly without asking anyone.
+			if (this.promptOutcome === "cancelled") {
+				return;
+			}
 			await this.reconcileWorkspace();
 		});
 	}
@@ -1846,6 +1916,19 @@ export class GistGateway implements DataGateway {
 	 */
 	private async resetForNewGist(): Promise<void> {
 		this.cancelPendingPushes();
+		// Before the queue wait below, not after: a reconcile parked on the dialog would hold the
+		// queue forever and the switch would never complete.
+		this.abandonConflictPrompt();
+		// Also before it, and for a second reason. Releasing the dialog only frees the job that
+		// was parked, and that job is usually `pullAll`, which then runs its *workspace* leg,
+		// raises conflicts of its own and parks the queue again on a dialog the gist picker is
+		// covering. Both reconciles read these at entry and return once they are gone, and
+		// `useGist` rebuilds the engine the moment this returns. `disconnectGitHub` was already
+		// immune because it clears them first; this cleared them after the wait, so a switch
+		// could hang for good.
+		this.engine = undefined;
+		this.userFile = undefined;
+		this.workspaceFile = undefined;
 		// Wait for any in-flight reconcile before clearing. Cache keys carry only the file name,
 		// so a late write from the old gist would otherwise land in the cleared store and be read
 		// back as the new gist's baseline — the exact corruption this reset exists to prevent.
@@ -1855,8 +1938,9 @@ export class GistGateway implements DataGateway {
 			// old gist's conflicts into the store we just cleared.
 			await this.clearConflicts();
 		});
-		this.userFile = undefined;
-		this.workspaceFile = undefined;
+		// Again, now the queue has drained: the reconcile released above finishes on its cancel
+		// path, which marks its scope dirty for an edit belonging to the gist being left.
+		this.cancelPendingPushes();
 		await this.tokenStore.clearFileSelections();
 		// The failures and statuses described the gist we just left — a banner about a gist the
 		// user has abandoned, and "synced" against one this device has never contacted, over the
@@ -2078,6 +2162,8 @@ export class GistGateway implements DataGateway {
 		this.resetSyncFailures();
 		this.connectAbort?.abort();
 		this.cancelPendingPushes();
+		// See resetForNewGist: release the queue before waiting on it.
+		this.abandonConflictPrompt();
 		this.token = undefined;
 		this.gistId = undefined;
 		this.userFile = undefined;
@@ -2093,8 +2179,10 @@ export class GistGateway implements DataGateway {
 		});
 		// Again, now that the queue has drained. The reconcile that just finished settled its
 		// scope and may have recorded a failure — both of which describe the session we have
-		// already torn down, and the first reset above ran before it could.
+		// already torn down, and the first reset above ran before it could. Its cancel path also
+		// marks the scope dirty, so the push flags go a second time for the same reason.
 		this.resetSyncFailures();
+		this.cancelPendingPushes();
 		// This is a session that really has ended, so here the pre-first-sync state is the truth.
 		// Last, because `resetSyncFailures` re-settles the statuses.
 		this.userEverSynced = false;
@@ -2172,6 +2260,99 @@ export class GistGateway implements DataGateway {
 	}
 
 	// --- conflicts ---
+
+	/**
+	 * The engine's {@link ConflictResolver}: parks the reconcile and asks the user.
+	 *
+	 * Called from inside a reconcile, before anything is written. Whatever comes back is applied
+	 * by the engine; `null` aborts the whole reconcile, leaving the remote and the merge baseline
+	 * exactly as they were, so the same question comes back on the next sync.
+	 *
+	 * A hidden page declines instead of asking. There is nobody to answer, and an unanswerable
+	 * dialog would hold the sync queue — and with it every later reconcile — for as long as the
+	 * app stayed in the background. Declining costs nothing: the edit is already persisted
+	 * locally, the scope is left dirty, and the focus handler re-runs the sync on return, which
+	 * is the moment the question can actually be put.
+	 */
+	private askAboutConflicts(request: ConflictPromptRequest): Promise<ConflictDecisions | null> {
+		if (!this.canPrompt()) {
+			this.promptOutcome = "declined";
+			return Promise.resolve(null);
+		}
+		return new Promise<ConflictDecisions | null>((resolve) => {
+			this.answerPrompt = (decisions) => {
+				this.answerPrompt = undefined;
+				this._conflictPrompt.next(null);
+				if (decisions === null) {
+					this.promptOutcome = "cancelled";
+				} else {
+					// Remembered so the review screen does not also report these as resolved
+					// automatically: the user has just said what should happen to them.
+					for (const id of decisions.todos?.keys() ?? []) {
+						this.decidedTodoIds.add(id);
+					}
+					for (const path of decisions.files?.keys() ?? []) {
+						this.decidedFilePaths.add(path);
+					}
+				}
+				resolve(decisions);
+			};
+			this._conflictPrompt.next(request);
+		});
+	}
+
+	/** The shell's answer to an open prompt. `null` cancels the sync. Ignored if none is open. */
+	answerConflictPrompt(decisions: ConflictDecisions | null): void {
+		this.answerPrompt?.(decisions);
+	}
+
+	/**
+	 * Declines an open prompt so a reconcile parked on it cannot hold the sync queue while the
+	 * session it belongs to is torn down. Declining is the only safe answer: the gist being asked
+	 * about is the one being left, and the engine's cancel path writes nothing.
+	 */
+	private abandonConflictPrompt(): void {
+		this.answerPrompt?.(null);
+	}
+
+	/**
+	 * Whether a dialog can be put to someone. Guards against a background tab or a backgrounded
+	 * phone, where a prompt would never be answered.
+	 *
+	 * Absent `document` counts as "cannot ask" rather than "ask anyway": the caller is awaiting
+	 * this and holds the sync queue, so failing closed leaves the scope visibly dirty while
+	 * failing open would hang every later sync with nothing on screen to explain it.
+	 */
+	private canPrompt(): boolean {
+		return typeof document !== "undefined" && document.visibilityState !== "hidden";
+	}
+
+	/** Clears the per-reconcile prompt bookkeeping. Runs whether or not anything is asked. */
+	private beginConflictRun(): void {
+		this.decidedTodoIds.clear();
+		this.decidedFilePaths.clear();
+		this.promptOutcome = "none";
+	}
+
+	/**
+	 * The conflicts of this run the user did *not* settle in the prompt, which are the ones the
+	 * policy decided and therefore the ones worth showing on the review screen.
+	 *
+	 * Applied only to the engine's own conflicts. A re-merge against a mid-flight edit resolves
+	 * its conflicts by policy with nobody asked, so those are always recorded.
+	 */
+	private undecidedTodos(conflicts: ConflictSet[]): ConflictSet[] {
+		return this.decidedTodoIds.size === 0
+			? conflicts
+			: conflicts.filter((conflict) => !this.decidedTodoIds.has(conflict.todoId));
+	}
+
+	/** File-level counterpart of {@link undecidedTodos}. */
+	private undecidedFiles(conflicts: FileConflictSet[]): FileConflictSet[] {
+		return this.decidedFilePaths.size === 0
+			? conflicts
+			: conflicts.filter((conflict) => !this.decidedFilePaths.has(conflict.filePath));
+	}
 
 	/**
 	 * Records the conflicts a reconcile just resolved, and settles id collisions by keeping both.

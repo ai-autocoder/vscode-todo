@@ -25,6 +25,8 @@ function fakeGateway(connection: BehaviorSubject<GistConnectionState>, chooseFil
 		connection,
 		messages: new Subject(),
 		conflicts: new BehaviorSubject([]),
+		conflictPrompt: new BehaviorSubject(null),
+		answerConflictPrompt: () => undefined,
 		syncFailure: new BehaviorSubject({ phase: "ok" }),
 		importExport: new BehaviorSubject({ phase: "idle" }),
 		restoreSession: () => Promise.resolve(connection.value),

@@ -321,7 +321,7 @@ A `Todo` is `{ id, text, completed, creationDate, completionDate?, isMarkdown, i
 | --- | --- | --- |
 | `GistFileIO` | [`GitHubApiClient`](src/sync/GitHubApiClient.ts) | [`GistClient`](packages/core/src/gistClient.ts) |
 | `CacheStore` | [`MementoCacheStore`](src/sync/MementoCacheStore.ts), using the keys the extension already had, so upgrades keep their baselines | `IndexedDbCacheStore` |
-| `ConflictResolver` | [`ConflictResolutionUI`](src/sync/ConflictResolutionUI.ts), blocking quick picks | none: `prefer-local`, recorded for review |
+| `ConflictResolver` | [`ConflictResolutionUI`](src/sync/ConflictResolutionUI.ts), blocking quick picks | `GistGateway.askAboutConflicts`, which parks the reconcile and renders [`ConflictPromptComponent`](webview-ui/src/app/pwa/conflicts/conflict-prompt.component.ts); anything left undecided falls to `prefer-local` and is recorded for review |
 
 **The cache.** Per file: `data` (this device's copy), `lastCleanRemoteData` (the baseline: content known to be on the gist), `lastSynced`, and an informational `isDirty`. The engine detects changes by comparing content with the baseline, not by trusting the flag.
 
@@ -421,9 +421,13 @@ The merge compares each todo, by id, with its baseline version. Only a todo chan
 - A `null` decision means the deletion stands.
 - A `null` resolver result aborts the reconcile, so the question returns next sync.
 
+Both apps ask before writing. The PWA's dialog additionally allows a partial answer: a conflict the user does not touch takes the `prefer-local` policy and is filed for the review screen, so the sync settles either way and nothing is decided in silence. Its bulk buttons refuse the three shapes where one tap destroys something unseen — a top-level `id-collision`, a per-file list one device removed, and a file whose *item* merge holds a collision (which `file-added-both` always does, since its item merge runs against an empty base) — and leave those cards open. The third has no keep-both to fall back on: a file decision is a whole `Todo[]`, so only leaving the card undecided preserves both sides, as the two recorded resolutions.
+
+Declining and cancelling differ, and the difference is deliberate. **Cancel** is the user's answer for the whole pull: the focus-driven reconcile stops there rather than putting the other scope's dialog up in its place. A **hidden page** declines only the question it could not put — nobody could answer, and the promise the engine is awaiting holds the gateway's sync queue — so the other scope still reconciles, since its file may have nothing in dispute. Neither raises the failure banner or arms a retry; the focus handler asks again on return. A dialog open while the gist is switched is released *and* the session dropped before the switch waits on that queue, or the next queued reconcile re-parks it behind the gist picker.
+
 Decisions must be sparse rather than a finished list. When the extension returned a list, "Skip This Conflict" deleted the item on both devices (commit 218411c).
 
-**Id collisions.** Ids are random integers from `Math.random` ([`pure.ts`](packages/core/src/pure.ts)). An `id-collision` means either two new items drew the same id, or one item was compared without a baseline, and the data cannot tell which. The PWA keeps both under fresh ids; the extension offers **Keep Both** without recommending it.
+**Id collisions.** Ids are random integers from `Math.random` ([`pure.ts`](packages/core/src/pure.ts)). An `id-collision` means either two new items drew the same id, or one item was compared without a baseline, and the data cannot tell which. Both apps offer **Keep Both** without recommending it. A collision the PWA user leaves undecided is kept both ways anyway rather than settled by the policy: picking a side would destroy a real item if the two were independently created.
 
 **Workspace files.** `workspaceTodos` merges as above. `filesData` merges one path at a time:
 
@@ -434,7 +438,7 @@ Decisions must be sparse rather than a finished list. When the extension returne
 
 `resolveFileConflict` settles only the conflicting ids, so both sides' additions to a file survive (commit f34ef26). `filesDataPaths` merges as a union, never dropping an alias either side still has.
 
-**Order.** `threeWayMerge` returns an `order` — the merged list as todo ids — alongside the items. Local order is the skeleton: it is what the user of this device last saw and arranged, so a todo created at the top stays at the top and a drag-and-drop reorder survives. Items only the remote holds are spliced in beside the neighbours they have there (`findInsertionIndex`). A conflicted id holds its slot even before anything settles it, so a resolution lands where the item sits rather than at the end. The extension's resolver returns keep-both copies keyed by the conflict they came from, and each is placed directly after it; the PWA settles an `id-collision` itself and appends its copy to the end of the list ([`gist-gateway.ts`](webview-ui/src/app/data/gist-gateway.ts)). `assembleMerged` builds the final list from that skeleton, and every engine path goes through it.
+**Order.** `threeWayMerge` returns an `order` — the merged list as todo ids — alongside the items. Local order is the skeleton: it is what the user of this device last saw and arranged, so a todo created at the top stays at the top and a drag-and-drop reorder survives. Items only the remote holds are spliced in beside the neighbours they have there (`findInsertionIndex`). A conflicted id holds its slot even before anything settles it, so a resolution lands where the item sits rather than at the end. Both resolvers return keep-both copies keyed by the conflict they came from, and each is placed directly after it; a collision the PWA user left undecided is settled afterwards by [`gist-gateway.ts`](webview-ui/src/app/data/gist-gateway.ts), which appends its copy to the end of the list. `assembleMerged` builds the final list from that skeleton, and every engine path goes through it.
 
 Nothing detects "both devices reordered the same items", and nothing should: with no per-item position in the data model the two orders can only be picked between, so the one in front of the user wins. The other device pulls it down on its next sync and the two converge.
 
@@ -513,10 +517,10 @@ Three suites on three runners guard three layers. CI runs them all, plus both An
 | Suite | Runner | Cases | Protects |
 | --- | --- | --- | --- |
 | [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 253 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export |
-| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 138 | Shared components, `GistGateway`, conflict review, PWA shell |
+| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 221 | Shared components, `GistGateway`, the conflict prompt and review, PWA shell |
 | [`src/test`](src/test/sync/syncManagerConcurrency.test.ts) | Mocha in real VS Code (`@vscode/test`) | 197 | `SyncManager` concurrency and status, cache-key compatibility, cross-peer equality, truncation, MCP request gates |
 
-Counts are declared test cases (`it(`/`test(` call sites; none generated in loops or skipped) as of 17 Sep 2026.
+Counts are declared test cases (`it(`/`test(` call sites; none generated in loops or skipped) as of 19 Sep 2026.
 
 **Regression tests follow the bugs.**
 
@@ -558,7 +562,8 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 | Worker as a CORS shim only | Auth backend with sessions; third-party proxy | Nothing to protect: no secrets, no state, gist traffic goes direct | Extra deployable; CORS-only origin check; previews cannot sign in |
 | Shared core compiled into both apps | Duplicated logic; published npm package | Peers writing one file must agree; separate copies drifted into phantom conflicts and lost writes (218411c) | Relative-import seam; core changes need an extension release |
 | Content-based three-way merge | Last-write-wins; timestamps; CRDTs | Replaced timestamp detection that raised false conflicts (09273c0). *(inferred)* Keeps plain JSON compatible with existing gists | Per-device baseline; same-item field edits conflict; two reorders are picked between |
-| PWA: `prefer-local`, review later | Blocking dialog | Sync runs on focus, often just before the phone backgrounds the app (0044a73) | Other device's version overwritten until reviewed |
+| Both apps ask, and the PWA also allows a partial answer | PWA-only `prefer-local` with review afterwards | Whichever peer synced *second* silently replaced the other's version and said so only in a banner; a policy is the wrong default when someone is there to ask | Sync waits on the user; a hidden page cannot be asked, so it defers instead |
+| PWA: undecided falls to `prefer-local`, recorded for review | Require an answer for every conflict | Sync runs on focus, often just before the phone backgrounds the app (0044a73), so a dialog that cannot be dismissed would strand it | Other device's version overwritten until reviewed |
 | Extension: blocking quick picks | Settle now, review later | *(inferred)* The user is at the editor; the dialog predates the PWA (6b35f52) | Sync waits on the user |
 | One Angular app, two builds | Separate mobile app | *(inferred)* One implementation of Markdown, Mermaid, KaTeX, tags and drag-and-drop | Shared edits change both surfaces |
 | Build-time file swap | Runtime flag with dynamic import | Nonce-only CSP rejects code-split chunks | Two builds to verify |

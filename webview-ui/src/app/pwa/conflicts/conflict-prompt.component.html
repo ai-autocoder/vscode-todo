@@ -1,0 +1,233 @@
+<!--
+	Blocking, by design: the reconcile is parked on the engine's resolver hook while this is up,
+	so there is deliberately no backdrop-click or Escape dismissal. The only ways out are Apply
+	and Cancel, and both are explicit.
+-->
+<div class="prompt" role="dialog" aria-modal="true" aria-labelledby="conflict-prompt-title">
+	<header class="prompt-header">
+		<h1 id="conflict-prompt-title">
+			{{ total }} {{ total === 1 ? "conflict" : "conflicts" }} to resolve
+		</h1>
+		<p class="subtitle">
+			These changed here and on the other device since the last sync. Nothing has been synced yet.
+		</p>
+	</header>
+
+	@if (total > 1) {
+		<div class="bulk">
+			<button (click)="chooseAll('local')">Use this device for all</button>
+			<button (click)="chooseAll('remote')">Use the other device for all</button>
+		</div>
+	}
+
+	<!-- Covers every reason chooseAll leaves a card open: a top-level id collision, a list one
+	     device removed, and a file holding an item-level collision. Each card says which. -->
+	@if (bulkSkipped > 0) {
+		<p class="note bulk-note">
+			{{ bulkSkipped }} {{ bulkSkipped === 1 ? "card" : "cards" }} left open: picking a side for
+			{{ bulkSkipped === 1 ? "it" : "them" }} in bulk could throw away something real. Decide
+			{{ bulkSkipped === 1 ? "it" : "those" }} below.
+		</p>
+	}
+
+	<ul class="cards">
+		@for (conflict of todoConflicts; track conflict.todoId) {
+			<li class="card" [class.undecided]="!todoChoice(conflict.todoId)">
+				<header class="card-header">
+					<span class="headline">{{ headline(conflict) }}</span>
+				</header>
+
+				<div class="sides">
+					<button
+						type="button"
+						class="side"
+						[class.chosen]="todoChoice(conflict.todoId) === 'local'"
+						[attr.aria-pressed]="todoChoice(conflict.todoId) === 'local'"
+						(click)="chooseTodo(conflict.todoId, 'local')"
+					>
+						<span class="side-label">This device</span>
+						@if (conflict.local) {
+							<span class="side-text">{{ conflict.local.text }}</span>
+							<span class="side-meta">{{ summary(conflict.local) }}</span>
+						} @else {
+							<span class="side-text gone">Deleted here</span>
+						}
+					</button>
+					<button
+						type="button"
+						class="side"
+						[class.chosen]="todoChoice(conflict.todoId) === 'remote'"
+						[attr.aria-pressed]="todoChoice(conflict.todoId) === 'remote'"
+						(click)="chooseTodo(conflict.todoId, 'remote')"
+					>
+						<span class="side-label">Other device</span>
+						@if (conflict.remote) {
+							<span class="side-text">{{ conflict.remote.text }}</span>
+							<span class="side-meta">{{ summary(conflict.remote) }}</span>
+						} @else {
+							<span class="side-text gone">Deleted there</span>
+						}
+					</button>
+				</div>
+
+				<div class="extras">
+					@if (canKeepBoth(conflict)) {
+						<button
+							type="button"
+							class="keep-both"
+							[class.chosen]="todoChoice(conflict.todoId) === 'keep-both'"
+							[attr.aria-pressed]="todoChoice(conflict.todoId) === 'keep-both'"
+							(click)="chooseTodo(conflict.todoId, 'keep-both')"
+						>
+							Keep both
+						</button>
+					}
+					@if (diffs(conflict).length > 0) {
+						<button type="button" class="link" (click)="toggleDetail('todo:' + conflict.todoId)">
+							{{ expandedKey === "todo:" + conflict.todoId ? "Hide details" : "What changed?" }}
+						</button>
+					}
+				</div>
+
+				@if (canKeepBoth(conflict)) {
+					<p class="note">
+						These drew the same id with no shared history. Keep both if they are unrelated items;
+						otherwise you get a duplicate.
+					</p>
+				}
+
+				@if (expandedKey === "todo:" + conflict.todoId) {
+					<dl class="detail">
+						@for (diff of diffs(conflict); track diff.field) {
+							<dt>{{ diff.label }}</dt>
+							<dd>
+								<span class="detail-side">{{ diff.localText }}</span>
+								<span class="detail-vs">vs</span>
+								<span class="detail-side">{{ diff.remoteText }}</span>
+							</dd>
+						}
+					</dl>
+				}
+
+				@if (!todoChoice(conflict.todoId)) {
+					@if (canKeepBoth(conflict)) {
+						<p class="pending">
+							Not decided: both are kept, and the other device's is added to your list as a new item.
+							Listed under Review, where the added copy can be removed.
+						</p>
+					} @else {
+						<p class="pending">Not decided: this device's version is kept and listed under Review.</p>
+					}
+				}
+			</li>
+		}
+
+		@for (conflict of fileConflicts; track conflict.filePath) {
+			<li class="card" [class.undecided]="!fileChoice(conflict.filePath)">
+				<header class="card-header">
+					<span class="chip">{{ conflict.filePath }}</span>
+					<span class="headline">{{ fileHeadline(conflict) }}</span>
+				</header>
+
+				<div class="sides">
+					<button
+						type="button"
+						class="side"
+						[class.chosen]="fileChoice(conflict.filePath) === 'local'"
+						[attr.aria-pressed]="fileChoice(conflict.filePath) === 'local'"
+						(click)="chooseFile(conflict.filePath, 'local')"
+					>
+						<span class="side-label">This device</span>
+						<span class="side-meta">{{ fileCount(conflict, "local") }}</span>
+					</button>
+					<button
+						type="button"
+						class="side"
+						[class.chosen]="fileChoice(conflict.filePath) === 'remote'"
+						[attr.aria-pressed]="fileChoice(conflict.filePath) === 'remote'"
+						(click)="chooseFile(conflict.filePath, 'remote')"
+					>
+						<span class="side-label">Other device</span>
+						<span class="side-meta">{{ fileCount(conflict, "remote") }}</span>
+					</button>
+				</div>
+
+				<!--
+					The reassurance holds only without an in-file id collision: with one, the side not
+					chosen may be an independently created item, and choosing destroys it.
+
+					Hedged the same way the top-level keep-both card is, and for the same reason: "no
+					shared history" is also what a cold cache produces for a file both devices hold,
+					because bootstrap merges against an empty base (threeWayMerge.ts, file-added-both).
+					Asserting these are NOT two versions of one list would be false in that case, and
+					would talk a user into discarding their own edits as if they were someone else's
+					item. Nothing in the data tells the two apart.
+				-->
+				@if (fileHasCollision(conflict)) {
+					<!--
+						The way out is reversibility, not preservation: leaving the card open still applies
+						prefer-local and still drops the other side's colliding items, but it files both
+						resolutions for review, so the choice can be taken back. Saying "both are kept"
+						here would be the same overclaim the first sentence was.
+					-->
+					<p class="note">
+						Some items here have no shared history: they may be different items that drew the same id, or
+						two versions of one item seen without a baseline. Nothing tells them apart, so choosing a side
+						can discard a real item rather than an older version of one. Leave it for Review instead and
+						you can still take the other side later.
+					</p>
+				} @else {
+					<p class="note">
+						Only the items both devices changed are in dispute. Either choice keeps every item the other
+						device added to this file.
+					</p>
+				}
+
+				@if (!fileChoice(conflict.filePath)) {
+					@if (fileRemovedHere(conflict)) {
+						<p class="pending">
+							Not decided: this device removed the list, and that stands. Listed under Review, where the
+							other device's can be taken instead.
+						</p>
+					} @else {
+						<p class="pending">Not decided: this device's list is kept and listed under Review.</p>
+					}
+				}
+			</li>
+		}
+	</ul>
+
+	<!--
+		Both rows live inside the pinned bar. The confirmation used to sit in normal flow above
+		it, which put it at the end of a list several screens tall: on anything but a short list,
+		tapping Cancel greyed the button out and showed nothing.
+	-->
+	<footer class="prompt-actions">
+		@if (confirmingCancel) {
+			<div class="confirm">
+				<p class="warn">
+					Cancel the sync? Nothing is written, this device keeps what it has, and you will be asked again
+					on the next sync.
+				</p>
+				<div class="confirm-actions">
+					<button class="primary" (click)="keepDeciding()">Keep deciding</button>
+					<button (click)="confirmCancel()">Cancel sync</button>
+				</div>
+			</div>
+		}
+		<div class="action-row">
+			<!--
+				Not "keeping this device for N": an undecided id collision is kept *both* ways, so
+				only the cards themselves can say what each one settles on.
+			-->
+			<button class="primary" (click)="apply()">
+				@if (undecidedCount > 0) {
+					Sync, settling {{ undecidedCount }} automatically
+				} @else {
+					Sync
+				}
+			</button>
+			<button (click)="requestCancel()" [disabled]="confirmingCancel">Cancel</button>
+		</div>
+	</footer>
+</div>

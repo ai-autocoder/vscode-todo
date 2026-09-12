@@ -27,7 +27,10 @@ import {
  * writes an ordinary local edit and schedules a push, which is why nothing here waits on the
  * network or can leave the sync half-finished.
  *
- * PWA-only — the extension resolves conflicts up front through its own QuickPick.
+ * Only what the up-front prompt did not settle reaches here; a conflict the user answered in
+ * the dialog is already what they asked for and is deliberately never recorded.
+ *
+ * PWA-only. The extension has the same up-front dialog, as a QuickPick, but no review screen.
  */
 @Component({
 	selector: "app-conflict-review",

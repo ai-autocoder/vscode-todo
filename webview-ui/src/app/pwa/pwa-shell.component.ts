@@ -16,7 +16,8 @@ import {
 } from "../data/gist-gateway";
 import { dispatchMessageToGateway } from "../data/message-dispatcher";
 import { vscode } from "../utilities/vscode";
-import type { PendingConflictView } from "./conflicts/conflict-types";
+import type { ConflictPromptRequest, PendingConflictView } from "./conflicts/conflict-types";
+import type { ConflictDecisions } from "@vsc-todo/core";
 
 /** Suffix every gist list file carries; `GistClient.listFiles` filters on it. */
 const FILE_NAME_SUFFIX = ".json";
@@ -103,6 +104,15 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	/** Whether the review overlay is open. */
 	showConflictReview = false;
 
+	/**
+	 * The conflict question the sync is currently blocked on, if any.
+	 *
+	 * Unlike {@link conflictViews} this is not a record of something already done: a reconcile is
+	 * parked on the answer, nothing has been written, and the dialog stays up until the user
+	 * decides. It therefore covers everything else, including the review overlay.
+	 */
+	conflictPromptRequest: ConflictPromptRequest | null = null;
+
 	/** A sync that has stopped working; see {@link SyncFailureState}. */
 	syncFailureState: SyncFailureState = { phase: "ok" };
 
@@ -119,6 +129,7 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	private connectionSub: Subscription | undefined;
 	private messagesSub: Subscription | undefined;
 	private conflictsSub: Subscription | undefined;
+	private conflictPromptSub: Subscription | undefined;
 	private importExportSub: Subscription | undefined;
 	private syncFailureSub: Subscription | undefined;
 
@@ -195,6 +206,14 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 			}
 			// Connecting, disconnecting and the gist picker all change whether the app is on
 			// screen at all, which is half of what decides the banner.
+			this.syncBannerClass();
+			this.cdRef.detectChanges();
+		});
+
+		this.conflictPromptSub = gateway.conflictPrompt.subscribe((request) => {
+			this.conflictPromptRequest = request;
+			// The banner is hidden behind the dialog anyway, but its <body> class also reshapes the
+			// layout underneath, so keep the two in step rather than leaving a gap to come back to.
 			this.syncBannerClass();
 			this.cdRef.detectChanges();
 		});
@@ -370,8 +389,17 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 			this.showApp &&
 			!this.showConnectScreen &&
 			!this.showConflictReview &&
+			!this.conflictPromptRequest &&
 			this.conflictViews.length > 0
 		);
+	}
+
+	/**
+	 * The dialog's answer, handed straight back to the waiting reconcile. `null` cancels it: the
+	 * gateway writes nothing and asks again on the next sync.
+	 */
+	onConflictDecided(decisions: ConflictDecisions | null): void {
+		this.gateway?.answerConflictPrompt(decisions);
 	}
 
 	openConflictReview(): void {
@@ -459,6 +487,10 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		this.connectionSub?.unsubscribe();
 		this.messagesSub?.unsubscribe();
 		this.conflictsSub?.unsubscribe();
+		this.conflictPromptSub?.unsubscribe();
+		// A reconcile parked on the dialog would otherwise never settle, and its promise holds the
+		// gateway's sync queue. Declining writes nothing.
+		this.gateway?.answerConflictPrompt(null);
 		// The class lives on <body>, outside this component's view, so it survives teardown.
 		document.body.classList.remove("has-conflict-banner");
 		this.importExportSub?.unsubscribe();

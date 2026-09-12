@@ -1,6 +1,6 @@
 # PWA — running and testing it
 
-PWA-only code lives in two places: this directory (shell, conflict review) and
+PWA-only code lives in two places: this directory (shell, conflict prompt and review) and
 `webview-ui/src/pwa/vscode-theme.css` (the stylesheet only the `pwa` build prepends).
 Everything else under `webview-ui/src/app/**` is **shared with the extension webview** — see
 AGENTS.md before editing it.
@@ -25,7 +25,30 @@ the same server.
 Reset with `indexedDB.deleteDatabase("vsc-todo-pwa")` and reload.
 
 What this does **not** cover: real gist reads/writes, so the true conflict-generation path in
-`threeWayMerge` is never exercised — the conflicts above are handed to the UI ready-made.
+`threeWayMerge` is never exercised — the conflicts above are handed to the UI ready-made. That
+is the review screen's half of the feature. For the **up-front dialog**, which only opens from a
+conflict the merge actually found, use the sibling script instead:
+
+```text
+scripts/seed-pwa-conflict-prompt.js
+```
+
+It takes two pastes: the first seeds a baseline plus a diverging local list and reloads, the
+second installs a fake `api.github.com` that serves a differently-diverged remote and fires
+`focus`. Two pastes because the fake remote is a `fetch` shim and a shim cannot survive the
+reload that puts the seeded local state into memory. Every PATCH it receives is logged, so you
+can see exactly what each choice pushes.
+
+One trap when driving this from the Browser pane: `document.visibilityState` is `"hidden"`
+whenever the pane is not displayed, and *both* the app's focus handler and the gateway's
+`canPrompt()` guard check it — so nothing syncs and no dialog opens. Override it before firing
+the event:
+
+```js
+Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+window.dispatchEvent(new Event("focus"));
+```
 
 ### Going further: real conflicts, one login, no second device
 

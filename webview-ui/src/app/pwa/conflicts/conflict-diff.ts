@@ -6,7 +6,12 @@
  * directly. PWA-only.
  */
 
-import { isEqual, type Todo } from "@vsc-todo/core";
+import {
+	isEqual,
+	type ConflictSet,
+	type FileConflictSet,
+	type Todo,
+} from "@vsc-todo/core";
 import {
 	MERGEABLE_FIELDS,
 	type ConflictSide,
@@ -31,24 +36,17 @@ const FIELD_LABELS: Record<MergeableField, string> = {
 	tags: "Tags",
 };
 
-/** Short sentence naming what happened, used as the card's headline. */
-export function describeConflict(conflict: PendingConflict): string {
-	if (conflict.kind === "kept-both") {
-		return "Two different items with the same id";
-	}
-	if (conflict.kind === "file") {
-		switch (conflict.conflictType) {
-			case "file-added-both":
-				return "This file's list was started on both devices";
-			case "file-edit-edit":
-				return "This file's list changed on both devices";
-			case "file-edit-delete":
-				return "Changed here, removed on the other device";
-			case "file-delete-edit":
-				return "Removed here, changed on the other device";
-		}
-	}
-	switch (conflict.conflictType) {
+/**
+ * Short sentence naming what happened to one todo.
+ *
+ * Takes the merge's own `conflictType` rather than a {@link PendingConflict}, so the up-front
+ * prompt can describe a raw {@link ConflictSet}: it runs *before* anything is resolved, and there
+ * is no pending record to wrap it in yet.
+ */
+export function describeTodoConflictType(type: ConflictSet["conflictType"]): string {
+	switch (type) {
+		case "id-collision":
+			return "Two different items with the same id";
 		case "edit-edit":
 			return "Edited on both devices";
 		case "edit-delete":
@@ -56,6 +54,31 @@ export function describeConflict(conflict: PendingConflict): string {
 		case "delete-edit":
 			return "Deleted here, edited on the other device";
 	}
+}
+
+/** File-list counterpart of {@link describeTodoConflictType}. */
+export function describeFileConflictType(type: FileConflictSet["conflictType"]): string {
+	switch (type) {
+		case "file-added-both":
+			return "This file's list was started on both devices";
+		case "file-edit-edit":
+			return "This file's list changed on both devices";
+		case "file-edit-delete":
+			return "Changed here, removed on the other device";
+		case "file-delete-edit":
+			return "Removed here, changed on the other device";
+	}
+}
+
+/** Short sentence naming what happened, used as the card's headline. */
+export function describeConflict(conflict: PendingConflict): string {
+	if (conflict.kind === "kept-both") {
+		return describeTodoConflictType("id-collision");
+	}
+	if (conflict.kind === "file") {
+		return describeFileConflictType(conflict.conflictType);
+	}
+	return describeTodoConflictType(conflict.conflictType);
 }
 
 /**
