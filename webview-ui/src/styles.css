@@ -227,8 +227,21 @@ markdown .mermaid-zoom-target .mermaid-zoom-button:not(:hover) {
 	}
 }
 
-new-todo autosize-text-area textarea {
+/*
+ * The composer's field. This has to be a global rule: the textarea belongs to
+ * autosize-textarea.component, so the same selector written in new-todo.component.css would
+ * carry the wrong _ngcontent attribute and never match it.
+ *
+ * line-height and min-height pin the field's resting height to --composer-field-height — the
+ * height the Add button beside it is fixed to, so the button can stop stretching with the
+ * field (see .new-todo-container, where both variables are declared and inherited from).
+ * .new-todo-container is in the selector for the specificity: without it this loses to the
+ * component's own `textarea` rule, whose _ngcontent attribute already sets a line-height.
+ */
+new-todo .new-todo-container autosize-text-area textarea {
 	max-height: 80vh;
+	line-height: var(--composer-line-height);
+	min-height: var(--composer-field-height);
 }
 
 fieldset {
