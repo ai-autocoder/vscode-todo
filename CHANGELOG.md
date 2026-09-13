@@ -1,5 +1,23 @@
 # Change Log
 
+## [2.3.0]
+
+- Add **Plans**, a mobile PWA companion at [plans-app.pages.dev](https://plans-app.pages.dev): the same lists on your phone, installable to the home screen, usable offline, and syncing through the same GitHub Gist as the extension. Sign in with GitHub device flow, choose which gist and which files to sync, review sync conflicts, and import/export from the browser.
+- Sync: run one merge implementation on both peers, so the extension and Plans can no longer disagree about whether a conflict exists.
+- Sync: keep list order through a merge — a new todo no longer lands at the bottom whatever `vscodeTodo.createPosition` says, and drag-and-drop reorders are no longer undone.
+- Sync: fix data loss — per-file todos dropped when a file conflict was settled, edits that landed mid-reconcile, and a damaged gist file syncing as a deletion.
+- Sync: never write over remote content without a merge baseline, including when the check guarding a first write cannot be completed.
+- Sync: compare and write gist data in a stable key order, so identical content no longer reads as modified.
+- Sync: stop "Skip This Conflict" deleting the todo on both devices, and offer Keep Both for an id collision.
+- Webview: add a per-scope sync status indicator to the header.
+- Webview: scroll a newly added todo into view, show basenames in the per-file todo list, let the todo list shrink below its content width, and remove the duplicate scrollbar wrapping the todo list.
+- Infra: extract the sync engine, three-way merge, tag rules and IndexedDB stores into `@vsc-todo/core`, shared by both surfaces; add a Cloudflare Worker as the GitHub device-flow CORS proxy; cover core, the webview and both Angular builds in CI.
+- Docs: add ARCHITECTURE.md; document Plans and the deploy targets in the README.
+
+## [2.2.1]
+
+- Webview: stop the Add button stretching to the full height of the composer as the text area grows.
+
 ## [2.2.0]
 
 - Add built-in MCP server so AI agents can read and manage todos, notes, and plans (list, count, add, edit, delete, complete, with filtering, search, sorting, pagination, and tags), with start/stop controls and status in the UI.
