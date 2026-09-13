@@ -64,6 +64,10 @@ GEMINI.md
 AGENTS.md
 CLAUDE.md
 ARCHITECTURE.md
+# The root patterns above do not reach nested copies.
+webview-ui/AGENTS.md
+# Input to the PWA service-worker build, not something the webview loads.
+webview-ui/ngsw-config.json
 .gemini/**
 .github/**
 
@@ -71,3 +75,16 @@ ARCHITECTURE.md
 .prettierignore
 .prettierrc
 
+# Agent and editor tooling; none of it runs in the extension. `.mcp.json` is a client config
+# sample and is git-ignored; `.claude/settings.local.json` is simply never committed. vsce honours
+# neither, since it packages the working tree, so without these rules the vsix carries whichever
+# machine built it.
+.claude/**
+.mcp.json
+# Wrangler's local state. Empty in a fresh clone, but `npm run deploy:pwa` fills it, so a
+# maintainer who deploys the PWA and then packages from the same tree would ship it.
+.wrangler/**
+
+# Repo maintenance scripts. `predeploy:pwa` runs the deploy preflight; the conflict-seeding
+# helpers are run by hand for manual PWA testing. None of them runs in the extension.
+scripts/**
