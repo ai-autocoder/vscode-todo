@@ -5,6 +5,7 @@ import {
 	MessageActionsToWebview,
 	GitHubSyncInfo,
 	McpStatus,
+	SyncStatusInfo,
 	messagesFromWebview,
 	UserSyncMode,
 	WorkspaceSyncMode,
@@ -21,6 +22,7 @@ import {
 	ImportFormats,
 } from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
+import { environment } from "../../environments/environment";
 import { Config } from "../../../../src/utilities/config";
 
 export interface SelectionState {
@@ -81,14 +83,28 @@ export class TodoService {
 		isGitHubSyncEnabled: false,
 		userSyncEnabled: false,
 		workspaceSyncEnabled: false,
-		userSyncMode: "profile-local",
-		workspaceSyncMode: "local",
+		// Seed values, replaced by the host's first updateGitHubSyncInfo. The PWA has only one
+		// mode, so seeding a local one made the sync pill paint the "local" icon until
+		// GistGateway.initialize() resolved — a cold start with a slow IndexedDB read briefly
+		// showed a mode the PWA cannot be in.
+		userSyncMode: environment.pwa ? "github" : "profile-local",
+		workspaceSyncMode: environment.pwa ? "github" : "local",
 		userFile: "user-todos.json",
 		workspaceFile: "workspace-default.json",
 		isWorkspaceOpen: true,
 	});
 
 	private _isSyncingSource = new BehaviorSubject<boolean>(false);
+	/**
+	 * Per-scope sync state, for the header's indicator. "offline" until the host says otherwise:
+	 * in the extension that is a scope not in GitHub mode (where the indicator stays hidden), and
+	 * in the PWA it is the moment before the first reconcile.
+	 */
+	private _syncStatusSource = new BehaviorSubject<SyncStatusInfo>({
+		isSyncing: false,
+		user: { status: "offline", canRetry: false },
+		workspace: { status: "offline", canRetry: false },
+	});
 	private _nowSource = new BehaviorSubject<number>(Date.now());
 	private _mcpStatusSource = new BehaviorSubject<McpStatus>({
 		enabled: false,
@@ -122,6 +138,13 @@ export class TodoService {
 		[TodoScope.currentFile]: new Subject<SelectionCommand>(),
 	};
 
+	/** See {@link consumeLocalAdd}. */
+	private _pendingLocalAdd: Record<TodoScope, boolean> = {
+		[TodoScope.user]: false,
+		[TodoScope.workspace]: false,
+		[TodoScope.currentFile]: false,
+	};
+
 	private _activeEditorMap: Record<TodoScope, BehaviorSubject<number | null>> = {
 		[TodoScope.user]: new BehaviorSubject<number | null>(null),
 		[TodoScope.workspace]: new BehaviorSubject<number | null>(null),
@@ -141,6 +164,7 @@ export class TodoService {
 	hasGistId = this._hasGistIdSource.asObservable();
 	gitHubSyncInfo = this._gitHubSyncInfoSource.asObservable();
 	isSyncing = this._isSyncingSource.asObservable();
+	syncStatus = this._syncStatusSource.asObservable();
 	now = this._nowSource.asObservable();
 	mcpStatus = this._mcpStatusSource.asObservable();
 	userLastAction = new BehaviorSubject<string>("");
@@ -307,7 +331,10 @@ export class TodoService {
 		this._gitHubSyncInfoSource.next(payload);
 	}
 
-	private handleUpdateSyncStatus(payload: { isSyncing: boolean }) {
+	private handleUpdateSyncStatus(payload: SyncStatusInfo) {
+		this._syncStatusSource.next(payload);
+		// Kept as its own stream: the sync menu's spinner is deliberately scope-agnostic, so it
+		// must not follow the current tab the way the indicator does.
 		this._isSyncingSource.next(payload.isSyncing);
 	}
 
@@ -344,7 +371,25 @@ export class TodoService {
 	}
 
 	addTodo(...args: Parameters<typeof messagesFromWebview.addTodo>) {
+		this._pendingLocalAdd[args[0]] = true;
 		vscode.postMessage(messagesFromWebview.addTodo(...args));
+	}
+
+	/**
+	 * Whether the slice about to arrive for `scope` is the answer to an add made *here*, in the
+	 * composer. The host cannot tell us: `todo_add_item` over MCP dispatches the very same
+	 * `addTodo` and reaches the webview as the same `"<scope>/addTodo"`, so without this flag an
+	 * agent writing todos in the background would scroll the list out from under whoever is
+	 * reading it.
+	 *
+	 * Reading consumes it, and the list consumes on every slice rather than only on an add, so a
+	 * composer add the host refuses (no workspace open, say) cannot leave the flag set for some
+	 * later, unrelated arrival to claim.
+	 */
+	consumeLocalAdd(scope: TodoScope): boolean {
+		const pending = this._pendingLocalAdd[scope];
+		this._pendingLocalAdd[scope] = false;
+		return pending;
 	}
 
 	deleteTodo(...args: Parameters<typeof messagesFromWebview.deleteTodo>) {

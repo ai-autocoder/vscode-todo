@@ -1,0 +1,254 @@
+/* Sits above the review screen (z-index 99) and the sync banners: a reconcile is parked on this
+   answer, so nothing else on the page is actionable until it closes. Below the connect screen,
+   which covers a session that has no gist to sync with at all. */
+:host {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	overflow-y: auto;
+	background-color: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-font-family);
+}
+
+.prompt {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	max-width: 640px;
+	margin: 0 auto;
+	padding: 16px;
+	/* Room for the home indicator, or the sticky footer sits under it. */
+	padding-bottom: calc(16px + max(8px, env(safe-area-inset-bottom)));
+}
+
+h1 {
+	margin: 0;
+	font-size: 1.3em;
+	color: var(--vscode-settings-headerForeground);
+}
+
+.subtitle,
+.note,
+.pending,
+.side-meta,
+.gone {
+	margin: 4px 0 0;
+	color: var(--vscode-descriptionForeground);
+	font-size: 0.85em;
+}
+
+.bulk {
+	display: flex;
+	gap: 8px;
+}
+
+.bulk > button {
+	flex: 1 1 auto;
+}
+
+.cards {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 8px;
+	background-color: var(--vscode-editorWidget-background);
+}
+
+/* A card nobody has answered yet. Marked rather than blocking: leaving it alone is a valid
+   outcome (the policy keeps this device's version), it just should not look like a choice. */
+.card.undecided {
+	border-left: 3px solid var(--vscode-editorWarning-foreground, var(--vscode-focusBorder));
+}
+
+.card-header {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.chip {
+	flex: none;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font-size: 0.75em;
+	word-break: break-all;
+}
+
+.headline {
+	font-weight: 600;
+}
+
+/* Two columns on anything wider than a phone; stacked below, where side-by-side would leave two
+   unreadable slivers. */
+.sides {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
+@media (min-width: 560px) {
+	.sides {
+		grid-template-columns: 1fr 1fr;
+	}
+}
+
+/* Each side is the button that picks it: on a touch screen a separate radio next to the text is
+   a smaller target than the thing it describes. */
+.side {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	align-items: flex-start;
+	width: 100%;
+	padding: 10px;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 6px;
+	background-color: var(--vscode-editor-background);
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	min-height: var(--touch-target-size, auto);
+}
+
+.side.chosen {
+	border-color: var(--vscode-focusBorder);
+	background-color: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+
+.side.chosen .side-label,
+.side.chosen .side-meta {
+	color: inherit;
+}
+
+.side-label {
+	font-size: 0.75em;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--vscode-descriptionForeground);
+}
+
+.side-text {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.gone {
+	font-style: italic;
+}
+
+.extras {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
+.keep-both.chosen {
+	border-color: var(--vscode-focusBorder);
+	background-color: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+
+.link {
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+.detail {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 10px;
+	margin: 0;
+	padding: 10px;
+	border-radius: 6px;
+	background-color: var(--vscode-editor-background);
+	font-size: 0.9em;
+}
+
+.detail dt {
+	color: var(--vscode-descriptionForeground);
+}
+
+.detail dd {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.detail-vs {
+	color: var(--vscode-descriptionForeground);
+}
+
+.bulk-note {
+	margin: 0;
+	padding: 8px 10px;
+	border-left: 2px solid var(--vscode-focusBorder);
+}
+
+.warn {
+	margin: 0;
+	padding: 8px 10px;
+	border-left: 2px solid var(--vscode-editorWarning-foreground, var(--vscode-focusBorder));
+	color: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
+	font-size: 0.85em;
+}
+
+.confirm {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.confirm-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.confirm-actions > button {
+	flex: 1 1 auto;
+}
+
+/* Pinned so a long list never hides the way out. The cancel confirmation is inside it for the
+   same reason: in normal flow it landed at the end of the list, off-screen. */
+.prompt-actions {
+	position: sticky;
+	bottom: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 0 0;
+	background-color: var(--vscode-editor-background);
+}
+
+.action-row {
+	display: flex;
+	gap: 8px;
+}
+
+.action-row > button {
+	flex: 1 1 auto;
+}

@@ -3,6 +3,7 @@
 # Compiled output
 /dist
 /build
+/build-pwa
 /tmp
 /out-tsc
 /bazel-out

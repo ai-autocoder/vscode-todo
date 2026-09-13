@@ -16,19 +16,13 @@
 				"${workspaceFolder}/out/**/*.js"
 			],
 			"preLaunchTask": "${defaultBuildTask}"
-		},
-		{
-			"name": "Extension Tests",
-			"type": "extensionHost",
-			"request": "launch",
-			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}",
-				"--extensionTestsPath=${workspaceFolder}/out/test/suite/index"
-			],
-			"outFiles": [
-				"${workspaceFolder}/out/test/**/*.js"
-			],
-			"preLaunchTask": "${defaultBuildTask}"
 		}
+		// There is deliberately no "Extension Tests" configuration. The suites run through
+		// @vscode/test-cli — `npm test`, driven by .vscode-test.mjs — which supplies its own
+		// runner. The configuration that used to sit here pointed `--extensionTestsPath` at
+		// `out/test/suite/index`, a module this repo has never contained, so pressing F5 on it
+		// only ever produced MODULE_NOT_FOUND. To debug a suite, install the "Extension Test
+		// Runner" extension, which reads .vscode-test.mjs and lets you run or debug individual
+		// tests from the Test Explorer.
 	]
 }

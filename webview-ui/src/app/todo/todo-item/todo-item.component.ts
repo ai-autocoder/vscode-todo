@@ -46,6 +46,7 @@ export class TodoItemComponent implements OnInit, OnChanges, OnDestroy {
 	diagramZoomOpen = false;
 	zoomSvgSource?: SVGSVGElement;
 	@Output() delete: EventEmitter<Todo> = new EventEmitter();
+	@Output() selectRequest: EventEmitter<Todo> = new EventEmitter();
 	private globalClickUnlistener?: () => void;
 	private mermaidListeners: Array<() => void> = [];
 	private mermaidObserver?: MutationObserver;
@@ -263,6 +264,10 @@ export class TodoItemComponent implements OnInit, OnChanges, OnDestroy {
 
 	onDelete(todo: Todo): void {
 		this.delete.emit(todo);
+	}
+
+	onSelect(todo: Todo): void {
+		this.selectRequest.emit(todo);
 	}
 
 	closeDiagramZoom(): void {

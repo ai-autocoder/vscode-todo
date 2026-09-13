@@ -58,7 +58,7 @@
 								{
 									"type": "anyComponentStyle",
 									"maximumWarning": "2kb",
-									"maximumError": "4kb"
+									"maximumError": "8kb"
 								}
 							],
 							"fileReplacements": [
@@ -74,6 +74,59 @@
 							"extractLicenses": false,
 							"sourceMap": true,
 							"namedChunks": true
+						},
+						"pwa": {
+							"outputPath": {
+								"base": "build-pwa"
+							},
+							"index": {
+								"input": "src/index.pwa.html",
+								"output": "index.html"
+							},
+							"budgets": [
+								{
+									"type": "initial",
+									"maximumWarning": "5mb",
+									"maximumError": "10mb"
+								},
+								{
+									"type": "anyComponentStyle",
+									"maximumWarning": "2kb",
+									"maximumError": "8kb"
+								}
+							],
+							"fileReplacements": [
+								{
+									"replace": "src/environments/environment.ts",
+									"with": "src/environments/environment.pwa.ts"
+								},
+								{
+									"replace": "src/bootstrap.ts",
+									"with": "src/bootstrap.pwa.ts"
+								},
+								{
+									"replace": "src/app/data/data.providers.ts",
+									"with": "src/app/data/data.providers.pwa.ts"
+								}
+							],
+							"assets": [
+								"src/favicon.ico",
+								"src/assets",
+								"src/manifest.webmanifest",
+								"src/icons",
+								"src/_redirects",
+								"src/_headers"
+							],
+							"styles": [
+								"src/pwa/vscode-theme.css",
+								"@angular/material/prebuilt-themes/pink-bluegrey.css",
+								"node_modules/prismjs/themes/prism-okaidia.css",
+								"node_modules/prismjs/plugins/line-numbers/prism-line-numbers.css",
+								"node_modules/katex/dist/katex.min.css",
+								"src/styles.css"
+							],
+							"serviceWorker": "ngsw-config.json",
+							"outputHashing": "all"
 						}
 					},
 					"defaultConfiguration": "production"
@@ -86,6 +139,9 @@
 						},
 						"development": {
 							"buildTarget": "hello-world:build:development"
+						},
+						"pwa": {
+							"buildTarget": "hello-world:build:pwa"
 						}
 					},
 					"defaultConfiguration": "development"

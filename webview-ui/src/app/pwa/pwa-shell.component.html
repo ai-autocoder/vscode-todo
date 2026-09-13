@@ -1,0 +1,311 @@
+<!--
+	Blocks everything while a reconcile waits on an answer. Rendered before the banners so it
+	comes first in the document too, not only in z-order.
+-->
+@if (conflictPromptRequest) {
+	<app-conflict-prompt
+		[request]="conflictPromptRequest"
+		(decided)="onConflictDecided($event)"
+	></app-conflict-prompt>
+}
+
+@if (showConflictBanner) {
+	<button class="conflict-banner" (click)="openConflictReview()">
+		<span class="conflict-count">{{ conflictViews.length }}</span>
+		<span class="conflict-text">
+			{{ conflictViews.length === 1 ? "change" : "changes" }} resolved automatically during sync
+		</span>
+		<span class="conflict-cta">Review</span>
+	</button>
+}
+
+@if (showConflictReview && gateway) {
+	<app-conflict-review
+		[gateway]="gateway"
+		[views]="conflictViews"
+		(closed)="closeConflictReview()"
+	></app-conflict-review>
+}
+<!--
+	Sync-failure banner. Deliberately not dismissible: the whole point is that a dead sync must
+	not be able to look like a healthy one. It clears itself the moment a round trip succeeds.
+	The action offered depends on the cause — reconnecting will not fix a deleted gist.
+-->
+<div
+	class="sync-failure"
+	*ngIf="syncFailureState.phase === 'failing'"
+	role="alert"
+	aria-live="assertive"
+>
+	<p class="sync-failure-text" *ngIf="syncFailureState.phase === 'failing'">
+		{{ syncFailureState.message }}
+	</p>
+	<!--
+		Suppressed entirely when no button applies — a rejected payload (422) has no recovery to
+		offer, and an empty row still contributed the parent's 8px gap.
+	-->
+	<div class="sync-failure-actions" *ngIf="hasSyncFailureAction">
+		<button class="primary" *ngIf="syncFailureState.kind === 'auth'" (click)="reconnect()">
+			Reconnect
+		</button>
+		<button class="primary" *ngIf="syncFailureState.kind === 'missing'" (click)="pickAnotherGist()">
+			Choose a gist
+		</button>
+		<!--
+			A damaged file is repaired on github.com, not here: GitHub keeps every revision of the
+			gist, so the last good one is a click away.
+		-->
+		<a
+			class="primary link-button"
+			*ngIf="syncFailureState.kind === 'data' && gistRevisionsUrl"
+			[href]="gistRevisionsUrl"
+			target="_blank"
+			rel="noopener"
+		>
+			View gist history
+		</a>
+		<!-- `canRetry` is false wherever retrying cannot succeed; see `recordSyncFailure`. -->
+		<button *ngIf="syncFailureState.canRetry" (click)="retrySync()">Try again</button>
+	</div>
+</div>
+
+<app-root *ngIf="showApp"></app-root>
+
+<div class="connect-screen" *ngIf="showConnectScreen" [ngSwitch]="state.phase">
+	<div class="card">
+		<h1>Agent Plans</h1>
+		<p class="subtitle">Sync your todos with the VS Code Todo extension via a GitHub Gist.</p>
+
+		<ng-container *ngSwitchCase="'disconnected'">
+			<button class="primary" (click)="connect()">Connect GitHub</button>
+			<p class="hint">
+				Uses the GitHub device flow with the <code>gist</code> scope only. Your token stays on
+				this device.
+			</p>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'requesting-code'">
+			<p>Requesting a sign-in code…</p>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'awaiting-authorization'">
+			<p>Enter this code on GitHub to authorize:</p>
+			<div class="user-code" *ngIf="state.phase === 'awaiting-authorization'">
+				{{ state.userCode }}
+			</div>
+			<a
+				*ngIf="state.phase === 'awaiting-authorization'"
+				class="primary link-button"
+				[href]="state.verificationUri"
+				target="_blank"
+				rel="noopener"
+			>
+				Open github.com/login/device
+			</a>
+			<p class="hint">Waiting for authorization…</p>
+			<button (click)="cancel()">Cancel</button>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'needs-gist'">
+			<p>Choose a gist to sync with.</p>
+			<p class="hint">
+				Paste a gist id (the 32-character part of its URL), or browse your gists to pick or
+				create one.
+			</p>
+			<input
+				type="text"
+				[(ngModel)]="gistIdInput"
+				placeholder="0123456789abcdef0123456789abcdef"
+				spellcheck="false"
+			/>
+			<div class="row">
+				<button class="primary" (click)="submitGistId()">Use this gist</button>
+				<button (click)="changeGist()">Browse / create</button>
+				<button (click)="disconnect()">Disconnect</button>
+			</div>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'change-gist'">
+			<ng-container *ngIf="state.phase === 'change-gist'">
+				<p>Sync gist</p>
+				<div class="current-gist" *ngIf="state.currentGistId">
+					<span class="hint">Currently syncing with</span>
+					<strong>{{ state.current ? (state.current.description || "Untitled gist") : "Unknown gist" }}</strong>
+					<span class="hint">
+						{{ state.currentGistId }}<ng-container *ngIf="state.current">
+							&middot; {{ state.current.filesCount }}
+							{{ state.current.filesCount === 1 ? "file" : "files" }}</ng-container>
+					</span>
+				</div>
+				<label>Pick one of your gists</label>
+				<select [(ngModel)]="gistChoice" [disabled]="!!state.busy">
+					<option value="">Select a gist…</option>
+					<option *ngFor="let gist of state.gists" [value]="gist.id">
+						{{ gist.description || "Untitled gist" }} ({{ gist.filesCount }}
+						{{ gist.filesCount === 1 ? "file" : "files" }})
+					</option>
+				</select>
+
+				<label>…or paste a gist id</label>
+				<input
+					type="text"
+					[(ngModel)]="gistIdInput"
+					placeholder="0123456789abcdef0123456789abcdef"
+					spellcheck="false"
+					[disabled]="!!state.busy"
+				/>
+
+				<p class="error" *ngIf="state.message">{{ state.message }}</p>
+				<p class="hint">
+					Switching gists clears the locally cached sync state for the old one. "Create new"
+					makes a secret gist that the VS Code extension can also pick up.
+				</p>
+				<div class="row">
+					<button class="primary" (click)="confirmGistChoice()" [disabled]="!!state.busy">
+						Use this gist
+					</button>
+					<button (click)="createSyncGist()" [disabled]="!!state.busy">Create new</button>
+					<button (click)="cancelChangeGist()" [disabled]="!!state.busy">Cancel</button>
+				</div>
+			</ng-container>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'needs-files'">
+			<p>Choose which lists to sync:</p>
+			<div class="row gist-row" *ngIf="currentGistId">
+				<span class="hint" [title]="currentGistId">Gist {{ currentGistId }}</span>
+				<button (click)="changeGist()">Change gist</button>
+			</div>
+			<ng-container *ngIf="state.phase === 'needs-files'">
+				<label for="user-file">User list</label>
+				<select id="user-file" [(ngModel)]="userFileChoice">
+					<option *ngFor="let file of state.userFiles" [value]="file.fullPath">
+						{{ file.fullPath }}
+					</option>
+					<option [value]="newUserFileValue">New file…</option>
+				</select>
+				<!-- The prefix and suffix are fixed so the file stays discoverable; only the
+				     middle of the name is the user's to choose. -->
+				<div class="new-file" *ngIf="userFileChoice === newUserFileValue">
+					<span class="affix">{{ userFilePrefix }}</span>
+					<input
+						type="text"
+						aria-label="Name for the new user list"
+						[(ngModel)]="newUserFileName"
+						[placeholder]="defaultUserFileStem"
+						spellcheck="false"
+						autocapitalize="off"
+						autocomplete="off"
+					/>
+					<span class="affix">{{ fileNameSuffix }}</span>
+				</div>
+				<label for="workspace-file">Workspace list</label>
+				<select id="workspace-file" [(ngModel)]="workspaceFileChoice">
+					<option *ngFor="let file of state.workspaceFiles" [value]="file.fullPath">
+						{{ file.fullPath }}
+					</option>
+					<option [value]="newWorkspaceFileValue">New file…</option>
+				</select>
+				<div class="new-file" *ngIf="workspaceFileChoice === newWorkspaceFileValue">
+					<span class="affix">{{ workspaceFilePrefix }}</span>
+					<input
+						type="text"
+						aria-label="Name for the new workspace list"
+						[(ngModel)]="newWorkspaceFileName"
+						[placeholder]="defaultWorkspaceFileStem"
+						spellcheck="false"
+						autocapitalize="off"
+						autocomplete="off"
+					/>
+					<span class="affix">{{ fileNameSuffix }}</span>
+				</div>
+			</ng-container>
+			<p class="error" *ngIf="fileError">{{ fileError }}</p>
+			<div class="row">
+				<button class="primary" (click)="confirmFiles()">Ok</button>
+				<!-- No session to return to during first-time setup, so offer the way out instead. -->
+				<button *ngIf="canCancelFileSelection" (click)="cancelFileSelection()">Cancel</button>
+				<button *ngIf="!canCancelFileSelection" (click)="disconnect()">Disconnect</button>
+			</div>
+		</ng-container>
+
+		<ng-container *ngSwitchCase="'error'">
+			<p class="error" *ngIf="state.phase === 'error'">{{ state.message }}</p>
+			<div class="row">
+				<button class="primary" (click)="retry()">Retry</button>
+				<button (click)="disconnect()">Disconnect</button>
+			</div>
+		</ng-container>
+	</div>
+</div>
+
+<!--
+	Import/export prompt and result notice. Separate from the connect screen above because these
+	happen while connected, over the running app. `awaiting-scope` is the browser's stand-in for
+	the extension's "Import to" quick pick — a markdown file says nothing about which list it
+	belongs in.
+-->
+<div
+	class="ie-overlay"
+	*ngIf="importExportState.phase === 'awaiting-scope'"
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby="ie-scope-title"
+>
+	<div class="ie-panel">
+		<h2 id="ie-scope-title">Import to</h2>
+		<p class="ie-file" *ngIf="importExportState.phase === 'awaiting-scope'">
+			{{ importExportState.fileName }}
+		</p>
+
+		<label class="ie-choice">
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.user"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>User</span>
+		</label>
+		<label class="ie-choice">
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.workspace"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>Workspace</span>
+		</label>
+		<!-- File is only a real option when one is open; there is no editor to fall back on. -->
+		<label
+			class="ie-choice"
+			*ngIf="importExportState.phase === 'awaiting-scope' && importExportState.currentFilePath"
+		>
+			<input
+				type="radio"
+				name="importScope"
+				[value]="markdownImportScopes.currentFile"
+				[(ngModel)]="importScopeChoice"
+			/>
+			<span>File — {{ importExportState.currentFilePath }}</span>
+		</label>
+
+		<div class="row">
+			<button class="primary" (click)="confirmImportScope()">Import</button>
+			<button (click)="cancelImportScope()">Cancel</button>
+		</div>
+	</div>
+</div>
+
+<div
+	class="ie-toast"
+	*ngIf="importExportState.phase === 'done' || importExportState.phase === 'error'"
+	[class.ie-toast-error]="importExportState.phase === 'error'"
+	role="status"
+	aria-live="polite"
+>
+	<span *ngIf="importExportState.phase === 'done' || importExportState.phase === 'error'">
+		{{ importExportState.message }}
+	</span>
+	<button class="ie-dismiss" (click)="dismissImportExportStatus()" aria-label="Dismiss">×</button>
+</div>

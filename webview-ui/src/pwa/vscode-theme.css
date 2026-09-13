@@ -1,0 +1,638 @@
+/**
+ * Standalone PWA theme — supplies the `--vscode-*` CSS variables.
+ *
+ * In the extension, VS Code injects every `--vscode-*` variable into the webview's root and
+ * toggles `body.vscode-light/dark`. The standalone PWA has no host, so this file provides the
+ * same variable names with values modeled on VS Code's built-in **Dark Modern** (default) and
+ * **Light Modern** (`body.light`) themes. It is included only in the PWA build via
+ * `angular.json`'s `pwa` configuration, so the extension webview is untouched.
+ *
+ * The set below is exactly the variables referenced by the app's components and the
+ * `@vscode/webview-ui-toolkit` elements (button/checkbox). Keep it in sync if new
+ * `--vscode-*` references are added.
+ */
+
+:root {
+	color-scheme: dark;
+
+	/* The toolkit defines --design-unit on its own components, never on the document root, so
+	   app-level `calc(var(--design-unit) * Npx)` (icon sizing, button margins) resolved to an
+	   invalid length in the PWA and collapsed those icons to the SVG default. 4 is the toolkit's
+	   own value, which is what the extension webview inherits from VS Code. */
+	--design-unit: 4;
+
+	/* Base */
+	--vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui,
+		"Ubuntu", "Droid Sans", sans-serif;
+	--vscode-font-size: 13px;
+	--vscode-foreground: #cccccc;
+	--vscode-descriptionForeground: #9d9d9d;
+	--vscode-disabledForeground: #cccccc80;
+	--vscode-errorForeground: #f14c4c;
+	/* The header's sync indicator tints its dirty state with this; VS Code supplies it to the
+	   extension webview, so only the PWA needs the value. */
+	--vscode-charts-yellow: #d7ba7d;
+	--vscode-focusBorder: #0078d4;
+	--vscode-contrastBorder: transparent;
+
+	/* Editor */
+	--vscode-editor-background: #1f1f1f;
+	--vscode-editor-foreground: #cccccc;
+	--vscode-editor-font-size: 13px;
+	--vscode-editorWidget-background: #202020;
+
+	/* Badge */
+	--vscode-badge-background: #616161;
+	--vscode-badge-foreground: #f8f8f8;
+
+	/* Button */
+	--vscode-button-background: #0078d4;
+	--vscode-button-foreground: #ffffff;
+	--vscode-button-border: transparent;
+	--vscode-button-hoverBackground: #026ec1;
+	--vscode-button-secondaryBackground: #313131;
+	--vscode-button-secondaryForeground: #cccccc;
+	--vscode-button-secondaryHoverBackground: #3c3c3c;
+
+	/* Checkbox */
+	--vscode-checkbox-background: #313131;
+	--vscode-checkbox-foreground: #cccccc;
+	--vscode-checkbox-border: #3c3c3c;
+
+	/* Input */
+	--vscode-input-background: #313131;
+	--vscode-input-foreground: #cccccc;
+	--vscode-input-border: #3c3c3c;
+	--vscode-input-placeholderForeground: #989898;
+
+	/* Dropdown */
+	--vscode-dropdown-border: #3c3c3c;
+
+	/* Lists & trees */
+	--vscode-list-activeSelectionBackground: #04395e;
+	--vscode-list-activeSelectionForeground: #ffffff;
+	--vscode-list-inactiveSelectionForeground: #cccccc;
+	--vscode-list-focusBackground: #062f4a;
+	--vscode-list-hoverBackground: #2a2d2e;
+	--vscode-list-deemphasizedForeground: #8c8c8c;
+
+	/* Menus */
+	--vscode-menu-background: #1f1f1f;
+	--vscode-menu-foreground: #cccccc;
+	--vscode-menu-border: #454545;
+	--vscode-menu-selectionBackground: #04395e;
+	--vscode-menu-selectionForeground: #ffffff;
+
+	/* Panels / sashes / tabs / toolbar */
+	--vscode-panel-border: #2b2b2b;
+	--vscode-sash-hoverBorder: #0078d4;
+	--vscode-tab-hoverBackground: #1f1f1f;
+	--vscode-toolbar-hoverBackground: #5a5d5e50;
+
+	/* Settings editor */
+	--vscode-settings-headerForeground: #ffffff;
+	--vscode-settings-headerBorder: #2b2b2b;
+	--vscode-settings-settingsHeaderHoverForeground: #ffffffcc;
+	--vscode-settings-textInputBackground: #313131;
+	--vscode-settings-textInputForeground: #cccccc;
+	--vscode-settings-textInputBorder: #3c3c3c;
+
+	/* Status bar */
+	--vscode-statusBarItem-errorBackground: #c72e0f;
+}
+
+body.light {
+	color-scheme: light;
+
+	--vscode-foreground: #3b3b3b;
+	--vscode-descriptionForeground: #3b3b3b99;
+	--vscode-disabledForeground: #3b3b3b80;
+	--vscode-errorForeground: #e51400;
+	--vscode-charts-yellow: #b5891a;
+	--vscode-focusBorder: #005fb8;
+
+	--vscode-editor-background: #ffffff;
+	--vscode-editor-foreground: #3b3b3b;
+	--vscode-editorWidget-background: #f8f8f8;
+
+	--vscode-badge-background: #cccccc;
+	--vscode-badge-foreground: #3b3b3b;
+
+	--vscode-button-background: #005fb8;
+	--vscode-button-foreground: #ffffff;
+	--vscode-button-hoverBackground: #0258a8;
+	--vscode-button-secondaryBackground: #e5e5e5;
+	--vscode-button-secondaryForeground: #3b3b3b;
+	--vscode-button-secondaryHoverBackground: #cccccc;
+
+	--vscode-checkbox-background: #f8f8f8;
+	--vscode-checkbox-foreground: #3b3b3b;
+	--vscode-checkbox-border: #cecece;
+
+	--vscode-input-background: #ffffff;
+	--vscode-input-foreground: #3b3b3b;
+	--vscode-input-border: #cecece;
+	--vscode-input-placeholderForeground: #767676;
+
+	--vscode-dropdown-border: #cecece;
+
+	--vscode-list-activeSelectionBackground: #005fb8;
+	--vscode-list-activeSelectionForeground: #ffffff;
+	--vscode-list-inactiveSelectionForeground: #3b3b3b;
+	--vscode-list-focusBackground: #e4e6f1;
+	--vscode-list-hoverBackground: #f2f2f2;
+	--vscode-list-deemphasizedForeground: #767676;
+
+	--vscode-menu-background: #ffffff;
+	--vscode-menu-foreground: #3b3b3b;
+	--vscode-menu-border: #cccccc;
+	--vscode-menu-selectionBackground: #005fb8;
+	--vscode-menu-selectionForeground: #ffffff;
+
+	--vscode-panel-border: #e5e5e5;
+	--vscode-tab-hoverBackground: #ffffff;
+	--vscode-toolbar-hoverBackground: #b8b8b850;
+
+	--vscode-settings-headerForeground: #1f1f1f;
+	--vscode-settings-headerBorder: #e5e5e5;
+	--vscode-settings-settingsHeaderHoverForeground: #1f1f1fcc;
+	--vscode-settings-textInputBackground: #ffffff;
+	--vscode-settings-textInputForeground: #3b3b3b;
+	--vscode-settings-textInputBorder: #cecece;
+
+	--vscode-statusBarItem-errorBackground: #c72e0f;
+}
+
+/* The app keys note colors off body.light / body.dark; default the PWA to dark. */
+body {
+	background-color: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+}
+
+/**
+ * Touch ergonomics (PWA only).
+ *
+ * `pointer: coarse` matches finger input regardless of viewport width, so a phone in landscape
+ * and a large tablet both get the bigger targets while a narrow desktop window does not. All of
+ * it lives in this file, which `angular.json` includes only in the `pwa` configuration — the
+ * extension webview never loads it.
+ *
+ * 44px is the minimum comfortable touch target (Apple HIG / WCAG 2.1 AA target size).
+ */
+@media (pointer: coarse) {
+	:root {
+		--touch-target-size: 48px;
+		/* Body text at phone-comfortable size. The app sizes item text off --app-font-size,
+		   which normally tracks VS Code's editor font (13px) — too small at arm's length.
+		   `!important` because angular.json loads this file *before* styles.css, which sets the
+		   same variable on :root at equal specificity and would otherwise win on order. */
+		--app-font-size: 17px !important;
+		/* Scales every app-icon svg, which is sized as `--design-unit * 4px`. 5 puts the glyph
+		   at 20px inside the 48px target. 7 (28px) was too heavy: four header buttons at 48px
+		   already claim 192px of a 375px screen, and the oversized glyphs squeezed the search
+		   field to 148px, truncating its placeholder to "Search todos and n". The hit area is
+		   set by --touch-target-size, not by this, so the targets stay 48px either way. */
+		--design-unit: 5;
+	}
+
+	/* --design-unit also drives some paddings/margins; keep those from inflating with it. */
+	.mat-mdc-menu-item app-icon svg {
+		width: 22px;
+		height: 22px;
+	}
+
+	/* Icon buttons (item menu, copy, expand, header actions) — the toolkit sizes these off the
+	   icon, which lands near 22px and is well under a fingertip. Grow the hit area without
+	   scaling the glyph, so the UI keeps its density. */
+	vscode-button[appearance="icon"]::part(control) {
+		min-width: var(--touch-target-size);
+		min-height: var(--touch-target-size);
+	}
+
+	/* Exception: the clear button sits *inside* the search field, so a 48px floor stretches
+	   the bar past the input's own height. header.component.css tries to cap it, but this
+	   file is prepended by angular.json and therefore loses on load order at equal
+	   specificity — the cap has to live here, after the rule it is overriding. The field
+	   itself is already a 48px target, so the surrounding input absorbs taps around it. */
+	.search-bar .search-clear::part(control) {
+		min-width: 32px;
+		min-height: 32px;
+		width: 32px;
+		height: 32px;
+	}
+
+	/* Text buttons (Save / Cancel in the editor, connect-screen actions). */
+	vscode-button:not([appearance="icon"])::part(control) {
+		min-height: var(--touch-target-size);
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+
+	/* The completed checkbox is the most-tapped control in the app. Unlike the icon buttons,
+	   the box itself grows: at the toolkit's ~16px it is both hard to hit and hard to read as
+	   checked at arm's length. The label part below supplies the remaining hit area. */
+	vscode-checkbox::part(control) {
+		width: 24px;
+		height: 24px;
+	}
+
+	vscode-checkbox::part(label) {
+		min-height: var(--touch-target-size);
+		display: flex;
+		align-items: center;
+	}
+
+	/* Menu rows: comfortable list spacing rather than the desktop-dense 30px. */
+	.mat-mdc-menu-item {
+		min-height: var(--touch-target-size) !important;
+	}
+
+	/* Tag chips double as filter buttons, so they need a real hit area too. */
+	.tag-chip {
+		height: 2em;
+		padding: 0 0.7rem;
+		line-height: 2em;
+	}
+
+	.tag-remove {
+		min-width: 1.75em;
+		min-height: 1.75em;
+	}
+
+	/* Search field, tag input and the new-item composer: 16px avoids iOS Safari's
+	   zoom-on-focus.
+	   The height floor is deliberately *below* --touch-target-size. That variable sizes
+	   tap-only controls, where the whole target must be reachable by a fingertip; a text field
+	   is aimed at with a caret and then typed into, and at 48px the search bar and composer
+	   stood 50px tall — heavier than anything around them and, for the composer, a visible
+	   slab across the bottom of the screen. 40px stays a comfortable target while letting both
+	   bars sit closer to the density of the list they frame. */
+	input[type="search"],
+	input[type="text"],
+	textarea {
+		font-size: 16px;
+		min-height: 40px;
+	}
+
+	/* The Add button's touch sizing lives in new-todo.component.css, next to the composer rules
+	   it has to agree with — and its `_ngcontent` scoping outranks this file anyway. */
+
+	/* The even outer gutter lives in app.component.scss: its `main` rule is `_ngcontent`-scoped
+	   and outranks anything this file can say about the same element. */
+
+	.header-container {
+		padding: 0;
+		gap: 8px;
+	}
+
+	/* The search bar's touch padding lives in header.component.css — its `_ngcontent` scoping
+	   outranks anything this file can say about the same element. */
+
+	/* Per-item action icons (copy, item menu) are revealed on hover, which never fires on touch —
+	   a finger user would otherwise have no way to reach them at all.
+	   `!important` is load-bearing: the component's own `opacity: 0` is written inside
+	   todo-item.component.scss, so Angular's emulated encapsulation compiles it to
+	   `.todo-container[_ngcontent-x] .icon-button-container[_ngcontent-x]` — two extra attribute
+	   selectors, specificity (0,4,0). A global rule cannot outrank that on specificity alone. */
+	.todo-container .icon-button-container {
+		opacity: 1 !important;
+	}
+
+	/* Momentum scrolling for the item list, and room to reach the last row past the composer. */
+	.todo-list-scroll [cdkDropList] {
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior-y: contain;
+		padding-bottom: 1rem;
+	}
+
+	/* While a long-press drag is live, suppress the browser's text-selection callout so the
+	   gesture reads as a drag rather than a selection. */
+	.cdk-drag-preview,
+	.cdk-drop-list-dragging .cdk-drag {
+		-webkit-touch-callout: none;
+	}
+}
+
+
+/**
+ * Item row layout on touch. The row is a grid whose first column is a fixed 40px checkbox
+ * gutter (todo-item.component.scss); a 48px target would overflow it, so widen the gutter.
+ *
+ * The action buttons move out of the cramped right-hand gutter onto **their own row beneath
+ * the text**, so the text spans the full width instead of wrapping early against them. Named
+ * areas keep the note variant (no checkbox) consistent.
+ *
+ * What made this look bulky before was not the second row itself but its contents: two 48px
+ * controls plus the container's default alignment reserved a ~56px strip under every item, so
+ * a one-line todo measured 94px for 30px of text. Shrinking those controls to 40px and letting
+ * the strip size to its content brings the same layout down to ~70px without giving up any
+ * text width.
+ */
+@media (pointer: coarse) {
+	.todo-container {
+		/* Two tracks, replacing the component's three — the third was the button gutter, now a
+		   row of its own below. Both the columns and the areas must be restated: they are
+		   independent properties, so overriding only the areas would leave the stray track.
+		   `!important` throughout because todo-item.component.scss sets these on
+		   `.todo-container[_ngcontent-x]`, which outranks this global selector. */
+		/* The gutter holds a 24px checkbox, so a full 48px track left ~24px of dead space
+		   between the box and the text. 34px keeps the checkbox's own hit area comfortable
+		   (its ::part(label) still stretches to 48px tall) while pulling the text in. */
+		grid-template-columns: 34px minmax(0, 1fr) !important;
+		grid-template-areas:
+			"checkbox content"
+			"checkbox actions" !important;
+		padding-top: 0.25rem;
+		padding-bottom: 0.25rem;
+		/* `1fr` alone is `minmax(auto, 1fr)`, whose auto floor is the text's own max-content
+		   width — that is what made the rows demand ~480px on a 375px screen and drove the
+		   overflow further up the tree. `minmax(0, ...)` lets the text column wrap instead. */
+		min-width: 0;
+	}
+
+	/* Left-align the box in its narrower gutter instead of centring it, so the gap to the text
+	   is even rather than split either side. */
+	.todo-container > .checkbox {
+		justify-content: flex-start !important;
+	}
+
+	/* The checkbox's label part is stretched to 48px for the hit area, but it is empty here
+	   (the text lives in its own column), so that width read as a gap between the box and the
+	   text. Collapse the empty label; the control keeps its own 24px box and the row's height
+	   still supplies a comfortable target. */
+	.todo-container vscode-checkbox::part(label) {
+		min-width: 0;
+		width: 0;
+		margin: 0;
+		padding: 0;
+	}
+
+	/* Collapsing that label also leaves the host at the control's own 28px, so the most-tapped
+	   control in the app ended up a 28px-wide target against the 44px this file aims for (its
+	   height is fine at 52px). The gutter column is 34px and holds nothing else, so letting the
+	   checkbox fill it is free: the 24px box and the text column both stay exactly where they
+	   were. A full 44px would mean widening the track, which trades against the text density
+	   that track was deliberately narrowed for. */
+	.todo-container > .checkbox vscode-checkbox {
+		width: 100%;
+	}
+
+	.todo-container > .checkbox {
+		grid-area: checkbox;
+	}
+
+	.todo-container > .content {
+		grid-area: content;
+	}
+
+	/* Right-aligned under the text, matching where Save/Cancel already sit in edit mode.
+	   The component's `.todo-container > *` centres every child, hence the !important. */
+	.todo-container > .icon-button-container {
+		grid-area: actions;
+		justify-content: flex-end !important;
+		width: 100%;
+	}
+
+	/* Notes have no checkbox, so both rows use the single content column. */
+	.todo-container.note {
+		grid-template-columns: 1fr !important;
+		grid-template-areas:
+			"content"
+			"actions" !important;
+	}
+
+	/* Keep the action buttons compact. The 48px floor set on every icon button above is right
+	   for a standalone control, but these two sit in their own strip below the text, where the
+	   row's padding already extends the effective target — at 48px they made that strip ~56px
+	   tall for two 16px glyphs, which is what read as oversized.
+	   28px sits deliberately below the 44px this file targets elsewhere, matching the lighter
+	   icon buttons common in mobile apps. It is defensible here and only here: the strip's own
+	   padding and the row around it absorb a near miss, and neither action is destructive. */
+	.todo-container .icon-button-container vscode-button[appearance="icon"]::part(control) {
+		min-width: 28px;
+		min-height: 28px;
+		width: 28px;
+		height: 28px;
+	}
+
+	/* todo-item.component.scss gives every icon button a `--design-unit`-derived 4px block
+	   margin, left over from when the buttons sat inline beside the text. They have their own
+	   strip now, so those 8px are pure row height and buy nothing. `!important` because the
+	   component rule compiles to `.todo-container[_ngcontent-x] .icon-button[_ngcontent-x]`,
+	   specificity (0,4,0), which no global selector can outrank. */
+	.todo-container .icon-button {
+		margin: 0 !important;
+	}
+
+	/* 20px left the glyph almost edge to edge inside the 28px control; 16px keeps ~6px of
+	   padding around it. */
+	.todo-container .icon-button-container app-icon svg {
+		width: 16px;
+		height: 16px;
+	}
+
+	/* `align-items: flex-start` from the component leaves the buttons sitting in a taller
+	   box; centring them lets the strip collapse to the buttons' own height. The negative top
+	   margin pulls the strip up against its text, so the visual gap belongs *between* items
+	   rather than splitting each one in half. */
+	.todo-container > .icon-button-container {
+		gap: 0.125rem;
+		align-items: center !important;
+		margin-top: -4px;
+	}
+
+	/* Row rhythm: a touch more separation between items than within one, so each todo reads as
+	   a single block. Pairs with the negative margin above. */
+	.todo-list-scroll [cdkDropList] > *:not(:last-child) {
+		margin-bottom: 6px;
+	}
+
+	/* The list's own gutter, so rows are not flush against the app's edge. */
+	.todo-container {
+		padding-left: 2px;
+		padding-right: 2px;
+		border-radius: 4px;
+	}
+
+	/* Per-item action icons are revealed on hover, which never fires on touch — a finger user
+	   would otherwise have no way to reach them at all.
+	   `!important` is load-bearing: the component's own `opacity: 0` is written inside
+	   todo-item.component.scss, so Angular's emulated encapsulation compiles it to
+	   `.todo-container[_ngcontent-x] .icon-button-container[_ngcontent-x]` — two extra
+	   attribute selectors, specificity (0,4,0). A global rule cannot outrank that. */
+	.todo-container .icon-button-container {
+		opacity: 1 !important;
+	}
+
+}
+
+/**
+ * Scope tabs (User / Workspace / File) need no rule here: styles.css's vertical stacking is
+ * gated to `pointer: fine`, so touch already gets the toolkit's default horizontal row. A
+ * `pointer: coarse` override in this file would not have worked anyway — angular.json prepends
+ * it, so it loses to styles.css on load order at equal specificity.
+ */
+
+/* Let the tabs scroll rather than squash if a future scope name makes the row overflow. */
+@media (pointer: coarse) {
+	vscode-panels::part(tablist) {
+		overflow-x: auto;
+		/* `overflow-x: auto` alone did nothing. The tablist is a grid item that sizes to its
+		   content (424px inside a 395px host), so scrollWidth equalled clientWidth and there was
+		   nothing to scroll — the row was just clipped by the `overflow-x: hidden` that
+		   app.component.scss puts on `vscode-panels`, taking the right end of tab-3 with it.
+		   `max-width: 100%` resolves against that content-sized grid area and so
+		   never bites (the same trap documented for vscode-panel-view below), so pin the row to
+		   the visible width instead. */
+		max-width: calc(100vw - 16px);
+		/* `overflow-x` on its own promotes the *other* axis from `visible` to `auto` (CSS
+		   Overflow 3 §3) — the same promotion app.component.scss guards against on `vscode-panels`.
+		   That made the tab row scroll vertically under a finger, which is not a thing tabs should
+		   do. Nothing actually overflows it (the tabs end 5.7px inside the box and the active
+		   indicator 3.7px), so pinning the axis clips nothing — the scrollHeight it reports is
+		   phantom. */
+		overflow-y: hidden;
+		/* The toolkit's 32px inter-tab gap alone accounted for 64px of the row's 424px, which is
+		   what pushed the right end of tab-3 off the visible width. At 12px the whole row lands
+		   at 384px and fits without scrolling at all. (This was originally tuned to keep the
+		   File-tab pin button on screen; the PWA no longer renders that button — there is no
+		   editor for the list to follow — but the gap still keeps a long filename's tab from
+		   needing a scroll.) The width cap and nowrap above stay as the safety net for one that
+		   is longer still. */
+		column-gap: 12px;
+	}
+
+	/* With the row pinned, the tabs' default `white-space: normal` made them wrap to fit rather
+	   than overflow: "File - No File Selected" became two lines and the row grew taller, which is
+	   the squashing this section set out to avoid. Holding the labels on one line is what turns
+	   the constrained width into actual horizontal scrolling. */
+	vscode-panel-tab {
+		white-space: nowrap;
+	}
+
+	/* The toolkit lays its panels out as a grid, and a grid item's default `min-width: auto`
+	   refuses to shrink below its content. On a 375px screen the panel view stayed 423px wide
+	   inside a 371px host, so every row inherited that width and the last action button sat
+	   ~47px off-screen — unreachable, since the horizontal overflow is clipped further up.
+	   Only the touch build is affected: the desktop sidebar is never narrow enough for the
+	   content to exceed the host. */
+	/* The toolkit lays the panels out as a grid whose column track sizes to its content, so the
+	   panel view kept the rows' natural width (480px inside a 359px host) and the last action
+	   button ended up off-screen, unreachable behind the clipped overflow. `min-width: 0` on
+	   the item is not enough — the *track* has to be pinned too. The app's `todo-list` /
+	   `.todo-list-scroll` need the same floor removed, but those rules live in their
+	   components, where `_ngcontent` scoping outranks this file. */
+	/* The toolkit's `:host` sets `grid-template-columns: auto 1fr auto`, and a `:host` rule in
+	   the shadow DOM outranks anything from here — even `!important` — so the track itself
+	   cannot be pinned from outside. Its `1fr` then sizes to the panel's content, which left
+	   the panel 480px wide inside a 359px host and pushed the last action button off-screen,
+	   unreachable behind the clipped overflow.
+	   Capping the *slotted* panel to the host's width is the part that is reachable: a slotted
+	   element is styled by the outer document, so this wins where a ::part rule does not. */
+	/* `max-width: 100%` resolves against the grid *area*, which the toolkit had already sized to
+	   the content, so it never bit. `100vw` minus the gutter `main` adds on both sides pins the
+	   panel to what is actually visible instead. */
+	vscode-panel-view {
+		min-width: 0;
+		max-width: calc(100vw - 16px);
+		box-sizing: border-box;
+		overflow-x: hidden;
+	}
+}
+
+
+/**
+ * Samsung Internet paints its collapsed address bar over the bottom of the layout viewport
+ * while the soft keyboard is open. Unlike Chrome's gesture bar there is no inset to read:
+ * the browser reports `env(safe-area-inset-bottom): 0`, while `innerHeight` and
+ * `visualViewport.height` both describe the region the strip covers. The page's own metrics
+ * therefore report the composer fully visible while ~16px of it sits behind the bar
+ * (measured on Samsung Internet 30). The UA class is set in bootstrap.pwa.ts.
+ *
+ * Scoped to `:focus-within` because the strip only appears with the keyboard — at rest
+ * Samsung excludes its full toolbar from the viewport correctly, and the gap would be waste.
+ * The 16px is the measured strip; the rest restates app.component.scss's own bottom padding,
+ * which this replaces rather than adds to. Specificity (0,2,2) clears that component rule's
+ * `main[_ngcontent-*]` (0,1,1).
+ */
+html.samsung-internet main:focus-within {
+	padding-bottom: calc(16px + max(8px, env(safe-area-inset-bottom)));
+}
+
+/*
+	Room for the PWA's two top banners: the sync-failure banner and the conflict-review banner.
+
+	Both sit in normal flow at the top of pwa-shell.component.html, above <app-root>, and each
+	sets a class on <body> while it is up. Neither can simply stack above the app as-is:
+	app.component.scss sizes `main` at 100dvh, a viewport unit that ignores its container, so
+	anything placed above it pushes the layout off the bottom instead of shrinking it. Fixing it
+	here keeps the shared stylesheet untouched — the extension webview has no banners and must
+	not gain the rules.
+
+	Reserving a fixed-height strip per banner was tried and abandoned: at the coarse-pointer font
+	size, with 48px touch targets and a message long enough to explain itself, the sync banner's
+	real height overran the reserved strip, clipping its own text and buttons and pushing the
+	composer out of view. Making the shell a flex column and giving the app whatever height is
+	left removes the arithmetic — and unlike a per-banner strip it composes: with both banners up
+	the two `flex: none` rows take what they need and the app still gets the remainder.
+
+	Only applied while a banner is showing, so the app keeps its own 100dvh sizing the rest of
+	the time.
+*/
+body.has-sync-banner app-pwa-shell,
+body.has-conflict-banner app-pwa-shell {
+	display: flex;
+	flex-direction: column;
+	height: 100dvh;
+}
+
+body.has-sync-banner app-root,
+body.has-conflict-banner app-root {
+	display: block;
+	/* min-height:0 so the app can shrink below its content instead of overflowing the column. */
+	flex: 1;
+	min-height: 0;
+}
+
+body.has-sync-banner main,
+body.has-conflict-banner main {
+	height: 100%;
+}
+
+/*
+	Colours follow .ie-toast rather than a red fill: the PWA never defines
+	--vscode-inputValidation-*, so a red background falls back to a hardcoded dark red and leaves
+	the light theme's dark text illegible on it.
+*/
+.sync-failure {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	/*
+		A long message — GitHub's own error text can be verbose — would otherwise take most of a
+		small screen. Measured at 320x300 the banner reached 62% of the viewport and left the list
+		2px tall. Capped and scrolled instead, so the list always keeps usable space.
+	*/
+	max-height: 45dvh;
+	overflow-y: auto;
+	border-bottom: 2px solid var(--vscode-inputValidation-errorBorder, #be1100);
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-foreground, #ccc);
+}
+
+.sync-failure-text {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.sync-failure-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.sync-failure-actions button {
+	min-height: var(--touch-target-size, 32px);
+}

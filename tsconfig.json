@@ -5,10 +5,25 @@
 		"outDir": "out",
 		"lib": ["es6", "dom"],
 		"sourceMap": true,
-		"rootDir": "src",
 		"strict": true,
 		"skipLibCheck": true,
 		"resolveJsonModule": true
 	},
-	"exclude": ["node_modules", ".vscode-test", "webview-ui"]
+	// `packages/core` is consumed from SOURCE, like the webview consumes it (see
+	// webview-ui/tsconfig.json). It is not an npm dependency: it ships as ESM with bundler-style
+	// resolution, which the CommonJS extension host cannot require. Compiling its sources
+	// alongside `src/` means both peers run the *same* merge, equality and serialization code
+	// rather than two copies that drift — which is exactly what went wrong before (the
+	// extension's copy stopped sorting filesData keys and kept a key-order-sensitive `isEqual`,
+	// producing phantom conflicts against the PWA's writes).
+	//
+	// Deliberately NO `paths` mapping for "@vsc-todo/core": that is compile-time only, so tsc
+	// would emit `require("@vsc-todo/core")` and the extension host would fail to resolve it at
+	// runtime — a mapping that type-checks and then crashes on activation. Extension code
+	// imports through `src/core.ts`, which holds the one real relative path.
+	// No `rootDir`: with two source roots tsc infers the repo root, so output lands at
+	// `out/src/**` and `out/packages/core/src/**`. That is why `main` is `./out/src/extension.js`
+	// and the test glob is `out/src/test/**`.
+	"include": ["src/**/*.ts", "packages/core/src/**/*.ts"],
+	"exclude": ["node_modules", ".vscode-test", "webview-ui", "worker", "packages/core/node_modules", "packages/core/dist"]
 }

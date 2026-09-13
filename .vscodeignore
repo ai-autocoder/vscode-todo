@@ -6,15 +6,34 @@
 
 # Ignore test files
 .vscode-test/**
+out/src/test/**
+# Belt and braces: `compile` cleans `out/` first, but a tree built before the output layout
+# moved to `out/src/**` still has the old `out/test/**` sitting there, and a stale tree that
+# skipped the clean would otherwise package compiled Mocha suites.
 out/test/**
 
 # Ignore source code
 src/**
 
+# The shared core is compiled into out/ alongside src/, so nothing here ships as source.
+# Without this its node_modules (vitest, fake-indexeddb) would be packaged into the vsix.
+packages/**
+
+# The Cloudflare Worker is a separate deployable (`npm run deploy:worker`); none of it runs
+# in the extension. Same reason as `packages/**` above, only worse: its node_modules is over
+# 200 MB, and without this rule all of it is packaged into the vsix.
+worker/**
+
 # Ignore all webview-ui files except the build directory
 webview-ui/src/**
 webview-ui/public/**
 webview-ui/scripts/**
+# Karma's compiled test output — ~24 MB, including a full copy of the KaTeX fonts. Only
+# `webview-ui/build/**` (the Angular build the webview actually loads) belongs in the vsix.
+webview-ui/dist/**
+# The PWA build. It has its own output directory precisely so it can never be mistaken for
+# the extension webview; excluding it here means a stray local PWA build cannot reach a vsix.
+webview-ui/build-pwa/**
 webview-ui/README.md
 webview-ui/package.json
 webview-ui/package-lock.json
@@ -26,7 +45,7 @@ webview-ui/karma.conf.js
 webview-ui/tsconfig.app.json
 webview-ui/tsconfig.spec.json
 webview-ui/angular.json
-webview-ui\generate-prism-imports.js
+webview-ui/generate-prism-imports.js
 
 # Ignore Misc
 .yarnrc
@@ -44,6 +63,11 @@ docs/**
 GEMINI.md
 AGENTS.md
 CLAUDE.md
+ARCHITECTURE.md
+# The root patterns above do not reach nested copies.
+webview-ui/AGENTS.md
+# Input to the PWA service-worker build, not something the webview loads.
+webview-ui/ngsw-config.json
 .gemini/**
 .github/**
 
@@ -51,3 +75,16 @@ CLAUDE.md
 .prettierignore
 .prettierrc
 
+# Agent and editor tooling; none of it runs in the extension. `.mcp.json` is a client config
+# sample and is git-ignored; `.claude/settings.local.json` is simply never committed. vsce honours
+# neither, since it packages the working tree, so without these rules the vsix carries whichever
+# machine built it.
+.claude/**
+.mcp.json
+# Wrangler's local state. Empty in a fresh clone, but `npm run deploy:pwa` fills it, so a
+# maintainer who deploys the PWA and then packages from the same tree would ship it.
+.wrangler/**
+
+# Repo maintenance scripts. `predeploy:pwa` runs the deploy preflight; the conflict-seeding
+# helpers are run by hand for manual PWA testing. None of them runs in the extension.
+scripts/**

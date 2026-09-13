@@ -6,13 +6,13 @@ import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { getConfig } from "../utilities/config";
 import { getGistId } from "../utilities/syncConfig";
-import { messagesToWebview, GitHubSyncInfo } from "./message";
+import { messagesToWebview, GitHubSyncInfo, SyncStatusInfo } from "./message";
 import type { McpStatus } from "./message";
 import { TodoSlice, EditorFocusAndRecordsSlice, CurrentFileSlice, Slices } from "../todo/todoTypes";
 import { deleteCompletedTodos } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
-import { getGitHubSyncInfo } from "../utilities/syncInfo";
+import { getGitHubSyncInfo, getSyncStatusInfo } from "../utilities/syncInfo";
 import McpServerHost from "../mcp/McpServerHost";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
@@ -92,6 +92,7 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 			this._view.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
 			await this.postGitHubStatus();
 			this.postGitHubSyncInfo();
+			this.postSyncStatus();
 			this.postMcpStatus();
 		}
 	}
@@ -121,9 +122,9 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	public updateSyncStatus(isSyncing: boolean) {
+	public updateSyncStatus(info: SyncStatusInfo) {
 		if (this._view) {
-			this._view.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
+			this._view.webview.postMessage(messagesToWebview.updateSyncStatus(info));
 		}
 	}
 
@@ -203,6 +204,19 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 
 		const info = getGitHubSyncInfo(this._context);
 		this._view.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
+	}
+
+	/**
+	 * A reloaded webview starts from its own defaults, and SyncManager only emits on change —
+	 * so hand it the state the extension last announced or the indicator sits on "offline"
+	 * until the next sync happens to fire.
+	 */
+	private postSyncStatus(): void {
+		if (!this._view) {
+			return;
+		}
+
+		this._view.webview.postMessage(messagesToWebview.updateSyncStatus(getSyncStatusInfo()));
 	}
 
 	private postMcpStatus(): void {

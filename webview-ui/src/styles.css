@@ -20,8 +20,12 @@ html {
 	height: 100%;
 }
 
+/* The extension webview gets `margin: 0` from VS Code's own injected stylesheet; the standalone
+   PWA does not, so the UA's default 8px margin stacked on a full-height layout and left a
+   scrollbar on screen even with an empty list. */
 body {
 	height: 100%;
+	margin: 0;
 	padding: 0;
 }
 
@@ -223,8 +227,21 @@ markdown .mermaid-zoom-target .mermaid-zoom-button:not(:hover) {
 	}
 }
 
-new-todo autosize-text-area textarea {
+/*
+ * The composer's field. This has to be a global rule: the textarea belongs to
+ * autosize-textarea.component, so the same selector written in new-todo.component.css would
+ * carry the wrong _ngcontent attribute and never match it.
+ *
+ * line-height and min-height pin the field's resting height to --composer-field-height — the
+ * height the Add button beside it is fixed to, so the button can stop stretching with the
+ * field (see .new-todo-container, where both variables are declared and inherited from).
+ * .new-todo-container is in the selector for the specificity: without it this loses to the
+ * component's own `textarea` rule, whose _ngcontent attribute already sets a line-height.
+ */
+new-todo .new-todo-container autosize-text-area textarea {
 	max-height: 80vh;
+	line-height: var(--composer-line-height);
+	min-height: var(--composer-field-height);
 }
 
 fieldset {
@@ -316,12 +333,14 @@ span.menu-label {
 	white-space: nowrap;
 }
 
-@media screen and (max-width: 500px) {
-	main {
-		height: 100%;
-		min-height: 100%;
-	}
-
+/*
+ * Narrow *and* mouse-driven — i.e. the extension's tall, thin sidebar. Stacking the three scope
+ * tabs vertically suits that shape, but on a phone it costs ~130px of vertical space before the
+ * list starts, so `pointer: fine` keeps this off touch devices, which get a horizontal row.
+ * The PWA's vscode-theme.css cannot override it from there: angular.json prepends that file, so
+ * it loses on load order at equal specificity — the exclusion has to live on this rule.
+ */
+@media screen and (max-width: 500px) and (pointer: fine) {
 	vscode-panels::part(tablist) {
 		width: 100%;
 		display: flex;
@@ -334,6 +353,13 @@ span.menu-label {
 		width: 100%;
 		justify-content: start;
 		padding: calc(var(--design-unit) * 1px);
+	}
+}
+
+@media screen and (max-width: 500px) {
+	main {
+		height: 100%;
+		min-height: 100%;
 	}
 
 	vscode-panel-tab:hover {

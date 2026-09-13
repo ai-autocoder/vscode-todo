@@ -55,7 +55,7 @@
 	"activationEvents": [
 		"onStartupFinished"
 	],
-	"main": "./out/extension.js",
+	"main": "./out/src/extension.js",
 	"contributes": {
 		"commands": [
 			{
@@ -327,16 +327,26 @@
 		"url": "https://github.com/ai-autocoder/vscode-todo.git"
 	},
 	"scripts": {
-		"install:all": "npm install && cd webview-ui && npm install",
-		"start:webview": "cd webview-ui && npm run start",
-		"build:webview": "cd webview-ui && npm run build",
+		"install:all": "npm install && npm --prefix webview-ui install && npm --prefix packages/core install && npm --prefix worker install",
+		"start:webview": "npm --prefix webview-ui run start",
+		"start:webview:pwa": "npm --prefix webview-ui run start:pwa",
+		"start:webview:pwa:host": "npm --prefix webview-ui run start:pwa:host",
+		"start:webview:prod": "npm --prefix webview-ui run start:prod",
+		"build:webview": "npm --prefix webview-ui run build",
+		"build:webview:pwa": "npm --prefix webview-ui run build:pwa",
+		"predeploy:pwa": "node scripts/preflight-deploy-pwa.js",
+		"deploy:pwa": "npm run build:webview:pwa && npx wrangler pages deploy webview-ui/build-pwa/browser --project-name plans-app --branch main",
+		"deploy:worker": "npm --prefix worker run deploy",
 		"mcp:inspector": "mcp-inspector",
-		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./",
+		"vscode:prepublish": "npm run compile && npm run build:webview",
+		"compile": "npm run clean && tsc -p ./",
 		"watch": "tsc -watch -p ./",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint . --ext .ts",
-		"test": "vscode-test"
+		"test": "vscode-test",
+		"test:core": "npm --prefix packages/core test",
+		"test:webview": "npm --prefix webview-ui run test:ci",
+		"clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\""
 	},
 	"devDependencies": {
 		"@modelcontextprotocol/inspector": "^0.18.0",

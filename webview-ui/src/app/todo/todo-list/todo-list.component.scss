@@ -41,6 +41,11 @@
 .todo-list-scroll {
 	flex: 1 1 auto;
 	height: 100%;
+	/* A flex item defaults to `min-width: auto`, which refuses to shrink below its content. On
+	   a phone that let the rows keep their natural ~421px inside a 371px column, pushing the
+	   last action button off-screen where the clipped horizontal overflow made it unreachable.
+	   Harmless on the desktop sidebar, which is never narrower than the row content. */
+	min-width: 0;
 }
 
 .todo-list-scroll [cdkDropList] {

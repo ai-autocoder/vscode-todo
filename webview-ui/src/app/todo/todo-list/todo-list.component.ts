@@ -11,6 +11,7 @@ import {
 	inject,
 	OnInit,
 	QueryList,
+	ViewChild,
 	ViewChildren,
 	HostListener,
 } from "@angular/core";
@@ -68,13 +69,38 @@ export class TodoList implements OnInit, AfterViewInit {
 	@ViewChildren("dragItem", { read: ElementRef }) private dragItemEls!: QueryList<
 		ElementRef<HTMLElement>
 	>;
+	@ViewChild("listScroll", { read: ElementRef }) private listScrollEl?: ElementRef<HTMLElement>;
 	isDragging = false;
+	/**
+	 * Touch drag only begins after a long press, so a plain swipe scrolls the list instead of
+	 * picking an item up. Mouse drag stays instant — pointer devices can't scroll by dragging,
+	 * so there is nothing to disambiguate there.
+	 */
+	readonly dragStartDelay = { touch: 300, mouse: 0 };
 	private readonly reorderAnimationExcludedActions = new Set<string>(["editTodo"]);
 
 	selectedTodoIds = new Set<number>();
 	private selectionAnchorId: number | null = null;
 
 	enterAnimationEnabledActions: string[] = ["addTodo", "toggleTodo", "undoDelete"];
+	/**
+	 * Actions after which the item that just appeared is scrolled into view. With the default
+	 * `createPosition: bottom` a new todo lands past the end of a list that already fills the
+	 * panel, so its enter animation played off-screen and adding looked like nothing happened.
+	 */
+	private readonly revealNewItemActions = new Set<string>(["addTodo"]);
+	/**
+	 * How long a reveal's smooth scroll is assumed to still be running. The browser picks the
+	 * real duration and `scrollend` is too new to rely on in every host, so this is a generous
+	 * upper bound: overshooting only means the FLIP compensates for a scroll that has already
+	 * finished, which is a no-op, while undershooting brings the judder back.
+	 */
+	private static readonly revealScrollDurationMs = 700;
+	private revealScrollTimer: ReturnType<typeof setTimeout> | null = null;
+
+	private get isRevealScrolling(): boolean {
+		return this.revealScrollTimer !== null;
+	}
 
 	private searchQuery = "";
 	private readonly searchEffect = effect(() => {
@@ -112,8 +138,11 @@ export class TodoList implements OnInit, AfterViewInit {
 	}
 
 	handleSubscription(actionType: string) {
+		// Read on every arrival, not only on an add: consuming it here is what keeps a refused
+		// composer add from leaving the flag set for a later slice to claim.
+		const isLocalAdd = this.todoService.consumeLocalAdd(this.scope);
 		this.handleAnimations(actionType);
-		this.pullTodos();
+		this.pullTodos(isLocalAdd);
 	}
 
 	private handleSelectionCommand(command: SelectionCommand): void {
@@ -162,8 +191,19 @@ export class TodoList implements OnInit, AfterViewInit {
 		return !this.reorderAnimationExcludedActions.has(this.lastActionName);
 	}
 
-	pullTodos() {
+	pullTodos(isLocalAdd = false) {
 		const prevRects = this.isInitialized ? this.snapshotRects() : new Map<number, DOMRect>();
+		// Captured with the rects, but only while a reveal is mid-flight: `behavior: "smooth"`
+		// keeps scrolling for a few hundred ms, so a pull landing inside that window measures the
+		// rows against a different offset than the snapshot used, and the FLIP would read the
+		// travelled distance as movement and animate every row back across it.
+		const prevScroll = this.isRevealScrolling
+			? {
+					top: this.listScrollEl?.nativeElement.scrollTop ?? 0,
+					height: this.listScrollEl?.nativeElement.scrollHeight ?? 0,
+				}
+			: null;
+		const prevIds = new Set(this.todos.map((todo) => todo.id));
 		const query = this.todoService.normalizedSearchQuery();
 		this.searchQuery = query;
 		const suppressAnimations = query.length > 0 && !this.isInitialized;
@@ -182,7 +222,11 @@ export class TodoList implements OnInit, AfterViewInit {
 		this.applyFilter(true, suppressAnimations, query);
 
 		if (this.shouldRunReorderAnimation()) {
-			this.animateReorder(prevRects);
+			this.animateReorder(prevRects, prevScroll);
+		}
+
+		if (isLocalAdd) {
+			this.revealNewItem(prevIds);
 		}
 	}
 
@@ -269,6 +313,17 @@ export class TodoList implements OnInit, AfterViewInit {
 		if (event.button !== 0) return;
 		if (this.isDragging || this.shouldIgnoreSelection(event)) return;
 
+		// Touch has no Ctrl/Shift, so the modifier-based paths below are unreachable with a
+		// finger. Once a selection exists, a plain tap extends or shrinks it — the standard
+		// mobile pattern. Starting the selection is the checkbox's long-press (see
+		// onSelectionLongPress), which is why entering the mode is not handled here.
+		if (event.pointerType === "touch" && this.hasSelection) {
+			this.toggleSelection(todo);
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
+
 		const isRangeSelection = event.shiftKey;
 		const isToggleSelection = event.ctrlKey || event.metaKey;
 
@@ -329,6 +384,34 @@ export class TodoList implements OnInit, AfterViewInit {
 
 		this.cdRef.markForCheck();
 		this.publishSelectionState();
+	}
+
+	/**
+	 * Adds or removes one item, and clears the anchor when the last one goes. Used by the touch
+	 * tap path; the pointer paths keep their own anchor bookkeeping for shift-ranges.
+	 */
+	private toggleSelection(todo: Todo): void {
+		const nextSelection = new Set(this.selectedTodoIds);
+		if (nextSelection.has(todo.id)) {
+			nextSelection.delete(todo.id);
+		} else {
+			nextSelection.add(todo.id);
+		}
+
+		this.selectedTodoIds = nextSelection;
+		this.selectionAnchorId = nextSelection.size ? todo.id : null;
+		this.cdRef.markForCheck();
+		this.publishSelectionState();
+	}
+
+	/**
+	 * Enters selection mode from the item menu's "Select" action. Touch has no Ctrl/Shift and
+	 * the row's long press is taken by drag-to-reorder, so the menu is the entry point: it is
+	 * visible rather than a hidden gesture, and costs no new interaction on the row itself.
+	 * Once the mode is active, plain taps extend the selection.
+	 */
+	handleSelectRequest(todo: Todo): void {
+		this.toggleSelection(todo);
 	}
 
 	selectAll(): void {
@@ -716,12 +799,83 @@ export class TodoList implements OnInit, AfterViewInit {
 		if (this.selectionCommandSubscription) {
 			this.selectionCommandSubscription.unsubscribe();
 		}
+		if (this.revealScrollTimer !== null) {
+			clearTimeout(this.revealScrollTimer);
+			this.revealScrollTimer = null;
+		}
 		this.todoService.setSelectionState(this.scope, {
 			hasSelection: false,
 			selectedCount: 0,
 			totalCount: 0,
 		});
 	}
+
+	/**
+	 * Brings a freshly added item into view so its enter animation is actually seen.
+	 *
+	 * "New" is whatever is in the rendered list now and was not there before the pull — which
+	 * covers both `createPosition` values without caring which one is configured, and skips an
+	 * add that the active filter hides.
+	 */
+	private revealNewItem(prevIds: Set<number>): void {
+		if (!this.isInitialized || this.isDragging) return;
+		if (!this.lastActionName || !this.revealNewItemActions.has(this.lastActionName)) return;
+
+		const added = this.todos.find((todo) => !prevIds.has(todo.id));
+		if (!added) return;
+
+		// Deferred by one frame so the reorder FLIP — whose own callback is registered first, in
+		// animateReorder — measures the rows before anything scrolls; it compares each row's
+		// position against a snapshot taken before the pull, and a scroll in between would be read
+		// as movement and animated away. The row's height is already final either way: the enter
+		// animation only moves opacity and transform.
+		requestAnimationFrame(() => this.scrollItemIntoView(added.id));
+	}
+
+	private scrollItemIntoView(id: number): void {
+		const container = this.listScrollEl?.nativeElement;
+		const item = this.dragItemEls?.find(
+			(ref) => ref.nativeElement.getAttribute("data-id") === String(id)
+		)?.nativeElement;
+		// The frame's delay is enough for a scope switch to have torn the list down; a detached
+		// element measures as all-zero, which would read as "above the fold" and scroll nothing
+		// by 8px.
+		if (!container || !item || !container.isConnected) return;
+
+		const itemRect = item.getBoundingClientRect();
+		const containerRect = container.getBoundingClientRect();
+		// A little breathing room so the row does not sit flush against the edge it scrolled from.
+		const margin = 8;
+		// A note longer than the panel cannot be framed, so show where it starts rather than
+		// where it ends — aligning its bottom would leave the first line off-screen above.
+		const isTallerThanViewport = itemRect.height > containerRect.height - margin * 2;
+
+		let delta = 0;
+		if (!isTallerThanViewport && itemRect.bottom > containerRect.bottom - margin) {
+			delta = itemRect.bottom - containerRect.bottom + margin;
+		} else if (isTallerThanViewport || itemRect.top < containerRect.top + margin) {
+			delta = itemRect.top - containerRect.top - margin;
+		}
+		if (delta === 0) return;
+
+		if (typeof container.scrollBy === "function") {
+			container.scrollBy({ top: delta, behavior: "smooth" });
+			this.markRevealScrolling();
+		} else {
+			container.scrollTop += delta;
+		}
+	}
+
+	/** Opens the window in which {@link animateReorder} discounts this scroll. */
+	private markRevealScrolling(): void {
+		if (this.revealScrollTimer !== null) {
+			clearTimeout(this.revealScrollTimer);
+		}
+		this.revealScrollTimer = setTimeout(() => {
+			this.revealScrollTimer = null;
+		}, TodoList.revealScrollDurationMs);
+	}
+
 	// --- FLIP helpers ---
 	private snapshotRects(): Map<number, DOMRect> {
 		const map = new Map<number, DOMRect>();
@@ -738,10 +892,35 @@ export class TodoList implements OnInit, AfterViewInit {
 		return map;
 	}
 
-	private animateReorder(prevRects: Map<number, DOMRect>): void {
+	private animateReorder(
+		prevRects: Map<number, DOMRect>,
+		prevScroll: { top: number; height: number } | null
+	): void {
 		if (!this.dragItemEls || prevRects.size === 0) return;
 		// Run on next frame to ensure layout is up-to-date
 		requestAnimationFrame(() => {
+			const container = this.listScrollEl?.nativeElement;
+			if (container && !container.isConnected) return;
+			// Rects are viewport-relative, so a reveal scroll still running underneath shows up in
+			// every row alike and is not movement. Only that scroll is cancelled — the browser
+			// moves scrollTop on its own too, clamping it when content shrinks, and that jump is
+			// real on-screen movement, the kind this animation exists to show. The two are told
+			// apart by the content box: an add only ever grows it and a collapse only ever shrinks
+			// it, so a shorter one means the offset moved for a reason that is not ours.
+			//
+			// The one case this cannot separate is Chrome's scroll anchoring, which grows the box
+			// and moves the offset at once: inserting a row above the viewport bumps scrollTop by
+			// that row's height to hold the view still (measured in Chrome 153: 100 -> 140 for a
+			// 40px row, with the anchored row not moving on screen). Discounting that bump animates
+			// rows that did not move. It is bounded at one row height and needs a second composer
+			// add inside the window while the first reveal is still travelling, under
+			// `createPosition: top` — so the PWA default only; an extension add goes in below the
+			// viewport, where anchoring does not adjust anything. `overflow-anchor: none` would
+			// remove the ambiguity and is deliberately not used: it would make every add the user
+			// did not make — an MCP add, a remote sync — shove the visible list down by a row.
+			const isBrowserClamp = !!prevScroll && (container?.scrollHeight ?? 0) < prevScroll.height;
+			const scrolled =
+				!prevScroll || !container || isBrowserClamp ? 0 : container.scrollTop - prevScroll.top;
 			this.dragItemEls.forEach((ref) => {
 				const el = ref.nativeElement;
 				const idAttr = el.getAttribute("data-id");
@@ -751,7 +930,7 @@ export class TodoList implements OnInit, AfterViewInit {
 				if (!prev) return; // new element, let enter animation handle it
 				const next = el.getBoundingClientRect();
 				const dx = prev.left - next.left;
-				const dy = prev.top - next.top;
+				const dy = prev.top - next.top - scrolled;
 				if (dx === 0 && dy === 0) return;
 				try {
 					// Use WAAPI for smooth transform without layout thrash

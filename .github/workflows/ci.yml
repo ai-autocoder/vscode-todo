@@ -1,14 +1,30 @@
 name: CI
 
+# Runs on every pull request (the gate before a merge) and again on the merge commit
+# once it lands on the default branch. `master` is this repo's default branch; `main` is
+# kept so the workflow keeps working if it is ever renamed.
 on:
   push:
     branches:
       - main
       - master
   pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch or PR supersedes the run already in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 20.19.0
 
 jobs:
-  build:
+  # @vsc-todo/core is the framework-agnostic half the PWA leans on hardest: the gist sync
+  # engine, three-way merge, tag rules and the IndexedDB stores. It has no runtime
+  # dependencies, so this job installs only vitest and finishes in well under a minute.
+  core:
+    name: Core (sync engine)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,23 +33,93 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20.19.0
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            webview-ui/package-lock.json
+          cache-dependency-path: packages/core/package-lock.json
 
-      # The webview Karma suite runs in headless Chrome; provision it explicitly so the
-      # job does not silently depend on the runner image bundling a browser.
+      - name: Install core dependencies
+        run: npm ci
+        working-directory: packages/core
+
+      - name: Typecheck core
+        run: npm run typecheck
+        working-directory: packages/core
+
+      - name: Run core tests
+        run: npm test
+        working-directory: packages/core
+
+  # One Angular app, two builds. The Karma suite covers the shared components and the
+  # PWA-only ones under src/app/pwa; the two build steps are the only thing that
+  # type-checks each target's file replacements, so both have to run.
+  webview:
+    name: Webview & PWA
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: webview-ui/package-lock.json
+
+      # The Karma suite runs in headless Chrome; provision it explicitly so the job does
+      # not silently depend on the runner image bundling a browser.
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@v1
-
-      - name: Install root dependencies
-        run: npm ci
 
       - name: Install webview dependencies
         run: npm ci
         working-directory: webview-ui
+
+      # Specs resolve @vsc-todo/core straight from packages/core/src via a tsconfig path,
+      # so this needs no build (and no install) of the core package.
+      - name: Run webview tests
+        run: npm run test:ci
+        working-directory: webview-ui
+
+      - name: Build extension webview
+        run: npm run build
+        working-directory: webview-ui
+
+      # The two targets have separate output directories (build vs build-pwa), so this runs
+      # after the extension build without clobbering it and needs no cleanup between them.
+      - name: Build PWA
+        run: npm run build:pwa
+        working-directory: webview-ui
+
+      # A wrong-configuration build still exits 0, so assert the output is the PWA target:
+      # its own index.html (app-pwa-shell, from index.pwa.html) plus the service worker,
+      # manifest and Pages headers that only the pwa configuration emits.
+      - name: Verify PWA bundle
+        run: |
+          cd webview-ui/build-pwa/browser
+          for f in index.html manifest.webmanifest ngsw.json ngsw-worker.js _headers _redirects; do
+            test -f "$f" || { echo "::error::PWA build is missing $f"; exit 1; }
+          done
+          grep -q "app-pwa-shell" index.html \
+            || { echo "::error::index.html was not built from index.pwa.html"; exit 1; }
+          echo "PWA bundle verified."
+
+  extension:
+    name: Extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
 
       - name: Lint extension
         run: npm run lint
@@ -41,12 +127,7 @@ jobs:
       - name: Compile extension
         run: npm run compile
 
-      - name: Build webview
-        run: npm run build:webview
-
-      - name: Run webview tests
-        run: npm run test:ci
-        working-directory: webview-ui
-
+      # vscode-test drives a real VS Code instance, which needs a display on the runner.
+      # The suite does not read webview-ui/build, so no webview build is needed here.
       - name: Run extension tests
         run: xvfb-run -a npm test

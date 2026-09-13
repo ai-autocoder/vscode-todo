@@ -6,12 +6,50 @@
 }
 
 .new-todo-container {
+	/*
+	 * The composer's one-line height, shared by the field and the Add button beside it. The
+	 * field autosizes as you type, so without a shared number the button stretches with the row
+	 * and grows taller with every extra line. The textarea floors itself at this (the rule is in
+	 * styles.css, since the textarea belongs to another component) and the button is fixed to it.
+	 *
+	 * The line-height is explicit rather than `normal` because `normal` is a font metric CSS
+	 * cannot re-derive for the button, so the two boxes would drift apart under a theme font with
+	 * different metrics. 1.25 is what the default font's `normal` already resolves to, so the
+	 * composer keeps the height it has today. The rest of the box is the textarea's own padding
+	 * (--design-unit * 2px per side) and its 1px borders.
+	 *
+	 * Declared here rather than on :root so --design-unit resolves in the same inheritance
+	 * context as the padding it stands in for — the toolkit writes its tokens onto
+	 * document.body, not the document element. The 4 fallback is the toolkit's own default,
+	 * and keeps the calc valid (rather than silently dropping both declarations) on a host that
+	 * never sets the token at all.
+	 */
+	--composer-line-height: 1.25;
+	--composer-field-height: calc(
+		var(--app-font-size) * var(--composer-line-height) + var(--design-unit, 4) * 4px + 2px
+	);
+
 	display: flex;
+	/* Pin the button to the bottom edge, where it stays put while the field grows upward. */
+	align-items: flex-end;
 	gap: 7px;
 	width: 100%;
 	margin: 3px 0;
 	padding: 0 5px;
-	align-items: flex-end;
+}
+
+/*
+ * Touch: the 3px vertical margin stacks on the app's 8px outer gutter, so the composer sat
+ * 11px from the bottom edge while every other side kept 8px — the gap read as uneven. Let the
+ * gutter be the only thing spacing it, and match the list rows' 2px side padding instead of
+ * the desktop 5px so the composer lines up with the items above it.
+ */
+@media (pointer: coarse) {
+	.new-todo-container {
+		margin: 0;
+		padding: 0 2px;
+	}
+
 }
 
 autosize-text-area {
@@ -22,11 +60,52 @@ autosize-text-area {
 /* Border + radius normalization is global (styles.css). Only the Add button's
    padding and label size are specific to this view. */
 vscode-button {
-	padding: 2px 9px;
+	padding: 0 9px;
+}
+
+/*
+ * A fixed height, matching the field's one line, instead of whatever the row happens to be:
+ * the composer is a flex row, so a button left to size itself grew taller with every line
+ * typed into the textarea. --composer-field-height is the same number the field floors itself
+ * at, so the two still read as one bar.
+ *
+ * On the host rather than ::part(control) because the host carries the 1px border from
+ * styles.css and is border-box, so this is the full outer height the field is measured by.
+ * Scoped to the container so the selection toolbar's buttons keep their own sizing.
+ */
+.new-todo-container vscode-button {
+	height: var(--composer-field-height);
+}
+
+/* Let the control fill that height instead of imposing a floor of its own — the toolkit's
+   own min-height, and the touch floor below, would otherwise overflow the host. */
+.new-todo-container vscode-button::part(control) {
+	min-height: 0;
+	height: 100%;
 }
 
 vscode-button::part(content) {
 	font-size: var(--vscode-editor-font-size);
+}
+
+/*
+ * Touch sizing for this view's buttons. Must come *after* the plain `vscode-button` rules
+ * above: they are the same specificity, so a media query placed earlier in the file would
+ * silently lose to them.
+ */
+@media (pointer: coarse) {
+	/* The label is pinned to the editor font (13px), set for dense desktop UI, which reads as
+	   undersized beside the composer's own 16px text right next to it. */
+	vscode-button::part(content) {
+		font-size: var(--app-font-size);
+	}
+
+	/* The selection toolbar's buttons: a lighter floor than the 48px standalone text buttons
+	   get, so the toolbar stays compact. The Add button is no longer one of these — it takes
+	   its height from --composer-field-height above, which outranks this on specificity. */
+	vscode-button::part(control) {
+		min-height: 40px;
+	}
 }
 
 .selection-toolbar {

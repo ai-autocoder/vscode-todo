@@ -1,11 +1,16 @@
 <div class="header-container">
 	<div class="header-search">
 		<div class="search-bar" role="search">
+			<!--
+				The placeholder is deliberately shorter than the aria-label: four icon buttons share
+				this row, and the full wording truncates mid-word ("Search todos ar") once the input
+				is down to a phone's ~120px or a narrow sidebar's. Assistive tech reads the label.
+			-->
 			<input
 				#searchInput
 				id="todo-search-input"
 				type="search"
-				placeholder="Search todos and notes"
+				placeholder="Search todos"
 				aria-label="Search todos and notes"
 				[value]="searchQuery()"
 				(input)="onSearchInput($event)"
@@ -57,6 +62,32 @@
 				<app-icon [name]="syncInfo.modeIcon"></app-icon>
 			</span>
 		</vscode-button>
+	}
+
+	@if (syncIndicator | async; as indicator) {
+		@if (indicator.visible) {
+			<!--
+				Sits between the sync pill and the menu: the pill is where sync is *configured*,
+				this is what it is *doing*. Dirty and Error act as a "sync now" button; the other
+				states are informational, so the click is refused in the handler rather than by
+				`disabled`, which would take the tooltip — the only place the detail lives — with it.
+			-->
+			<vscode-button
+				class="sync-indicator"
+				appearance="icon"
+				[class.status-dirty]="indicator.status === 'dirty'"
+				[class.status-error]="indicator.status === 'error'"
+				[class.actionable]="indicator.actionable"
+				[attr.aria-disabled]="indicator.actionable ? null : 'true'"
+				[aria-label]="indicator.ariaLabel"
+				[title]="indicator.tooltip"
+				(click)="syncFromIndicator(indicator)"
+			>
+				<span>
+					<app-icon [name]="indicator.icon" [class.spinning]="indicator.spinning"></app-icon>
+				</span>
+			</vscode-button>
+		}
 	}
 
 	<vscode-button
@@ -126,19 +157,21 @@
 			</button>
 		}
 
-		@if (mcpControlInfo | async; as mcpInfo) {
-			<button
-				mat-menu-item
-				(click)="toggleMcp(mcpInfo.status)"
-				[disabled]="mcpInfo.disabled"
-				[title]="mcpInfo.tooltip"
-				[aria-label]="mcpInfo.ariaLabel"
-			>
-				<span class="submenu-content">
-					<app-icon [name]="mcpInfo.icon"></app-icon>
-					<span style="margin-left: 8px;">{{ mcpInfo.status.running ? "Stop MCP Server" : "Start MCP Server" }}</span>
-				</span>
-			</button>
+		@if (isMcpSupported) {
+			@if (mcpControlInfo | async; as mcpInfo) {
+				<button
+					mat-menu-item
+					(click)="toggleMcp(mcpInfo.status)"
+					[disabled]="mcpInfo.disabled"
+					[title]="mcpInfo.tooltip"
+					[aria-label]="mcpInfo.ariaLabel"
+				>
+					<span class="submenu-content">
+						<app-icon [name]="mcpInfo.icon"></app-icon>
+						<span style="margin-left: 8px;">{{ mcpInfo.status.running ? "Stop MCP Server" : "Start MCP Server" }}</span>
+					</span>
+				</button>
+			}
 		}
 
 		<mat-divider></mat-divider>
@@ -177,7 +210,7 @@
 				<span class="menu-label">Sync - {{ syncInfo.scopeLabel }}</span>
 			</button>
 
-			@if (syncInfo.isUserScope) {
+			@if (isSyncModeSelectable && syncInfo.isUserScope) {
 				<button
 					mat-menu-item
 					(click)="setUserSyncMode('profile-local')"
@@ -228,7 +261,7 @@
 				</button>
 			}
 
-			@if (!syncInfo.isUserScope) {
+			@if (isSyncModeSelectable && !syncInfo.isUserScope) {
 				<button
 					mat-menu-item
 					(click)="setWorkspaceSyncMode('local')"
@@ -263,7 +296,9 @@
 				</button>
 			}
 
-			<mat-divider></mat-divider>
+			@if (isSyncModeSelectable) {
+				<mat-divider></mat-divider>
+			}
 
 			<button mat-menu-item disabled class="menu-section-label" aria-label="GitHub status">
 				<span class="menu-label">

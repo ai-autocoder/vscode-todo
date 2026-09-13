@@ -15,6 +15,38 @@ export type { McpStatus } from "../mcp/mcpStatus";
 export type UserSyncMode = "profile-local" | "profile-sync" | "github";
 export type WorkspaceSyncMode = "local" | "github";
 
+/**
+ * The live sync state of one scope, as the webview sees it. Values match
+ * `SyncStatus` in src/sync/syncTypes.ts (and its copy in @vsc-todo/core, which the PWA
+ * gateway reports against) — a string union rather than the enum so the webview bundle does
+ * not have to pick one of the two as the contract.
+ */
+export type SyncStatusValue = "synced" | "dirty" | "syncing" | "error" | "offline";
+
+/**
+ * One scope's live sync state, plus whether a manual sync is worth offering for it.
+ *
+ * `canRetry` is not derivable from `status`. The PWA classifies its failures (gist-gateway's
+ * `recordSyncFailure`) and deliberately withholds a retry from the ones re-sending cannot fix —
+ * a revoked token, a deleted gist — because the working recovery is reconnecting or picking
+ * another gist. Without this flag the header would offer "try again" for exactly those, next to
+ * a banner that pointedly does not.
+ */
+export type SyncScopeStatus = {
+	status: SyncStatusValue;
+	canRetry: boolean;
+};
+
+export type SyncStatusInfo = {
+	/**
+	 * True while either scope is talking to the gist. Kept alongside the per-scope values for
+	 * the spinning glyph on "Sync all now", which is deliberately scope-agnostic.
+	 */
+	isSyncing: boolean;
+	user: SyncScopeStatus;
+	workspace: SyncScopeStatus;
+};
+
 export type GitHubSyncInfo = {
 	isGitHubSyncEnabled: boolean;
 	userSyncEnabled: boolean;
@@ -89,7 +121,7 @@ type MessagePayload<T, L> = T extends
 												: T extends MessageActionsToWebview.updateGitHubSyncInfo
 													? GitHubSyncInfo
 													: T extends MessageActionsToWebview.updateSyncStatus
-														? { isSyncing: boolean }
+														? SyncStatusInfo
 														: T extends MessageActionsToWebview.updateMcpStatus
 															? McpStatus
 															: never;
@@ -438,10 +470,10 @@ export const messagesToWebview = {
 		payload,
 	}),
 	updateSyncStatus: (
-		isSyncing: boolean
-	): { type: MessageActionsToWebview.updateSyncStatus; payload: { isSyncing: boolean } } => ({
+		payload: SyncStatusInfo
+	): { type: MessageActionsToWebview.updateSyncStatus; payload: SyncStatusInfo } => ({
 		type: MessageActionsToWebview.updateSyncStatus,
-		payload: { isSyncing },
+		payload,
 	}),
 	updateMcpStatus: (
 		payload: McpStatus

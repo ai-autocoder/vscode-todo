@@ -1,26 +1,39 @@
+/**
+ * Todo types for the extension.
+ *
+ * The data model itself is the cross-device interop contract — everything serialized into a
+ * GitHub Gist is built from it — so it lives in `@vsc-todo/core` and is re-exported here rather
+ * than kept as a second copy. Only the Redux-store-specific types below are extension-only.
+ *
+ * Import from here as before; add new *shared* shapes to `packages/core/src/todoTypes.ts`.
+ */
+
 import { RootState } from "./store";
+import { TodoFilesDataPaths } from "../core";
 
-export interface Todo {
-	id: number;
-	text: string;
-	completed: boolean;
-	creationDate: string;
-	completionDate?: string;
-	isMarkdown: boolean;
-	isNote: boolean;
-	collapsed?: boolean;
-	/**
-	 * Optional, normalized list of tags (see {@link "../todo/tagUtils"}). Absent on items
-	 * created before the Tags feature, so existing stored/synced data loads unchanged.
-	 */
-	tags?: string[];
-}
+export {
+	TodoScope,
+	ExportScopes,
+	MarkdownImportScopes,
+	ExportFormats,
+	ImportFormats,
+} from "../core";
 
-export enum TodoScope {
-	user = "user",
-	workspace = "workspace",
-	currentFile = "currentFile",
-}
+export type {
+	Todo,
+	TodoCount,
+	TodoSlice,
+	CurrentFileSlice,
+	TodoFilesData,
+	TodoFilesDataPathsEntry,
+	TodoFilesDataPaths,
+	TodoFilesDataPartialInput,
+	TodoPartialInput,
+	ExportObject,
+	ImportObject,
+} from "../core";
+
+// --- Redux-store-specific (extension only) ---
 
 export enum Slices {
 	unset = "",
@@ -29,25 +42,6 @@ export enum Slices {
 	currentFile = "currentFile",
 	editorFocusAndRecords = "editorFocusAndRecords",
 	actionTracker = "actionTracker",
-}
-
-export type TodoCount = {
-	workspace: number;
-	user: number;
-	currentFile: number;
-};
-
-export interface TodoSlice {
-	todos: Todo[];
-	lastActionType: string;
-	numberOfTodos: number;
-	numberOfNotes: number;
-	scope: TodoScope;
-}
-
-export interface CurrentFileSlice extends TodoSlice {
-	filePath: string;
-	isPinned: boolean;
 }
 
 export interface EditorFocusAndRecordsSlice {
@@ -62,57 +56,4 @@ export interface StoreState extends RootState {}
 // Middleware
 export interface ActionTrackerState {
 	lastSliceName: Slices;
-}
-
-export interface TodoFilesData {
-	[filePath: string]: Todo[];
-}
-
-export interface TodoFilesDataPathsEntry {
-	absPaths: string[];
-	relPaths: string[];
-}
-
-export interface TodoFilesDataPaths {
-	[primaryFilePath: string]: TodoFilesDataPathsEntry;
-}
-
-export interface TodoFilesDataPartialInput {
-	[filePath: string]: TodoPartialInput[];
-}
-
-export type TodoPartialInput = Partial<Omit<Todo, "text">> & Pick<Todo, "text">;
-
-export interface ExportObject {
-	user?: Todo[];
-	workspace?: Todo[];
-	files?: TodoFilesData;
-	filesDataPaths?: TodoFilesDataPaths;
-}
-export interface ImportObject {
-	user?: TodoPartialInput[];
-	workspace?: TodoPartialInput[];
-	files?: TodoFilesDataPartialInput;
-	filesDataPaths?: TodoFilesDataPaths;
-}
-
-export enum ExportScopes {
-	user = "User",
-	workspace = "Workspace",
-	files = "Files (all)",
-	currentFile = "File",
-}
-
-export enum MarkdownImportScopes {
-	user = "User",
-	workspace = "Workspace",
-	currentFile = "File",
-}
-export enum ExportFormats {
-	JSON = "json",
-	MARKDOWN = "md",
-}
-export enum ImportFormats {
-	JSON = "json",
-	MARKDOWN = "md",
 }

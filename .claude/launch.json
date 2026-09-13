@@ -1,0 +1,11 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "pwa",
+			"runtimeExecutable": "npm",
+			"runtimeArgs": ["run", "start:webview:pwa"],
+			"port": 4200
+		}
+	]
+}

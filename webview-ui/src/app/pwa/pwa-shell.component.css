@@ -1,0 +1,306 @@
+:host {
+	display: block;
+	height: 100%;
+}
+
+/* Fixed, not static: the picker overlays the still-mounted app. In normal flow it landed below
+   a full-height <app-root>, off-screen, so opening it looked like nothing happened. */
+.connect-screen {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	overflow-y: auto;
+	display: flex;
+	justify-content: center;
+	padding: 16px;
+	background-color: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-font-family);
+}
+
+.card {
+	width: 100%;
+	max-width: 420px;
+	/* Centers vertically, but degrades to top-aligned scrolling when taller than the viewport;
+	   `align-items: center` would clip the card's top out of reach instead. */
+	margin: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 24px;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 8px;
+	background-color: var(--vscode-editorWidget-background);
+}
+
+h1,
+p,
+label {
+	margin: 0;
+}
+
+h1 {
+	font-size: 1.4em;
+	color: var(--vscode-settings-headerForeground);
+}
+
+.subtitle,
+.hint,
+label {
+	color: var(--vscode-descriptionForeground);
+	font-size: 0.9em;
+}
+
+.error {
+	color: var(--vscode-errorForeground);
+}
+
+/* Summary of the gist currently in use, shown above the picker. */
+.current-gist {
+	display: flex;
+	flex-direction: column;
+	padding: 8px 10px;
+	border-left: 2px solid var(--vscode-focusBorder);
+	word-break: break-all;
+}
+
+.user-code {
+	align-self: center;
+	padding: 10px 18px;
+	border: 1px dashed var(--vscode-focusBorder);
+	border-radius: 6px;
+	font-family: monospace;
+	font-size: 1.8em;
+	letter-spacing: 0.15em;
+	user-select: all;
+}
+
+button,
+.link-button {
+	padding: 8px 14px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 4px;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	font-family: inherit;
+	font-size: 0.95em;
+	text-align: center;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+button.primary,
+.link-button.primary {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+button.primary:hover,
+.link-button.primary:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Gist id truncated to one line — `min-width: 0` is what lets a flex item shrink below its
+   content so the ellipsis appears at all. */
+.gist-row .hint {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A link, not a button: it modifies the value beside it and must stay lighter than Cancel. */
+.gist-row button {
+	flex: none;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	text-decoration: underline;
+}
+
+.row > * {
+	flex: 1;
+}
+
+input,
+select {
+	padding: 8px;
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-family: inherit;
+	font-size: 0.95em;
+}
+
+input::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+/* Name field for a new list, wrapped in the two affixes the gist naming convention fixes.
+   `min-width: 0` is what lets the input shrink inside the flex row instead of pushing the
+   ".json" past the card's edge on a phone. */
+.new-file {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.new-file input {
+	flex: 1;
+	min-width: 0;
+}
+
+.affix {
+	flex: none;
+	color: var(--vscode-descriptionForeground);
+	font-family: monospace;
+	font-size: 0.9em;
+}
+
+code {
+	font-family: monospace;
+}
+
+/* In normal flow at the top of the shell, like the sync-failure banner and for the same reason:
+   a fixed banner has to be given a height for the app to be shortened by, and no fixed height
+   survives the coarse-pointer font size — see the layout note in pwa/vscode-theme.css, which
+   turns the shell into a flex column while a banner is up. `flex: none` keeps this row at its
+   own height inside that column; `min-height` rather than `height` so it can still grow. */
+.conflict-banner {
+	flex: none;
+	display: flex;
+	align-items: center;
+	/* Grouped, not spanned: the bar is full-width but at desktop widths a `flex: 1` label would
+	   strand "Review" a thousand pixels from the text it belongs to. */
+	justify-content: center;
+	gap: 8px;
+	min-height: 44px;
+	padding: 0 12px;
+	border: none;
+	border-bottom: 1px solid var(--vscode-panel-border);
+	border-radius: 0;
+	background-color: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
+	font-family: inherit;
+	font-size: 0.9em;
+	text-align: left;
+	cursor: pointer;
+}
+
+.conflict-count {
+	flex: none;
+	min-width: 20px;
+	padding: 2px 6px;
+	border-radius: 10px;
+	background-color: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	font-size: 0.85em;
+	text-align: center;
+}
+
+/* `min-width: 0` is what lets the flex item shrink below its content so the ellipsis appears
+   instead of the Review affordance being pushed off the right edge on a narrow phone. */
+.conflict-text {
+	/* Shrinks to an ellipsis on a phone, but does not grow to fill a desktop window. */
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.conflict-cta {
+	flex: none;
+	color: var(--vscode-textLink-foreground);
+	text-decoration: underline;
+}
+
+/*
+	Import/export prompt + result notice. These sit over the running app (unlike the connect
+	screen, which replaces it), so they need their own stacking context and a scrim.
+*/
+.ie-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.ie-panel {
+	width: 100%;
+	max-width: 360px;
+	padding: 16px;
+	border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+	border-radius: 6px;
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-foreground, #ccc);
+}
+
+.ie-panel h2 {
+	margin: 0 0 4px;
+	font-size: 1.1em;
+}
+
+.ie-file {
+	margin: 0 0 12px;
+	opacity: 0.75;
+	overflow-wrap: anywhere;
+}
+
+.ie-choice {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	/* Coarse-pointer rows need a real touch target; matches the 48px used app-wide. */
+	min-height: var(--touch-target-size, 32px);
+	overflow-wrap: anywhere;
+}
+
+.ie-toast {
+	position: fixed;
+	/* Clear of the composer, which is pinned to the bottom on mobile. */
+	bottom: 72px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: calc(100% - 32px);
+	max-width: 360px;
+	padding: 10px 12px;
+	border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+	border-radius: 6px;
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-foreground, #ccc);
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.ie-toast-error {
+	border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.ie-dismiss {
+	margin-left: auto;
+	padding: 0 6px;
+	border: none;
+	background: none;
+	color: inherit;
+	font-size: 1.2em;
+	line-height: 1;
+	cursor: pointer;
+	min-width: var(--touch-target-size, 32px);
+	min-height: var(--touch-target-size, 32px);
+}

@@ -1,0 +1,192 @@
+<div class="review">
+	<header class="review-header">
+		<div class="titles">
+			<h1>Review sync changes</h1>
+			<p class="subtitle">
+				These changed on both devices while you were away. This device's version was kept — change any
+				of them here.
+			</p>
+		</div>
+		<button class="primary done" (click)="close()">Done</button>
+	</header>
+
+	@if (views.length > 0) {
+		<div class="bulk">
+			<button (click)="keepAllFromOtherDevice()">Use other device for all</button>
+			<button (click)="dismissAll()">Keep this device for all</button>
+		</div>
+	}
+	@if (bulkMessage) {
+		<p class="bulk-message">{{ bulkMessage }}</p>
+	}
+
+	@if (views.length === 0) {
+		<p class="empty">Nothing left to review.</p>
+	}
+
+	<ul class="cards">
+		@for (view of views; track view.conflict.key) {
+			<li class="card" [class.is-stale]="view.stale">
+				<header class="card-header">
+					<span class="chip">{{ scopeLabel(view.conflict) }}</span>
+					<span class="headline">{{ headline(view) }}</span>
+				</header>
+
+				@if (keptBoth(view); as both) {
+					<p class="note">
+						Both were kept. These were two different items that happened to be created with the same id,
+						not two versions of one item, so the other device's was added to your list as a new item.
+					</p>
+					<div class="sides">
+						<div class="side">
+							<span class="side-label">This device</span>
+							<p class="side-text">{{ both.local.text }}</p>
+							<p class="side-meta">{{ summary(both.local) }}</p>
+						</div>
+						<div class="side">
+							<span class="side-label">Other device — added</span>
+							<p class="side-text">{{ both.remote.text }}</p>
+							<p class="side-meta">{{ summary(both.remote) }}</p>
+						</div>
+					</div>
+					<div class="actions">
+						<button class="primary" (click)="keepThisDevice(view)">Keep both</button>
+						@if (view.stale) {
+							<span class="hint">The added copy is no longer in your list.</span>
+						} @else {
+							<button (click)="removeAddedCopy(view)">Remove the added copy</button>
+						}
+					</div>
+				} @else {
+					@if (todoConflict(view); as todo) {
+						<div class="sides">
+							<div class="side kept">
+								<span class="side-label">This device — kept</span>
+								@if (todo.local) {
+									<p class="side-text">{{ todo.local.text }}</p>
+									<p class="side-meta">{{ summary(todo.local) }}</p>
+								} @else {
+									<p class="side-text gone">Deleted here</p>
+								}
+							</div>
+							<div class="side">
+								<span class="side-label">Other device</span>
+								@if (todo.remote) {
+									<p class="side-text">{{ todo.remote.text }}</p>
+									<p class="side-meta">{{ summary(todo.remote) }}</p>
+								} @else {
+									<p class="side-text gone">Deleted there</p>
+								}
+							</div>
+						</div>
+					}
+
+					@if (fileConflict(view); as file) {
+						<p class="note">
+							Both versions keep everything either device added to this file — they differ only on
+							the todos that were changed in both places. Show items to compare them, or open the
+							File tab after the review.
+						</p>
+						<div class="sides">
+							<div class="side kept">
+								<span class="side-label">This device — kept</span>
+								@if (file.local) {
+									<p class="side-text">
+										{{ file.local.length }} {{ file.local.length === 1 ? "item" : "items" }}
+									</p>
+								} @else {
+									<p class="side-text gone">Removed here</p>
+								}
+							</div>
+							<div class="side">
+								<span class="side-label">Other device</span>
+								@if (file.remote) {
+									<p class="side-text">
+										{{ file.remote.length }} {{ file.remote.length === 1 ? "item" : "items" }}
+									</p>
+								} @else {
+									<p class="side-text gone">Removed there</p>
+								}
+							</div>
+						</div>
+						<button class="link" (click)="togglePreview(file.key)">
+							{{ expandedPreviewKey === file.key ? "Hide items" : "Show items" }}
+						</button>
+						@if (expandedPreviewKey === file.key) {
+							<div class="sides preview">
+								<ul class="side">
+									@for (todo of file.local ?? []; track todo.id) {
+										<li>{{ todo.text }}</li>
+									} @empty {
+										<li class="gone">No items</li>
+									}
+								</ul>
+								<ul class="side">
+									@for (todo of file.remote ?? []; track todo.id) {
+										<li>{{ todo.text }}</li>
+									} @empty {
+										<li class="gone">No items</li>
+									}
+								</ul>
+							</div>
+						}
+					}
+
+					@if (staleConfirmKey === view.conflict.key) {
+						<p class="warn">
+							You changed this on this device after the sync. Using the other device's version will
+							overwrite that change.
+						</p>
+						<div class="actions">
+							<button class="danger" (click)="confirmOverwrite()">Overwrite anyway</button>
+							<button (click)="cancelOverwrite()">Cancel</button>
+						</div>
+					} @else {
+						@if (view.stale) {
+							<p class="warn">You've changed this on this device since the sync.</p>
+						}
+						<div class="actions">
+							<button class="primary" (click)="keepOtherDevice(view)">Use other device</button>
+							<button (click)="keepThisDevice(view)">Keep this device</button>
+							@if (canMerge(view)) {
+								<button (click)="toggleMerge(view.conflict.key)">
+									{{ expandedMergeKey === view.conflict.key ? "Cancel merge" : "Merge fields" }}
+								</button>
+							}
+						</div>
+					}
+
+					@if (expandedMergeKey === view.conflict.key) {
+						<div class="merge">
+							<p class="hint">Pick a side for each field that differs.</p>
+							@for (diff of diffs(view); track diff.field) {
+								<div class="merge-row">
+									<span class="merge-label">{{ diff.label }}</span>
+									<div class="merge-options">
+										<button
+											class="merge-option"
+											[class.chosen]="pickOf(view.conflict.key, diff.field) === 'local'"
+											(click)="pick(view.conflict.key, diff.field, 'local')"
+										>
+											<span class="merge-origin">This device</span>
+											<span class="merge-value">{{ diff.localText }}</span>
+										</button>
+										<button
+											class="merge-option"
+											[class.chosen]="pickOf(view.conflict.key, diff.field) === 'remote'"
+											(click)="pick(view.conflict.key, diff.field, 'remote')"
+										>
+											<span class="merge-origin">Other device</span>
+											<span class="merge-value">{{ diff.remoteText }}</span>
+										</button>
+									</div>
+								</div>
+							}
+							<button class="primary" (click)="applyMerge(view)">Apply merge</button>
+						</div>
+					}
+				}
+			</li>
+		}
+	</ul>
+</div>

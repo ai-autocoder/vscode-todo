@@ -2,14 +2,39 @@ main {
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
+	/* Mobile browsers resolve 100vh against the *largest* viewport (URL bar retracted), so the
+	   layout overflows by the height of the bar. `dvh` tracks the visible viewport instead;
+	   the 100vh above stays as the fallback for engines without it. */
+	height: 100dvh;
 	padding: 0.25rem 0.125rem;
+
+	/* The 4px/2px inset above reads as uneven on a phone, where the search field sits right
+	   against the left edge while the header keeps a wider gap on the right. An even gutter
+	   frames the whole app consistently. Touch only — the extension's sidebar is narrow and
+	   keeps every pixel of width. */
+	@media (pointer: coarse) {
+		padding: 8px;
+		/* `viewport-fit=cover` (index.pwa.html) lets the page extend under the system gesture
+		   bar, so the composer's bottom edge sat ~7px behind the pill on a gesture-nav phone.
+		   The inset is 0 in the extension webview, where `max()` collapses back to the 8px. */
+		padding-bottom: max(8px, env(safe-area-inset-bottom));
+	}
 }
 
 vscode-panels,
 todo-list {
 	width: 100%;
 	height: 100%;
+	/* Both are flex items; without this their `min-width: auto` floor keeps the list at its
+	   content width on a narrow screen, so `overflow-x: hidden` below clips the overhang
+	   instead of the layout adapting to it. */
+	min-width: 0;
 	overflow-x: hidden;
+	/* `overflow-x: hidden` alone promotes the *other* axis from `visible` to `auto` (CSS
+	   Overflow 3 §3), so this element silently became a second scroller wrapping the list's
+	   own `.cdk-drop-list` — two nested scrollbars for one list. Pin Y to hidden so the
+	   inner list stays the only scroll container. */
+	overflow-y: hidden;
 	flex-grow: 1;
 }
 

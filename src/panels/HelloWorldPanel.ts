@@ -26,7 +26,13 @@ import { getCurrentThemeKind } from "../utilities/currentTheme";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { getGistId } from "../utilities/syncConfig";
-import { Message, MessageActionsFromWebview, messagesToWebview, GitHubSyncInfo } from "./message";
+import {
+	Message,
+	MessageActionsFromWebview,
+	messagesToWebview,
+	GitHubSyncInfo,
+	SyncStatusInfo,
+} from "./message";
 import type { McpStatus } from "./message";
 import { ExportFormats } from "../todo/todoTypes";
 import { ImportFormats } from "../todo/todoTypes";
@@ -39,7 +45,7 @@ import {
 } from "../todo/todoUtils";
 import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
-import { getGitHubSyncInfo } from "../utilities/syncInfo";
+import { getGitHubSyncInfo, getSyncStatusInfo } from "../utilities/syncInfo";
 import McpServerHost from "../mcp/McpServerHost";
 
 /**
@@ -189,6 +195,7 @@ export class HelloWorldPanel {
 		this._panel.webview.postMessage(messagesToWebview.reloadWebview(currentState, config));
 		await this.postGitHubStatus();
 		this.postGitHubSyncInfo();
+		this.postSyncStatus();
 		this.postMcpStatus();
 	}
 
@@ -218,8 +225,8 @@ export class HelloWorldPanel {
 		this._panel.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
 	}
 
-	public updateSyncStatus(isSyncing: boolean) {
-		this._panel.webview.postMessage(messagesToWebview.updateSyncStatus(isSyncing));
+	public updateSyncStatus(info: SyncStatusInfo) {
+		this._panel.webview.postMessage(messagesToWebview.updateSyncStatus(info));
 	}
 
 	public updateMcpStatus(status: McpStatus) {
@@ -317,6 +324,11 @@ export class HelloWorldPanel {
 	private postGitHubSyncInfo(): void {
 		const info = getGitHubSyncInfo(this._context);
 		this._panel.webview.postMessage(messagesToWebview.updateGitHubSyncInfo(info));
+	}
+
+	/** See TodoViewProvider.postSyncStatus. */
+	private postSyncStatus(): void {
+		this._panel.webview.postMessage(messagesToWebview.updateSyncStatus(getSyncStatusInfo()));
 	}
 
 	private postMcpStatus(): void {

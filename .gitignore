@@ -5,3 +5,5 @@ out
 .vscode/settings.json
 .mcp.json
 *.vsix
+# Wrangler state from `npm run deploy:pwa`, which runs wrangler from the repo root.
+.wrangler/

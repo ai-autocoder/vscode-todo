@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="VS Code Todo">
+	<rect width="512" height="512" rx="96" fill="#0078d4"/>
+	<g fill="none" stroke="#ffffff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+		<!-- check 1 -->
+		<polyline points="120,168 152,200 208,140"/>
+		<line x1="256" y1="170" x2="392" y2="170"/>
+		<!-- check 2 -->
+		<polyline points="120,278 152,310 208,250"/>
+		<line x1="256" y1="280" x2="392" y2="280"/>
+		<!-- check 3 -->
+		<polyline points="120,388 152,420 208,360"/>
+		<line x1="256" y1="390" x2="392" y2="390"/>
+	</g>
+</svg>

@@ -4,6 +4,7 @@
 >
   <div class="todo-list-scroll">
     <div
+      #listScroll
       cdkDropList
       (cdkDropListDropped)="onDrop($event)"
       [cdkDropListSortPredicate]="sortPredicate"
@@ -18,7 +19,8 @@
           [attr.data-id]="todo.id"
           cdkDrag
           [cdkDragData]="todo"
-          [cdkDragDisabled]="isFilterActive"
+          [cdkDragDisabled]="isFilterActive || hasSelection"
+          [cdkDragStartDelay]="dragStartDelay"
           (cdkDragStarted)="dragStarted()"
           (cdkDragEnded)="dragEnded()"
           [class.is-selected]="isSelected(todo.id)"
@@ -33,6 +35,7 @@
               [selectionMode]="hasSelection"
               [selectionCount]="selectedCount"
               (delete)="handleDelete($event)"
+              (selectRequest)="handleSelectRequest($event)"
               [class.note]="todo.isNote"
             >
             </todo-item>

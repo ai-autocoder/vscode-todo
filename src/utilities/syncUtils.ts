@@ -18,7 +18,8 @@ import LogChannel from "./LogChannel";
 import { HelloWorldPanel } from "../panels/HelloWorldPanel";
 import { TodoViewProvider } from "../panels/TodoViewProvider";
 import { getGistId } from "./syncConfig";
-import { getGitHubSyncInfo } from "./syncInfo";
+import { getGitHubSyncInfo, recordSyncStatusInfo } from "./syncInfo";
+import { SyncStatus } from "../sync/syncTypes";
 
 /**
  * Reload store data from storage for a specific scope
@@ -118,6 +119,26 @@ export function notifyGitHubStatusChange(isConnected: boolean): void {
 	HelloWorldPanel.currentPanel?.updateGitHubStatus(isConnected, hasGistId);
 	TodoViewProvider.currentProvider?.updateGitHubStatus(isConnected, hasGistId);
 	LogChannel.log(`[SyncUtils] Notified webviews of GitHub status: ${isConnected}`);
+}
+
+/**
+ * Push the live per-scope sync state to every open webview, and remember it so a webview that
+ * reloads can be handed the current state instead of the default.
+ *
+ * Both scopes go out together: the header indicator renders the *current tab's* scope, which
+ * is not necessarily the one whose status just changed, so sending only the changed scope
+ * would leave the other glyph stale until that scope happened to sync.
+ */
+export function notifySyncStatus(syncManager: {
+	getStatus(scope: "user" | "workspace"): SyncStatus;
+}): void {
+	const info = recordSyncStatusInfo(
+		syncManager.getStatus("user"),
+		syncManager.getStatus("workspace")
+	);
+
+	HelloWorldPanel.currentPanel?.updateSyncStatus(info);
+	TodoViewProvider.currentProvider?.updateSyncStatus(info);
 }
 
 export function notifyGitHubSyncInfo(context: vscode.ExtensionContext): void {
