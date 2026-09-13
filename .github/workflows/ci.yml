@@ -64,12 +64,25 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: webview-ui/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            webview-ui/package-lock.json
 
       # The Karma suite runs in headless Chrome; provision it explicitly so the job does
       # not silently depend on the runner image bundling a browser.
       - name: Setup Chrome
         uses: browser-actions/setup-chrome@v1
+
+      # The webview imports the extension's own src/ for shared types (todoTypes, panels/
+      # message, utilities/config), and those files pull in @reduxjs/toolkit and the vscode
+      # typings, which live in the ROOT package.json. TypeScript finds them by walking up to
+      # the root node_modules, so without this install every webview build and the Karma suite
+      # fail with TS2307 on '@reduxjs/toolkit' and 'vscode'. It works locally only because a
+      # developer always has the root tree installed. Do not drop this step when editing this job,
+      # and do not narrow it to --omit=dev: @types/vscode is a devDependency, so a production-only
+      # install re-breaks the job in exactly the same way.
+      - name: Install root dependencies
+        run: npm ci
 
       - name: Install webview dependencies
         run: npm ci
