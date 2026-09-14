@@ -338,7 +338,7 @@
 		"deploy:pwa": "npm run build:webview:pwa && npx wrangler pages deploy webview-ui/build-pwa/browser --project-name plans-app --branch main",
 		"deploy:worker": "npm --prefix worker run deploy",
 		"mcp:inspector": "mcp-inspector",
-		"vscode:prepublish": "npm run compile && npm run build:webview",
+		"vscode:prepublish": "npm prune --include=dev && npm run compile && npm run build:webview",
 		"compile": "npm run clean && tsc -p ./",
 		"watch": "tsc -watch -p ./",
 		"pretest": "npm run compile && npm run lint",

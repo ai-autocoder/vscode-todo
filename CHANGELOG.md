@@ -11,6 +11,7 @@
 - Sync: stop "Skip This Conflict" deleting the todo on both devices, and offer Keep Both for an id collision.
 - Webview: add a per-scope sync status indicator to the header.
 - Webview: scroll a newly added todo into view, show basenames in the per-file todo list, let the todo list shrink below its content width, and remove the duplicate scrollbar wrapping the todo list.
+- Packaging: stop shipping developer-only files in the extension package, cutting the download from about 11 MB to about 8.5 MB.
 - Infra: extract the sync engine, three-way merge, tag rules and IndexedDB stores into `@vsc-todo/core`, shared by both surfaces; add a Cloudflare Worker as the GitHub device-flow CORS proxy; cover core, the webview and both Angular builds in CI.
 - Docs: add ARCHITECTURE.md; document Plans and the deploy targets in the README.
 

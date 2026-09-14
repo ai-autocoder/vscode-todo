@@ -88,6 +88,18 @@ succeeded while shipping nothing.
 | `worker/**` (GitHub device-flow CORS proxy) | Cloudflare **Workers** | `npm run deploy:worker` |
 | `src/**`, **or any shared `webview-ui` file** | VS Code Marketplace / Open VSX | `vsce publish` (maintainer only) |
 
+`vscode:prepublish` prunes before it builds, so **`vsce package` and `vsce publish` delete
+extraneous packages from the root `node_modules`** as a side effect. That is deliberate: vsce asks
+npm for the production tree (`npm list --production`), and npm reports anything *extraneous* as
+part of it, so a package installed with `npm i --no-save` — or left behind by a dependency removed
+from `package.json` — gets shipped to users. Declared `devDependencies` are excluded, which is why
+TypeScript does not ship. Build tooling is the usual candidate: `@vscode/vsce` installed locally
+rather than globally brings about 34 MB of Azure and native-binary files with it, none of which
+belongs in a vsix. If you install a throwaway tool and want it kept, add it to `devDependencies`
+rather than relying on it surviving a publish. The `--include=dev` is load-bearing: plain
+`npm prune` honours `NODE_ENV=production`, which would strip TypeScript and break the compile on
+the next command.
+
 ### `webview-ui/` is shared — most edits hit both surfaces
 
 The extension webview and the PWA are **two builds of one Angular app**, not separate UIs.
