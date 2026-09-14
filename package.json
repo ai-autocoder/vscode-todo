@@ -365,6 +365,7 @@
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.25.2",
-		"@reduxjs/toolkit": "^2.2.1"
+		"@reduxjs/toolkit": "^2.2.1",
+		"zod": "^4.3.5"
 	}
 }
