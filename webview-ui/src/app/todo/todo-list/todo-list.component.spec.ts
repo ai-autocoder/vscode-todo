@@ -122,6 +122,8 @@ describe("TodoList revealing a newly added item", () => {
 	let todos: Todo[];
 	/** The text the composer is waiting for, or null; see TodoService.matchesLocalAdd. */
 	let pendingLocalAddText: string | null;
+	/** The list search, normalized as the service would; empty means no filter. */
+	let searchQuery: string;
 
 	const ROW_HEIGHT = 40;
 	const VIEWPORT_HEIGHT = 100;
@@ -145,6 +147,7 @@ describe("TodoList revealing a newly added item", () => {
 		todos = [1, 2, 3, 4, 5].map((id) => makeTodo(id, `item ${id}`));
 		lastAction$ = new BehaviorSubject<string>("");
 		pendingLocalAddText = null;
+		searchQuery = "";
 
 		const serviceStub: Partial<TodoService> = {
 			get userTodos() {
@@ -153,9 +156,9 @@ describe("TodoList revealing a newly added item", () => {
 			workspaceTodos: [],
 			currentFileTodos: [],
 			userLastAction: lastAction$,
-			normalizedSearchQuery: (() => "") as TodoService["normalizedSearchQuery"],
-			searchQuery: (() => "") as TodoService["searchQuery"],
-			isSearchActive: (() => false) as TodoService["isSearchActive"],
+			normalizedSearchQuery: (() => searchQuery) as TodoService["normalizedSearchQuery"],
+			searchQuery: (() => searchQuery) as TodoService["searchQuery"],
+			isSearchActive: (() => searchQuery.length > 0) as TodoService["isSearchActive"],
 			matchesLocalAdd: (_scope: TodoScope, text: string) => pendingLocalAddText === text,
 			claimLocalAdd: (_scope: TodoScope, text: string) => {
 				if (pendingLocalAddText !== text) {
@@ -283,6 +286,52 @@ describe("TodoList revealing a newly added item", () => {
 		// disabled would disable the enter animation with it.
 		expect(component.isEnterAnimationEnabled).toBeTrue();
 		expect(component.isLeaveAnimationEnabled).toBeTrue();
+	});
+
+	it("finds the composer's item among several that arrive together", async () => {
+		// A sync merges a peer's addition in alongside this one, and a three-way merge splices the
+		// remote item in at its own position — so the composer's is not the first new one. Testing
+		// only the first would miss it here, and unrecoverably: it is in the list from now on.
+		todos.push(makeTodo(6, "added on the phone"), makeTodo(7, "typed here"));
+		pendingLocalAddText = "typed here";
+		const scrollBy = spyOn(container(), "scrollBy");
+		lastAction$.next("user/loadData");
+		await nextFrame();
+
+		expect(scrollBy).toHaveBeenCalledTimes(1);
+		expect((scrollBy.calls.mostRecent().args[0] as ScrollToOptions).top!).toBeGreaterThan(0);
+	});
+
+	it("does not animate when the slice carrying the add also drops rows", async () => {
+		// A wholesale replacement — a file switch, an import — that happens to contain matching
+		// text. The item is still revealed, but animating is not safe: every row this removed
+		// would play the leave animation on its way out.
+		todos = [makeTodo(9, "from somewhere else"), makeTodo(6, "typed here")];
+		pendingLocalAddText = "typed here";
+		const scrollBy = spyOn(container(), "scrollBy");
+		lastAction$.next("user/loadData");
+		await nextFrame();
+
+		expect(component.isEnterAnimationEnabled).toBeFalse();
+		expect(component.isLeaveAnimationEnabled).toBeFalse();
+		expect(scrollBy).not.toHaveBeenCalled(); // two short rows, both already in view
+	});
+
+	it("claims the request even when a filter hides the item, so nothing else can take it", async () => {
+		// A search the new item does not match. The item arrives and is filtered out of view, so
+		// there is nothing to scroll to — and it is in the list from now on, so no later slice can
+		// recognise it as new either. Left unclaimed, the request could only be picked up by
+		// someone else's item that happens to read the same.
+		searchQuery = "item";
+		pendingLocalAddText = "typed here";
+		todos.push(makeTodo(6, "typed here"));
+		const scrollBy = spyOn(container(), "scrollBy");
+		lastAction$.next("user/loadData");
+		await nextFrame();
+
+		expect(component.todos.some((todo) => todo.id === 6)).toBeFalse(); // really hidden
+		expect(scrollBy).not.toHaveBeenCalled();
+		expect(pendingLocalAddText).toBeNull();
 	});
 
 	it("leaves a plain loadData unanimated", async () => {

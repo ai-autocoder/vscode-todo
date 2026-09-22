@@ -135,7 +135,7 @@ export class TodoList implements OnInit, AfterViewInit {
 		// Looked up before the animation flags are set, because those have to be right on the
 		// element as it is created and the pull is what creates it.
 		const localAdd = this.peekLocalAdd();
-		this.handleAnimations(actionType, localAdd !== null);
+		this.handleAnimations(actionType, localAdd?.isIncremental ?? false);
 		this.pullTodos(localAdd);
 	}
 
@@ -145,13 +145,26 @@ export class TodoList implements OnInit, AfterViewInit {
 	 * add frequently lands on a `loadData` instead of on its own slice, because the data-file
 	 * watcher and a gist reload each dispatch one.
 	 *
-	 * Peeks rather than claims — the item may still be filtered out of view, and the request
-	 * should stay claimable by the arrival that actually shows it.
+	 * Every unknown item is tested, not just the first: one slice can carry several — a sync that
+	 * merges in a peer's additions alongside this one, or a block added over MCP — and a three-way
+	 * merge splices a remote addition in at its own position, so the composer's item is not
+	 * reliably the first new one.
+	 *
+	 * `isIncremental` says the arrival only added: no row already on screen is missing from it.
+	 * That is what the animation flags are allowed to key off, since a slice that also replaces
+	 * the list would otherwise animate every displaced row.
 	 */
-	private peekLocalAdd(): Todo | null {
+	private peekLocalAdd(): { item: Todo; isIncremental: boolean } | null {
 		const known = new Set(this.allTodos.map((todo) => todo.id));
-		const added = this.incomingTodos().find((todo) => !known.has(todo.id));
-		return added && this.todoService.matchesLocalAdd(this.scope, added.text) ? added : null;
+		const incoming = this.incomingTodos();
+		const item = incoming.find(
+			(todo) => !known.has(todo.id) && this.todoService.matchesLocalAdd(this.scope, todo.text)
+		);
+		if (!item) {
+			return null;
+		}
+		const incomingIds = new Set(incoming.map((todo) => todo.id));
+		return { item, isIncremental: this.allTodos.every((todo) => incomingIds.has(todo.id)) };
 	}
 
 	private incomingTodos(): Todo[] {
@@ -200,7 +213,7 @@ export class TodoList implements OnInit, AfterViewInit {
 		this.cdRef.detectChanges();
 	}
 
-	private shouldRunReorderAnimation(): boolean {
+	private shouldRunReorderAnimation(carriesLocalAdd = false): boolean {
 		if (!this.isInitialized || this.isDragging) {
 			return false;
 		}
@@ -208,14 +221,18 @@ export class TodoList implements OnInit, AfterViewInit {
 			return false;
 		}
 
-		if (!this.lastActionName || this.lastActionName === "loadData") {
+		// A loadData is normally a wholesale replacement, where animating every row from wherever
+		// it used to be is noise. One that carries the composer's own add and removes nothing is
+		// the workspace scope's ordinary insert, and without this the new row would fade in while
+		// the rows it pushed down jumped.
+		if (!this.lastActionName || (this.lastActionName === "loadData" && !carriesLocalAdd)) {
 			return false;
 		}
 
 		return !this.reorderAnimationExcludedActions.has(this.lastActionName);
 	}
 
-	pullTodos(localAdd: Todo | null = null) {
+	pullTodos(localAdd: { item: Todo; isIncremental: boolean } | null = null) {
 		const prevRects = this.isInitialized ? this.snapshotRects() : new Map<number, DOMRect>();
 		// Captured with the rects, but only while a reveal is mid-flight: `behavior: "smooth"`
 		// keeps scrolling for a few hundred ms, so a pull landing inside that window measures the
@@ -244,12 +261,12 @@ export class TodoList implements OnInit, AfterViewInit {
 		}
 		this.applyFilter(true, suppressAnimations, query);
 
-		if (this.shouldRunReorderAnimation()) {
+		if (this.shouldRunReorderAnimation(localAdd?.isIncremental ?? false)) {
 			this.animateReorder(prevRects, prevScroll);
 		}
 
 		if (localAdd) {
-			this.revealNewItem(localAdd);
+			this.revealNewItem(localAdd.item);
 		}
 	}
 
@@ -841,11 +858,14 @@ export class TodoList implements OnInit, AfterViewInit {
 	 * add that the active filter hides.
 	 */
 	private revealNewItem(added: Todo): void {
-		if (!this.isInitialized || this.isDragging) return;
-		// An active filter can hide the item that just arrived; there is nothing to reveal then,
-		// and leaving the request unclaimed keeps it available if clearing the filter shows it.
-		if (!this.todos.some((todo) => todo.id === added.id)) return;
+		// Claimed by the arrival that carried the item, whatever happens next: the item is in the
+		// list from here on, so no later slice can recognise it as new, and an unclaimed request
+		// would only sit there for the rest of its life waiting to be matched by someone else's
+		// item that happens to read the same.
 		if (!this.todoService.claimLocalAdd(this.scope, added.text)) return;
+		if (!this.isInitialized || this.isDragging) return;
+		// An active filter can hide the item that just arrived; there is then nothing to scroll to.
+		if (!this.todos.some((todo) => todo.id === added.id)) return;
 
 		// Deferred by one frame so the reorder FLIP — whose own callback is registered first, in
 		// animateReorder — measures the rows before anything scrolls; it compares each row's
