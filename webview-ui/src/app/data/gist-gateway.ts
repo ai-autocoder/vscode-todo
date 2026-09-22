@@ -40,6 +40,7 @@ import {
 	DefaultFileNames,
 	GIST_ID_REGEX,
 	isEqual,
+	SyncConstants,
 	SyncErrorType,
 	type SyncError,
 	type GistFileInfo,
@@ -112,6 +113,12 @@ export interface GistGatewayConfig {
 	config?: Partial<Config>;
 	/** Debounce window for pushing local edits to the gist (ms). Defaults to 3000. */
 	pushDebounceMs?: number;
+	/**
+	 * How often a *visible* app re-pulls (ms). Defaults to the interval the extension ships
+	 * ({@link SyncConstants.defaultPollInterval}) and is clamped to the same bounds, because the
+	 * two peers are spending one GitHub rate-limit budget between them.
+	 */
+	pollIntervalMs?: number;
 }
 
 /**
@@ -228,6 +235,30 @@ function describeImportChanges(changed: {
 	return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
+/** Smallest gap the poll scheduler will ever leave between two pulls. See `scheduleNextPoll`. */
+const MIN_POLL_GAP_MS = 5000;
+
+/**
+ * Keeps the PWA's poll cadence inside the bounds the extension enforces on its own setting.
+ *
+ * The two peers share one GitHub rate-limit budget and one gist, so a PWA polling far harder
+ * than the extension would spend the budget the extension needs to see the PWA's own writes.
+ * Clamped rather than validated because the value comes from the build's environment, not
+ * from a user, and a typo there should slow sync down, not switch it off.
+ *
+ * Non-finite input takes the default rather than the floor. `Math.max(min, Math.min(NaN,
+ * max))` is `NaN`, which would make `pollDue()` false forever *and* make `setTimeout`
+ * coerce the delay to 0 — the app would reconcile continuously and never report why. A
+ * missing or mistyped build variable reaching here as `NaN` is exactly the typo this is
+ * supposed to absorb.
+ */
+function clampPollInterval(ms: number | undefined): number {
+	const seconds = Number.isFinite(ms) ? (ms as number) / 1000 : SyncConstants.defaultPollInterval;
+	return (
+		Math.max(SyncConstants.minPollInterval, Math.min(seconds, SyncConstants.maxPollInterval)) * 1000
+	);
+}
+
 const DEFAULT_CONFIG: Config = {
 	taskSortingOptions: "sortType1",
 	createMarkdownByDefault: false,
@@ -276,6 +307,7 @@ export class GistGateway implements DataGateway {
 	private readonly config: Config;
 	private readonly reducerConfig: ReducerConfig;
 	private readonly pushDebounceMs: number;
+	private readonly pollIntervalMs: number;
 
 	private readonly tokenStore = new IndexedDbTokenStore();
 	private readonly cacheStore = new IndexedDbCacheStore();
@@ -324,12 +356,20 @@ export class GistGateway implements DataGateway {
 	/** Resolver for the promise the engine is awaiting. Present only while a prompt is open. */
 	private answerPrompt: ((decisions: ConflictDecisions | null) => void) | undefined;
 	/**
-	 * What the current reconcile's prompt settled. The engine may ask more than once per
-	 * reconcile (it re-merges if the remote moves during the write window), so these accumulate
-	 * across the run and are cleared by {@link beginConflictRun}.
+	 * What each of this run's prompts settled, one entry per prompt.
+	 *
+	 * The engine can ask more than once per reconcile — it re-merges if the remote moves during
+	 * the write window, and again against any edit that landed while the reconcile was on the
+	 * network. Recorded per prompt rather than accumulated into one set, because the same todo
+	 * id can come up in two of them: answered in the first, edited again, then raised by the
+	 * re-merge. One cumulative set cannot tell an id answered in *both* prompts from one
+	 * answered in the first and dismissed in the second, and each is wrong in its own
+	 * direction — the first files a decision the user made as though the policy had made it,
+	 * the second hides one the policy really did make.
+	 *
+	 * Cleared by {@link beginConflictRun}.
 	 */
-	private readonly decidedTodoIds = new Set<number>();
-	private readonly decidedFilePaths = new Set<string>();
+	private promptRounds: Array<{ todos: Set<number>; files: Set<string> }> = [];
 	/**
 	 * How this run's prompt ended. `"none"` covers both "nothing was asked" and "it was answered".
 	 *
@@ -403,6 +443,18 @@ export class GistGateway implements DataGateway {
 	private userPushTimer: ReturnType<typeof setTimeout> | undefined;
 	private workspacePushTimer: ReturnType<typeof setTimeout> | undefined;
 
+	/** See {@link scheduleNextPoll}. */
+	private pollTimer: ReturnType<typeof setTimeout> | undefined;
+	/** True while the page is hidden; see {@link suspendPolling}. */
+	private pollingSuspended = false;
+	/**
+	 * When the last pull was *asked for*, not when it finished. Recorded before the reconcile
+	 * is even enqueued, so a pull that is slow or stuck behind the queue still paces the next
+	 * one, and {@link scheduleNextPoll} can never compute a zero delay against a pull that is
+	 * still running and spin.
+	 */
+	private lastPullAt = 0;
+
 	/**
 	 * Bumped by {@link mutate} on every local edit, per gist file (the workspace counter covers
 	 * `workspaceTodos` *and* `filesData`, since both live in the workspace file).
@@ -425,6 +477,7 @@ export class GistGateway implements DataGateway {
 			taskSortingOptions: this.config.taskSortingOptions,
 		};
 		this.pushDebounceMs = opts.pushDebounceMs ?? 3000;
+		this.pollIntervalMs = clampPollInterval(opts.pollIntervalMs);
 
 		this.client = new GistClient({ getToken: () => this.token });
 		this.deviceFlow = new DeviceFlowClient({
@@ -481,20 +534,95 @@ export class GistGateway implements DataGateway {
 		this.emitGitHubStatus();
 		this.emitSyncInfo();
 		if (this.token && this.gistId && this.userFile) {
+			// `pullAll` arms the poll timer on its way out, so this both loads and starts the cadence.
 			void this.pullAll();
 		}
 	}
 
-	/** Re-pull on regaining focus (the extension polls; the PWA pulls on focus to stay cheap). */
+	/**
+	 * The app became visible again: resume the poll cadence, and pull now if one is due.
+	 *
+	 * Polling stops while the page is hidden — a backgrounded phone should not spend the
+	 * rate-limit budget or the battery on a list nobody is looking at — so coming back is also
+	 * where a poll missed in the meantime is made up. Due-ness is measured from the last pull
+	 * rather than from the return, so tabbing away and straight back does not reset the clock,
+	 * and a return part-way through a period keeps the original schedule instead of pushing the
+	 * next pull out to a full interval from now.
+	 *
+	 * A scope that owes the gist a push jumps the queue whatever the clock says. That flag
+	 * covers an edit still sitting on this device and a conflict prompt declined because the
+	 * page was hidden — coming back is precisely the moment to finish either, and making the
+	 * user wait out an interval to be asked again is how a dialog starts looking broken.
+	 */
 	async refresh(): Promise<void> {
+		this.pollingSuspended = false;
 		// Same guard as ready(): without a chosen file there is nothing to reconcile, and the
 		// file names may still belong to a gist the user is in the middle of switching away from.
-		if (this.token && this.gistId && this.userFile) {
-			// Coming back to the app is the natural moment to give up on a stale failure streak:
-			// a device that failed while offline and then idled would otherwise never retry.
-			this.userRetries = 0;
-			this.workspaceRetries = 0;
+		if (!(this.token && this.gistId && this.userFile)) {
+			return;
+		}
+		// Coming back to the app is the natural moment to give up on a stale failure streak:
+		// a device that failed while offline and then idled would otherwise never retry.
+		this.userRetries = 0;
+		this.workspaceRetries = 0;
+		if (this.pollDue() || this.pendingUserPush || this.pendingWorkspacePush) {
+			// Re-arms the timer itself.
 			await this.pullAll();
+		} else {
+			this.scheduleNextPoll();
+		}
+	}
+
+	/**
+	 * The app went out of sight. Holds the cadence until {@link refresh} brings it back.
+	 *
+	 * Deliberately does not cancel a reconcile already in flight: it is on the network, the
+	 * queue is serialised behind it, and abandoning it half-way is how a write goes missing.
+	 * Only the *next* poll is held back.
+	 */
+	suspendPolling(): void {
+		this.pollingSuspended = true;
+		this.clearPollTimer();
+	}
+
+	/** Whether a scheduled pull is owed, by the clock alone. */
+	private pollDue(): boolean {
+		return Date.now() - this.lastPullAt >= this.pollIntervalMs;
+	}
+
+	/**
+	 * Arms the next poll, cancelling any timer already standing.
+	 *
+	 * Called from {@link pullAll}'s exit rather than set up once as an interval, for two
+	 * reasons. A `setInterval` stacks ticks behind a pull slower than its period, and every
+	 * stacked tick is a reconcile that has to queue. And the delay here is the time left in the
+	 * *current* period, so a pull triggered by anything else — a return to focus, a fresh
+	 * connection, a manual sync — re-paces the schedule instead of racing it.
+	 */
+	private scheduleNextPoll(): void {
+		this.clearPollTimer();
+		// Nothing to poll for while hidden or disconnected. Checked here rather than only at the
+		// call sites, so a pull already on the network when the session ends cannot re-arm a timer
+		// that would reconcile against file names the gateway no longer holds.
+		if (this.pollingSuspended || !(this.token && this.gistId && this.userFile)) {
+			return;
+		}
+		// Floored, not just clamped to zero. `lastPullAt` is when the pull was *asked for*, so a
+		// pull that itself outran the interval — a stalled fetch on a bad mobile connection is all
+		// it takes — would otherwise compute a zero delay and put the next one straight back on the
+		// wire, turning a 3-minute cadence into continuous sync exactly when the network can least
+		// afford it.
+		const due = Math.max(MIN_POLL_GAP_MS, this.pollIntervalMs - (Date.now() - this.lastPullAt));
+		this.pollTimer = setTimeout(() => {
+			this.pollTimer = undefined;
+			void this.pullAll();
+		}, due);
+	}
+
+	private clearPollTimer(): void {
+		if (this.pollTimer) {
+			clearTimeout(this.pollTimer);
+			this.pollTimer = undefined;
 		}
 	}
 
@@ -885,7 +1013,14 @@ export class GistGateway implements DataGateway {
 			return;
 		}
 
-		void this.refresh().finally(() => {
+		// `pullAll`, not `refresh`: refresh is the *return to visibility* path and pulls only
+		// when one is due, so routing the button through it made "Sync all now" a no-op for up
+		// to a whole interval whenever the scopes were already clean — the same broken-looking
+		// button the no-gist branch above exists to avoid. A manual sync is the user saying the
+		// clock is wrong, so it ignores it. Un-suspending too: they can only have pressed it
+		// with the app in front of them.
+		this.pollingSuspended = false;
+		void this.pullAll().finally(() => {
 			this.retryInFlight = false;
 		});
 	}
@@ -1208,20 +1343,25 @@ export class GistGateway implements DataGateway {
 				// Kept as the whole result, not just the data: the re-merge resolves conflicts of
 				// its own — a todo the user edited mid-flight that the reconcile was also changing
 				// — and dropping those would leave exactly the silent overwrite this records.
+				// Both taken before the re-merge can add a round of its own, so each conflict list is
+				// filtered against the answers to its own prompt. See `undecidedTodos`.
+				const askedByReconcile = this.promptsSoFar();
+				const decidedByReconcile = this.decidedSince(0);
 				const remerge =
 					this.userGeneration === generation
 						? null
-						: engine.reconcileWithLocalEdits(local, res.data.data, {
+						: await engine.reconcileWithLocalEdits(local, res.data.data, {
 								userTodos: this.user.todos,
 							});
+				const decidedByRemerge = this.decidedSince(askedByReconcile);
 				const reconciled = remerge?.data ?? res.data.data;
 				const changed = !isEqual({ todos: this.user.todos }, { todos: reconciled.userTodos });
 				this.user.todos = reconciled.userTodos;
 				// Surface what the engine settled on its own. Runs before anything is emitted or
 				// persisted below, because keep-both adds a todo to the slice.
 				const keptBoth = this.captureTodoConflicts("user", [
-					...this.undecidedTodos(res.data.conflicts),
-					...(remerge?.conflicts ?? []),
+					...this.undecidedTodos(res.data.conflicts, decidedByReconcile.todos),
+					...this.undecidedTodos(remerge?.conflicts ?? [], decidedByRemerge.todos),
 				]);
 				if (this.userGeneration !== generation || keptBoth) {
 					// Re-persist *after* adopting. The reconcile's own `saveCache` has just replaced
@@ -1315,14 +1455,18 @@ export class GistGateway implements DataGateway {
 				// per-file lists as well as `workspaceTodos`.
 				const stale = this.workspaceGeneration !== generation;
 				// See reconcileUser: the whole result is kept so the re-merge's own conflicts can
-				// be recorded rather than silently resolved.
+				// be recorded rather than silently resolved, and both markers are taken before the
+				// re-merge can add a prompt round of its own.
+				const askedByReconcile = this.promptsSoFar();
+				const decidedByReconcile = this.decidedSince(0);
 				const remerge = stale
-					? engine.reconcileWorkspaceWithLocalEdits(local, res.data.data, {
+					? await engine.reconcileWorkspaceWithLocalEdits(local, res.data.data, {
 							workspaceTodos: this.workspace.todos,
 							filesData: this.filesData,
 							filesDataPaths: this.filesDataPaths,
 						})
 					: null;
+				const decidedByRemerge = this.decidedSince(askedByReconcile);
 				const merged = remerge?.data ?? res.data.data;
 				const workspaceChanged = !isEqual(
 					{ todos: this.workspace.todos },
@@ -1337,12 +1481,12 @@ export class GistGateway implements DataGateway {
 				// See reconcileUser. File-level conflicts are recorded too: the PWA never renders
 				// those per-file lists, but it is the side that just overwrote one.
 				const keptBoth = this.captureTodoConflicts("workspace", [
-					...this.undecidedTodos(res.data.conflicts),
-					...(remerge?.conflicts ?? []),
+					...this.undecidedTodos(res.data.conflicts, decidedByReconcile.todos),
+					...this.undecidedTodos(remerge?.conflicts ?? [], decidedByRemerge.todos),
 				]);
 				this.captureFileConflicts([
-					...this.undecidedFiles(res.data.fileConflicts),
-					...(remerge?.fileConflicts ?? []),
+					...this.undecidedFiles(res.data.fileConflicts, decidedByReconcile.files),
+					...this.undecidedFiles(remerge?.fileConflicts ?? [], decidedByRemerge.files),
 				]);
 
 				if (stale || keptBoth) {
@@ -1462,21 +1606,28 @@ export class GistGateway implements DataGateway {
 	}
 
 	private async pullAll(): Promise<void> {
-		await this.enqueue(async () => {
-			// Reset here too, not only inside each reconcile: `reconcileUser` returns before its
-			// own reset when there is no engine or file, which would leave the previous run's
-			// outcome to be read as this one's.
-			this.beginConflictRun();
-			await this.reconcileUser();
-			// "Cancel sync" means this pull. Going straight on to put the other scope's dialog up
-			// would make the button look like it had done nothing. A hidden-page decline is not
-			// the same answer and does not skip: the workspace file may have nothing in dispute
-			// and sync cleanly without asking anyone.
-			if (this.promptOutcome === "cancelled") {
-				return;
-			}
-			await this.reconcileWorkspace();
-		});
+		this.lastPullAt = Date.now();
+		try {
+			await this.enqueue(async () => {
+				// Reset here too, not only inside each reconcile: `reconcileUser` returns before its
+				// own reset when there is no engine or file, which would leave the previous run's
+				// outcome to be read as this one's.
+				this.beginConflictRun();
+				await this.reconcileUser();
+				// "Cancel sync" means this pull. Going straight on to put the other scope's dialog up
+				// would make the button look like it had done nothing. A hidden-page decline is not
+				// the same answer and does not skip: the workspace file may have nothing in dispute
+				// and sync cleanly without asking anyone.
+				if (this.promptOutcome === "cancelled") {
+					return;
+				}
+				await this.reconcileWorkspace();
+			});
+		} finally {
+			// In `finally`: a reconcile that threw still has to leave a cadence behind it, or one
+			// bad pull quietly ends polling for the rest of the session.
+			this.scheduleNextPoll();
+		}
 	}
 
 	private recount(slice: TodoSlice): void {
@@ -1961,6 +2112,10 @@ export class GistGateway implements DataGateway {
 	}
 
 	private cancelPendingPushes(): void {
+		// The poll timer goes with them: a tick surviving a disconnect or a gist switch would
+		// reconcile against file names that no longer apply. A later `pullAll` re-arms it, which
+		// is how `chooseFiles` restarts the cadence on the gist just picked.
+		this.clearPollTimer();
 		// Whatever was owed is being abandoned along with the session or the gist, so the scopes
 		// are no longer dirty — leaving the flags set would make the next reconcile settle on
 		// "dirty" for a push that will never run.
@@ -2276,7 +2431,11 @@ export class GistGateway implements DataGateway {
 	 */
 	private askAboutConflicts(request: ConflictPromptRequest): Promise<ConflictDecisions | null> {
 		if (!this.canPrompt()) {
-			this.promptOutcome = "declined";
+			// Same rule as a cancel below: an after-write decline must not mark the pull as having
+			// been refused, because that reconcile completes regardless.
+			if (request.phase === "reconcile") {
+				this.promptOutcome = "declined";
+			}
 			return Promise.resolve(null);
 		}
 		return new Promise<ConflictDecisions | null>((resolve) => {
@@ -2284,17 +2443,22 @@ export class GistGateway implements DataGateway {
 				this.answerPrompt = undefined;
 				this._conflictPrompt.next(null);
 				if (decisions === null) {
-					this.promptOutcome = "cancelled";
-				} else {
-					// Remembered so the review screen does not also report these as resolved
-					// automatically: the user has just said what should happen to them.
-					for (const id of decisions.todos?.keys() ?? []) {
-						this.decidedTodoIds.add(id);
-					}
-					for (const path of decisions.files?.keys() ?? []) {
-						this.decidedFilePaths.add(path);
+					// Only a *reconcile* cancel stops the pull. On the after-write phase the write has
+					// already gone out and `decideAfterWrite` settles the merge by policy, so the reconcile
+					// still succeeds — recording a cancel there would additionally skip the workspace leg
+					// of this pull, cancelling a scope the user was never asked about.
+					if (request.phase === "reconcile") {
+						this.promptOutcome = "cancelled";
 					}
 				}
+				// One round per prompt, whichever way it ended. What it holds is remembered so the
+				// review screen does not also report those as resolved automatically — the user has
+				// just said what should happen to them — and an unanswered prompt contributes an empty
+				// round so a later prompt's answers cannot be read as this one's.
+				this.promptRounds.push({
+					todos: new Set(decisions?.todos?.keys() ?? []),
+					files: new Set(decisions?.files?.keys() ?? []),
+				});
 				resolve(decisions);
 			};
 			this._conflictPrompt.next(request);
@@ -2329,8 +2493,7 @@ export class GistGateway implements DataGateway {
 
 	/** Clears the per-reconcile prompt bookkeeping. Runs whether or not anything is asked. */
 	private beginConflictRun(): void {
-		this.decidedTodoIds.clear();
-		this.decidedFilePaths.clear();
+		this.promptRounds = [];
 		this.promptOutcome = "none";
 	}
 
@@ -2338,20 +2501,64 @@ export class GistGateway implements DataGateway {
 	 * The conflicts of this run the user did *not* settle in the prompt, which are the ones the
 	 * policy decided and therefore the ones worth showing on the review screen.
 	 *
-	 * Applied only to the engine's own conflicts. A re-merge against a mid-flight edit resolves
-	 * its conflicts by policy with nobody asked, so those are always recorded.
+	 * Applied to the re-merge against a mid-flight edit too, which now asks the same way the
+	 * reconcile's own merge does. What reaches the review screen from either is therefore only
+	 * what the user was not asked about, or declined to answer — a hidden page, or a dismissed
+	 * dialog.
+	 *
+	 * Bucketed by prompt rather than by run, which is why the caller passes the set. One run
+	 * can raise the same todo id twice: answered in the reconcile's dialog, then conflicting
+	 * again in the re-merge because the user edited it while the write was in flight. Filtering
+	 * the second list against the *first* dialog's answers hid a conflict nobody decided — the
+	 * policy silently discarded the version the user had just picked, and nothing reached the
+	 * review screen to say so.
 	 */
-	private undecidedTodos(conflicts: ConflictSet[]): ConflictSet[] {
-		return this.decidedTodoIds.size === 0
+	private undecidedTodos(conflicts: ConflictSet[], decided: ReadonlySet<number>): ConflictSet[] {
+		return decided.size === 0
 			? conflicts
-			: conflicts.filter((conflict) => !this.decidedTodoIds.has(conflict.todoId));
+			: conflicts.filter((conflict) => !decided.has(conflict.todoId));
 	}
 
 	/** File-level counterpart of {@link undecidedTodos}. */
-	private undecidedFiles(conflicts: FileConflictSet[]): FileConflictSet[] {
-		return this.decidedFilePaths.size === 0
+	private undecidedFiles(
+		conflicts: FileConflictSet[],
+		decided: ReadonlySet<string>
+	): FileConflictSet[] {
+		return decided.size === 0
 			? conflicts
-			: conflicts.filter((conflict) => !this.decidedFilePaths.has(conflict.filePath));
+			: conflicts.filter((conflict) => !decided.has(conflict.filePath));
+	}
+
+	/**
+	 * How many prompts this run has put up — a marker to hand to {@link decidedSince}.
+	 *
+	 * Taken before a merge that may ask, so each conflict list is filtered against the answers
+	 * to *its own* dialog. See {@link undecidedTodos}.
+	 */
+	private promptsSoFar(): number {
+		return this.promptRounds.length;
+	}
+
+	/**
+	 * Everything answered by prompts `mark` onwards, unioned over them.
+	 *
+	 * Counted by round rather than by set difference. A difference drops an id that falls in
+	 * both spans — answered in the reconcile's dialog and again in the re-merge's — which then
+	 * reads as undecided and lands on the review screen as something settled behind the user's
+	 * back, when in fact they decided it twice.
+	 */
+	private decidedSince(mark: number): { todos: ReadonlySet<number>; files: ReadonlySet<string> } {
+		const todos = new Set<number>();
+		const files = new Set<string>();
+		for (const round of this.promptRounds.slice(mark)) {
+			for (const id of round.todos) {
+				todos.add(id);
+			}
+			for (const path of round.files) {
+				files.add(path);
+			}
+		}
+		return { todos, files };
 	}
 
 	/**

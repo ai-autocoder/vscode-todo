@@ -47,6 +47,7 @@ describe("ConflictPromptComponent", () => {
 			todos,
 			files,
 			knownIds: knownIds ?? todos.map((c) => c.todoId),
+			phase: "reconcile",
 		};
 		emitted = [];
 		component.decided.subscribe((decisions) => emitted.push(decisions));
@@ -263,7 +264,12 @@ describe("ConflictPromptComponent bulk choices", () => {
 
 	function mount(todos: ConflictSet[]): void {
 		component = new ConflictPromptComponent();
-		component.request = { todos, files: [], knownIds: todos.map((c) => c.todoId) };
+		component.request = {
+			todos,
+			files: [],
+			knownIds: todos.map((c) => c.todoId),
+			phase: "reconcile",
+		};
 	}
 
 	function decisions(): ConflictDecisions {
@@ -348,7 +354,12 @@ describe("ConflictPromptComponent rendering", () => {
 	function render(todos: ConflictSet[]): void {
 		fixture = TestBed.createComponent(ConflictPromptComponent);
 		component = fixture.componentInstance;
-		component.request = { todos, files: [], knownIds: todos.map((c) => c.todoId) };
+		component.request = {
+			todos,
+			files: [],
+			knownIds: todos.map((c) => c.todoId),
+			phase: "reconcile",
+		};
 		fixture.detectChanges();
 	}
 
@@ -511,7 +522,7 @@ describe("ConflictPromptComponent bulk safety", () => {
 
 	function mount(todos: ConflictSet[], files: FileConflictSet[] = []): void {
 		component = new ConflictPromptComponent();
-		component.request = { todos, files, knownIds: todos.map((c) => c.todoId) };
+		component.request = { todos, files, knownIds: todos.map((c) => c.todoId), phase: "reconcile" };
 	}
 
 	function decisions(): ConflictDecisions {
@@ -608,7 +619,7 @@ describe("ConflictPromptComponent file removal copy", () => {
 
 	function mount(conflict: FileConflictSet): ConflictPromptComponent {
 		const component = new ConflictPromptComponent();
-		component.request = { todos: [], files: [conflict], knownIds: [] };
+		component.request = { todos: [], files: [conflict], knownIds: [], phase: "reconcile" };
 		return component;
 	}
 
@@ -715,7 +726,7 @@ describe("ConflictPromptComponent in-file collisions", () => {
 
 	function mount(conflict: FileConflictSet): ConflictPromptComponent {
 		const component = new ConflictPromptComponent();
-		component.request = { todos: [], files: [conflict], knownIds: [] };
+		component.request = { todos: [], files: [conflict], knownIds: [], phase: "reconcile" };
 		return component;
 	}
 
@@ -833,7 +844,12 @@ describe("ConflictPromptComponent file card rendering", () => {
 
 	function render(conflict: FileConflictSet): void {
 		fixture = TestBed.createComponent(ConflictPromptComponent);
-		fixture.componentInstance.request = { todos: [], files: [conflict], knownIds: [] };
+		fixture.componentInstance.request = {
+			todos: [],
+			files: [conflict],
+			knownIds: [],
+			phase: "reconcile",
+		};
 		fixture.detectChanges();
 	}
 

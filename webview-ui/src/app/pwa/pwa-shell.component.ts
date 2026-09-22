@@ -125,7 +125,7 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 
 	/** `protected`, not `private`: the template passes it to <app-conflict-review>. */
 	protected gateway: GistGateway | undefined;
-	private onFocus: (() => void) | undefined;
+	private onPresenceChange: (() => void) | undefined;
 	private connectionSub: Subscription | undefined;
 	private messagesSub: Subscription | undefined;
 	private conflictsSub: Subscription | undefined;
@@ -229,13 +229,22 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 			this.cdRef.detectChanges();
 		});
 
-		// The extension polls; the PWA pulls when it regains focus, which is when a phone user
-		// comes back to the app. Without this nothing re-syncs after the initial load.
+		// The PWA polls while it is on screen and stops while it is not — see the gateway's
+		// `refresh` / `suspendPolling`. This handler is the only thing that tells it which of
+		// those it is, so both directions have to be wired: without the visible branch nothing
+		// re-syncs after the initial load, and without the hidden one a backgrounded phone keeps
+		// polling a list nobody is looking at.
+		//
 		// `focus` and `visibilitychange` both fire on a single tab return, so the refresh is
-		// coalesced into one pull per return rather than two full reconciles.
+		// coalesced into one pull per return rather than two full reconciles. Suspending needs no
+		// such guard: it is idempotent, and only `visibilitychange` reports it.
 		let refreshQueued = false;
-		this.onFocus = () => {
-			if (document.visibilityState !== "visible" || refreshQueued) {
+		this.onPresenceChange = () => {
+			if (document.visibilityState !== "visible") {
+				gateway.suspendPolling();
+				return;
+			}
+			if (refreshQueued) {
 				return;
 			}
 			refreshQueued = true;
@@ -244,8 +253,8 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 				void gateway.refresh();
 			});
 		};
-		window.addEventListener("focus", this.onFocus);
-		document.addEventListener("visibilitychange", this.onFocus);
+		window.addEventListener("focus", this.onPresenceChange);
+		document.addEventListener("visibilitychange", this.onPresenceChange);
 
 		await gateway.restoreSession();
 	}
@@ -498,9 +507,11 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		document.body.classList.remove("has-sync-banner");
 		// A parked import would otherwise never settle.
 		this.gateway?.resolveImportScope(undefined);
-		if (this.onFocus) {
-			window.removeEventListener("focus", this.onFocus);
-			document.removeEventListener("visibilitychange", this.onFocus);
+		if (this.onPresenceChange) {
+			window.removeEventListener("focus", this.onPresenceChange);
+			document.removeEventListener("visibilitychange", this.onPresenceChange);
 		}
+		// The poll timer lives on the gateway, which outlives this component.
+		this.gateway?.suspendPolling();
 	}
 }

@@ -72,6 +72,17 @@ export class ConflictPromptComponent {
 		return this.request.todos.length + this.request.files.length;
 	}
 
+	/**
+	 * Whether this prompt is the re-merge against an edit made while the sync was running.
+	 *
+	 * Only the wording changes. The sync has already written by then, so the way out of this
+	 * dialog cannot stop anything — it leaves this device's version standing and files the
+	 * conflicts for review — and saying otherwise promises a rollback that cannot happen.
+	 */
+	get isAfterWrite(): boolean {
+		return this.request.phase === "after-write";
+	}
+
 	get undecidedCount(): number {
 		return this.total - this.todoChoices.size - this.fileChoices.size;
 	}

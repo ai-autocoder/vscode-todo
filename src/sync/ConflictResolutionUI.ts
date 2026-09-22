@@ -16,6 +16,7 @@ import * as vscode from "vscode";
 import { Todo } from "../todo/todoTypes";
 import {
 	ConflictDecisions,
+	ConflictPhase,
 	ConflictSet,
 	FileConflictSet,
 	generateUniqueId,
@@ -42,21 +43,41 @@ export interface ConflictResolutionResult {
 /**
  * Enhanced conflict resolution UI with per-item control
  */
+/**
+ * What backing out of a dialog actually does, in the phase that dialog belongs to.
+ *
+ * Appended to the modals that offer a way out. On the main path nothing has been written
+ * yet, so the honest promise is that the sync stops. On the re-merge the write has already
+ * gone out, and telling the user otherwise is how they end up believing they cancelled
+ * something they did not.
+ */
+function outcomeOfBackingOut(phase: ConflictPhase): string {
+	return phase === "after-write"
+		? "\n\nThe sync has already finished. Backing out keeps this device's version of these" +
+				" items and lists them afterwards; it does not undo the sync."
+		: "\n\nBacking out syncs nothing and asks again next time.";
+}
+
 export class ConflictResolutionUI {
 	/**
 	 * Ask the user about everything one reconcile found, todo- and file-level.
 	 *
-	 * Returns null when the user backs out, which aborts the reconcile: nothing is written and
-	 * the same decision comes back on the next sync.
+	 * Returns null when the user backs out. What that *means* depends on the phase, which is
+	 * why the dialogs below take it: on `reconcile` nothing has been written, so backing out
+	 * aborts and the same decision comes back next sync. On `after-write` the gist has already
+	 * been written and the baseline moved, so there is nothing to abort — backing out leaves
+	 * this device's version standing and reports it. See {@link outcomeOfBackingOut}.
 	 *
 	 * @param conflicts - Todo-level conflicts
 	 * @param fileConflicts - Per-file list conflicts (workspace scope; empty for the user scope)
 	 * @param knownIds - Ids already in play, so a keep-both copy can pick a free one
+	 * @param phase - Which merge is asking
 	 */
 	static async resolve(
 		conflicts: ConflictSet[],
 		fileConflicts: FileConflictSet[],
-		knownIds: number[]
+		knownIds: number[],
+		phase: ConflictPhase = "reconcile"
 	): Promise<ConflictDecisions | null> {
 		// Todos first, then files. The order matters: either half can abort the whole reconcile
 		// (the user backs out, or skips every conflict), and asking the coarse file question first
@@ -64,7 +85,7 @@ export class ConflictResolutionUI {
 		// is applied until both halves return, so the cheaper-to-re-answer half goes last.
 		let todoDecisions: ConflictDecisions = {};
 		if (conflicts.length > 0) {
-			const decided = await this.resolveTodoConflicts(conflicts, knownIds);
+			const decided = await this.resolveTodoConflicts(conflicts, knownIds, phase);
 			if (!decided) {
 				return null;
 			}
@@ -75,7 +96,7 @@ export class ConflictResolutionUI {
 			return todoDecisions;
 		}
 
-		const fileDecisions = await this.resolveFileConflicts(fileConflicts);
+		const fileDecisions = await this.resolveFileConflicts(fileConflicts, phase);
 		if (!fileDecisions) {
 			return null;
 		}
@@ -89,12 +110,13 @@ export class ConflictResolutionUI {
 	 * that file — items the user was never shown and never chose to discard.
 	 */
 	private static async resolveFileConflicts(
-		fileConflicts: FileConflictSet[]
+		fileConflicts: FileConflictSet[],
+		phase: ConflictPhase
 	): Promise<Map<string, Todo[] | null> | null> {
 		const paths = fileConflicts.map((conflict) => conflict.filePath).join(", ");
 		const choice = await vscode.window.showWarningMessage(
 			`Workspace Sync: ${fileConflicts.length} file list conflict(s) detected.`,
-			{ modal: true, detail: `Affected files: ${paths}` },
+			{ modal: true, detail: `Affected files: ${paths}${outcomeOfBackingOut(phase)}` },
 			"Keep Local Files",
 			"Keep Remote Files",
 			"View Gist"
@@ -121,10 +143,11 @@ export class ConflictResolutionUI {
 
 	private static async resolveTodoConflicts(
 		conflicts: ConflictSet[],
-		knownIds: number[]
+		knownIds: number[],
+		phase: ConflictPhase
 	): Promise<ConflictDecisions | null> {
 		// Step 1: Overview and choice of resolution mode
-		const mode = await this.showOverview(conflicts);
+		const mode = await this.showOverview(conflicts, phase);
 		if (!mode) {
 			return null;
 		}
@@ -146,7 +169,7 @@ export class ConflictResolutionUI {
 
 		// Per-item resolution mode
 		if (mode === "per-item") {
-			const result = await this.resolvePerItem(conflicts);
+			const result = await this.resolvePerItem(conflicts, phase);
 			if (!result || result.cancelled) {
 				return null;
 			}
@@ -166,7 +189,10 @@ export class ConflictResolutionUI {
 	/**
 	 * Step 1: Show overview and resolution mode selection
 	 */
-	private static async showOverview(conflicts: ConflictSet[]): Promise<string | null> {
+	private static async showOverview(
+		conflicts: ConflictSet[],
+		phase: ConflictPhase
+	): Promise<string | null> {
 		const collisions = conflicts.filter((c) => c.conflictType === "id-collision").length;
 
 		const items = [
@@ -191,7 +217,13 @@ export class ConflictResolutionUI {
 			{
 				label: "$(link-external) View on GitHub",
 				description: "Open gist in browser",
-				detail: "Manually resolve conflicts in gist",
+				// Leaves through the same `null` as a cancel does, so on the after-write phase it has
+				// the same consequence and needs to say so: the sync is over, and opening the browser
+				// settles every conflict here by keeping this device's version.
+				detail:
+					phase === "after-write"
+						? "Opens the gist and keeps this device's versions; the sync itself already completed"
+						: "Manually resolve conflicts in gist",
 				value: "view-gist",
 			},
 		];
@@ -205,7 +237,10 @@ export class ConflictResolutionUI {
 				: `${conflicts.length} conflict(s) to resolve`;
 
 		const selected = await vscode.window.showQuickPick(items, {
-			title: "Sync Conflict Detected",
+			title:
+				phase === "after-write"
+					? "Sync Conflict: Edits Made While the Last Sync Was Running"
+					: "Sync Conflict Detected",
 			placeHolder,
 			ignoreFocusOut: true,
 			matchOnDescription: true,
@@ -219,19 +254,25 @@ export class ConflictResolutionUI {
 	 * Step 2: Resolve each conflict individually
 	 */
 	private static async resolvePerItem(
-		conflicts: ConflictSet[]
+		conflicts: ConflictSet[],
+		phase: ConflictPhase
 	): Promise<ConflictResolutionResult | null> {
 		const resolutions: ConflictResolution[] = [];
 		let currentIndex = 0;
 
 		while (currentIndex < conflicts.length) {
 			const conflict = conflicts[currentIndex];
-			const resolution = await this.resolveOneConflict(conflict, currentIndex, conflicts.length);
+			const resolution = await this.resolveOneConflict(
+				conflict,
+				currentIndex,
+				conflicts.length,
+				phase
+			);
 
 			if (resolution === "cancel") {
 				const confirm = await vscode.window.showWarningMessage(
-					"Cancel conflict resolution? No changes will be synced.",
-					{ modal: true },
+					"Cancel conflict resolution?",
+					{ modal: true, detail: outcomeOfBackingOut(phase).trim() },
 					"Yes, Cancel",
 					"No, Continue"
 				);
@@ -266,7 +307,7 @@ export class ConflictResolutionUI {
 		}
 
 		// Show confirmation
-		const confirmed = await this.showConfirmation(conflicts, resolutions);
+		const confirmed = await this.showConfirmation(conflicts, resolutions, phase);
 		if (!confirmed) {
 			return { resolutions: [], cancelled: true };
 		}
@@ -280,7 +321,8 @@ export class ConflictResolutionUI {
 	private static async resolveOneConflict(
 		conflict: ConflictSet,
 		index: number,
-		total: number
+		total: number,
+		phase: ConflictPhase
 	): Promise<"local" | "remote" | "keep-both" | "skip" | "back" | "cancel" | "view-diff"> {
 		const conflictDetail = this.formatConflictDetail(conflict);
 
@@ -330,8 +372,11 @@ export class ConflictResolutionUI {
 			},
 			{
 				label: "$(debug-step-over) Skip This Conflict",
-				description: "Decide later",
-				detail: "Keeps this device's version for now; you'll be prompted again next sync",
+				description: phase === "after-write" ? "Keep this device's version" : "Decide later",
+				detail:
+					phase === "after-write"
+						? "Keeps this device's version; reported afterwards rather than asked again"
+						: "Keeps this device's version for now; you'll be prompted again next sync",
 				value: "skip",
 			}
 		);
@@ -366,17 +411,22 @@ export class ConflictResolutionUI {
 	 */
 	private static async showConfirmation(
 		conflicts: ConflictSet[],
-		resolutions: ConflictResolution[]
+		resolutions: ConflictResolution[],
+		phase: ConflictPhase
 	): Promise<boolean> {
 		const resolved = resolutions.filter((r) => r.resolution !== "skip").length;
 		const skipped = resolutions.filter((r) => r.resolution === "skip").length;
 
-		// Every conflict skipped: there is nothing to apply, so abort the reconcile rather than
-		// push. Aborting leaves the baseline untouched, which is what makes the same conflicts
-		// come back next sync — the promise the Skip option makes.
+		// Every conflict skipped: there is nothing to apply, so back out rather than push. On the
+		// reconcile phase that leaves the baseline untouched, which is what makes the same
+		// conflicts come back next sync — the promise the Skip option makes. After the write
+		// there is no baseline left to preserve, so the honest version of that promise is that
+		// this device's versions stand and the conflicts are reported instead.
 		if (skipped === conflicts.length) {
 			vscode.window.showWarningMessage(
-				"All conflicts skipped. Nothing was synced: this device's versions are unchanged and you'll be asked again next sync."
+				phase === "after-write"
+					? "All conflicts skipped. This device's versions are kept; the sync itself already completed, and the skipped items are reported rather than raised again."
+					: "All conflicts skipped. Nothing was synced: this device's versions are unchanged and you'll be asked again next sync."
 			);
 			return false;
 		}
@@ -424,8 +474,11 @@ export class ConflictResolutionUI {
 			},
 			{
 				label: "$(x) Cancel",
-				description: "Abort sync operation",
-				detail: "No changes will be synced",
+				description: phase === "after-write" ? "Discard these choices" : "Abort sync operation",
+				detail:
+					phase === "after-write"
+						? "Keeps this device's versions; the sync itself has already completed"
+						: "No changes will be synced",
 				value: "cancel",
 			},
 		];
@@ -444,7 +497,8 @@ export class ConflictResolutionUI {
 
 		if (selected.value === "review") {
 			// Show detailed summary in a modal
-			const reviewMessage = `Conflict Resolutions:\n\n${summary}\n\nApply these changes?`;
+			const reviewMessage =
+				`Conflict Resolutions:\n\n${summary}\n\nApply these changes?` + outcomeOfBackingOut(phase);
 			const confirm = await vscode.window.showInformationMessage(
 				reviewMessage,
 				{ modal: true },

@@ -92,17 +92,36 @@ export interface ConflictDecisions {
 }
 
 /**
+ * Which merge is asking.
+ *
+ * `reconcile` is the main path: nothing has been written, so backing out aborts and the same
+ * question returns next sync. `after-write` is the re-merge against an edit that landed while
+ * the reconcile was on the network — the gist is already written and the baseline already
+ * moved, so there is nothing left to call off and backing out only means the policy settles
+ * it. A resolver that offers a way out MUST tell the two apart, or it promises to undo a
+ * write that has already happened.
+ */
+export type ConflictPhase = "reconcile" | "after-write";
+
+/**
  * Hook for a host that wants to ask the user instead of applying a policy.
  *
- * Called during a reconcile, before anything is written, whenever a merge produces conflicts.
- * Return `null` to abort the whole reconcile: nothing is pushed, the baseline is left alone,
- * and the caller gets a retryable {@link SyncErrorType.ConflictError} — so the next sync
- * presents the same decision rather than silently picking a side.
+ * Called whenever a merge produces conflicts. What `null` means depends on the
+ * {@link ConflictPhase} the call carries, and a resolver offering a way out has to read it:
  *
- * May be called more than once per reconcile: if the remote moves during the write window the
- * engine re-merges against the fresh content, and genuinely new conflicts need deciding too.
- * Conflicts already settled do not come back — the previous decision is in the data being
- * re-merged, so the fresh remote has to disagree with *that* to conflict again.
+ *  - `reconcile` — nothing has been written yet, so `null` aborts the whole reconcile. Nothing
+ *    is pushed, the baseline is left alone, and the caller gets a retryable
+ *    {@link SyncErrorType.ConflictError}, so the next sync presents the same decision rather
+ *    than silently picking a side.
+ *  - `after-write` — the gist has already been written and the baseline already moved, so
+ *    there is nothing to abort. `null` means only that the policy settles this merge and the
+ *    caller reports what it settled. Promising a rollback here would be a lie.
+ *
+ * May be called more than once per reconcile, and in either phase: if the remote moves during
+ * the write window the engine re-merges against the fresh content, and genuinely new conflicts
+ * need deciding too. Conflicts already settled do not come back — the previous decision is in
+ * the data being re-merged, so the fresh side has to disagree with *that* to conflict again —
+ * the remote on the reconcile phase, the newer local edit on an after-write fold.
  *
  * Both hosts supply one: the extension blocks on a quick pick, the PWA on a dialog. The PWA's
  * may answer only some of the conflicts, leaving the rest to the policy and recording those for
@@ -111,6 +130,8 @@ export interface ConflictDecisions {
 export type ConflictResolver = (conflicts: {
 	todos: ConflictSet[];
 	files: FileConflictSet[];
+	/** See {@link ConflictPhase}. */
+	phase: ConflictPhase;
 	/**
 	 * Every todo id this merge touched (base, local and remote sides of the list being merged).
 	 * A resolver returning {@link ConflictDecisions.extraTodos} picks free ids against this.
@@ -254,17 +275,25 @@ export class GistSyncEngine {
 	 * edit and the remote's changes are each plain additions/edits, so the standard three-way
 	 * merge combines them. The caller adopts the return value and schedules another push.
 	 *
-	 * Conflicts this second merge resolves are returned alongside the data: they are real
-	 * conflicts between the user and the remote, and a caller that surfaces the first merge's
-	 * conflicts must surface these too or the mid-flight path stays silent.
+	 * Conflicts this second merge resolves are returned alongside the data, and the
+	 * {@link ConflictResolver} is asked about them exactly as it is for the reconcile's own merge —
+	 * see {@link decideAfterWrite}. They are two edits of the user's in genuine disagreement, so
+	 * settling them by policy behind their back is the same silent overwrite the resolver exists
+	 * to prevent. The only difference from the main path is that a decision here cannot call the
+	 * write off, because it has already happened.
 	 */
-	public reconcileWithLocalEdits(
+	public async reconcileWithLocalEdits(
 		snapshot: GlobalGistData,
 		reconciled: GlobalGistData,
 		currentLocal: GlobalGistData
-	): { data: GlobalGistData; conflicts: ConflictSet[] } {
+	): Promise<{ data: GlobalGistData; conflicts: ConflictSet[] }> {
 		const merge = threeWayMerge(snapshot.userTodos, currentLocal.userTodos, reconciled.userTodos);
-		const { picks, extras } = this.resolve(merge.conflicts);
+		const decisions = await this.decideAfterWrite(
+			merge.conflicts,
+			[],
+			idsIn(snapshot.userTodos, currentLocal.userTodos, reconciled.userTodos)
+		);
+		const { picks, extras } = this.resolve(merge.conflicts, decisions);
 		return {
 			data: { userTodos: assembleMerged(merge, picks, extras) },
 			conflicts: merge.conflicts,
@@ -272,15 +301,15 @@ export class GistSyncEngine {
 	}
 
 	/** Workspace counterpart of {@link reconcileWithLocalEdits}. */
-	public reconcileWorkspaceWithLocalEdits(
+	public async reconcileWorkspaceWithLocalEdits(
 		snapshot: WorkspaceGistData,
 		reconciled: WorkspaceGistData,
 		currentLocal: WorkspaceGistData
-	): {
+	): Promise<{
 		data: WorkspaceGistData;
 		conflicts: ConflictSet[];
 		fileConflicts: FileConflictSet[];
-	} {
+	}> {
 		const result = threeWayMergeWorkspace(
 			snapshot.workspaceTodos,
 			currentLocal.workspaceTodos,
@@ -292,8 +321,27 @@ export class GistSyncEngine {
 			currentLocal.filesDataPaths ?? {},
 			reconciled.filesDataPaths ?? {}
 		);
-		const { picks, extras } = this.resolve(result.workspaceMerge.conflicts);
-		const finalFilesData = this.resolveFiles(result.autoMergedFilesData, result.fileConflicts);
+		// One prompt for the whole file, as in `reconcileWorkspace`: the workspace todo conflicts
+		// and the per-file ones come out of a single merge, so asking twice would make the user
+		// answer half a decision and then the other half.
+		const decisions = await this.decideAfterWrite(
+			result.workspaceMerge.conflicts,
+			result.fileConflicts,
+			idsIn(
+				snapshot.workspaceTodos,
+				currentLocal.workspaceTodos,
+				reconciled.workspaceTodos,
+				...Object.values(snapshot.filesData ?? {}),
+				...Object.values(currentLocal.filesData ?? {}),
+				...Object.values(reconciled.filesData ?? {})
+			)
+		);
+		const { picks, extras } = this.resolve(result.workspaceMerge.conflicts, decisions);
+		const finalFilesData = this.resolveFiles(
+			result.autoMergedFilesData,
+			result.fileConflicts,
+			decisions
+		);
 		return {
 			data: {
 				workspaceTodos: assembleMerged(result.workspaceMerge, picks, extras),
@@ -373,16 +421,48 @@ export class GistSyncEngine {
 	private async decide(
 		conflicts: ConflictSet[],
 		fileConflicts: FileConflictSet[],
-		knownIds: number[]
+		knownIds: number[],
+		phase: ConflictPhase = "reconcile"
 	): Promise<ConflictDecisions | undefined> {
 		if (!this.resolver || (conflicts.length === 0 && fileConflicts.length === 0)) {
 			return undefined;
 		}
-		const decisions = await this.resolver({ todos: conflicts, files: fileConflicts, knownIds });
+		const decisions = await this.resolver({
+			todos: conflicts,
+			files: fileConflicts,
+			phase,
+			knownIds,
+		});
 		if (decisions === null) {
 			throw new ConflictCancelled();
 		}
 		return decisions;
+	}
+
+	/**
+	 * {@link decide}, for the merges that run *after* the reconcile has already written.
+	 *
+	 * The `*WithLocalEdits` pair fold a completed reconcile into local state that moved on while it
+	 * was on the network. By then the gist has been written and the baseline moved, so there is no
+	 * write left to call off and `ConflictCancelled` cannot mean here what it means on the main
+	 * path. It degrades to "not now" instead: the policy settles the merge, the caller records the
+	 * conflicts for its review screen, and the re-armed push carries the result out. That is also
+	 * the path a hidden page takes, since a {@link ConflictResolver} declines rather than put up a
+	 * dialog nobody can answer.
+	 */
+	private async decideAfterWrite(
+		conflicts: ConflictSet[],
+		fileConflicts: FileConflictSet[],
+		knownIds: number[]
+	): Promise<ConflictDecisions | undefined> {
+		try {
+			return await this.decide(conflicts, fileConflicts, knownIds, "after-write");
+		} catch (error) {
+			if (error instanceof ConflictCancelled) {
+				return undefined;
+			}
+			throw error;
+		}
 	}
 
 	/**

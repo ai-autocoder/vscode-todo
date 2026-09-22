@@ -205,13 +205,21 @@
 	<footer class="prompt-actions">
 		@if (confirmingCancel) {
 			<div class="confirm">
-				<p class="warn">
-					Cancel the sync? Nothing is written, this device keeps what it has, and you will be asked again
-					on the next sync.
-				</p>
+				@if (isAfterWrite) {
+					<p class="warn">
+						Stop deciding? These changes arrived while the last sync was running, so the sync itself has
+						already finished — this cannot undo it. This device keeps its version of the items below, and
+						they are listed under Conflicts for you to change later.
+					</p>
+				} @else {
+					<p class="warn">
+						Cancel the sync? Nothing is written, this device keeps what it has, and you will be asked
+						again on the next sync.
+					</p>
+				}
 				<div class="confirm-actions">
 					<button class="primary" (click)="keepDeciding()">Keep deciding</button>
-					<button (click)="confirmCancel()">Cancel sync</button>
+					<button (click)="confirmCancel()">{{ isAfterWrite ? "Stop deciding" : "Cancel sync" }}</button>
 				</div>
 			</div>
 		}

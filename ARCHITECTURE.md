@@ -361,9 +361,9 @@ Only a genuine "file not found" lets a write skip the comparison. A network erro
 | | Extension ([`SyncManager.ts`](src/sync/SyncManager.ts)) | PWA ([`gist-gateway.ts`](webview-ui/src/app/data/gist-gateway.ts)) |
 | --- | --- | --- |
 | Push | 3 s after the last edit | 3 s after the last edit |
-| Pull | Poll every `pollInterval` s (default 180, clamped 30–600), by default only while a Todo view is visible ([`WebviewVisibilityCoordinator`](src/sync/WebviewVisibilityCoordinator.ts)) | On window focus or visibility change, coalesced, and on connect |
+| Pull | Poll every `pollInterval` s (default 180, clamped 30–600), by default only while a Todo view is visible ([`WebviewVisibilityCoordinator`](src/sync/WebviewVisibilityCoordinator.ts)) | Poll on the same interval and bounds while the page is visible; stops while hidden, and a return pulls if one came due meanwhile — or straight away if a scope owes a push. Also on connect |
 | Overlap | Per-scope in-progress flag; a trigger mid-sync queues one re-run | One promise queue for every reconcile |
-| Edit during a sync | Recovered from the cache, then merged into the result with the snapshot as base (`reconcileWithLocalEdits`) | Detected by a generation counter, then the same merge |
+| Edit during a sync | Recovered from the cache, then merged into the result with the snapshot as base (`reconcileWithLocalEdits`), which asks the resolver about its own conflicts | Detected by a generation counter, then the same merge, asking the same way |
 | Durability | Every edit is written to the memento cache | Every edit is written to IndexedDB immediately, baseline untouched |
 | Failure | Scope shows Error; polling continues | Retries at 3 s × 2ⁿ, up to 3 times; banner says auth, damaged file, missing gist or other |
 
@@ -427,6 +427,8 @@ The merge compares each todo, by id, with its baseline version. Only a todo chan
 Both apps ask before writing. The PWA's dialog additionally allows a partial answer: a conflict the user does not touch takes the `prefer-local` policy and is filed for the review screen, so the sync settles either way and nothing is decided in silence. Its bulk buttons refuse the three shapes where one tap destroys something unseen — a top-level `id-collision`, a per-file list one device removed, and a file whose *item* merge holds a collision (which `file-added-both` always does, since its item merge runs against an empty base) — and leave those cards open. The third has no keep-both to fall back on: a file decision is a whole `Todo[]`, so only leaving the card undecided preserves both sides, as the two recorded resolutions.
 
 Declining and cancelling differ, and the difference is deliberate. **Cancel** is the user's answer for the whole pull: the focus-driven reconcile stops there rather than putting the other scope's dialog up in its place. A **hidden page** declines only the question it could not put — nobody could answer, and the promise the engine is awaiting holds the gateway's sync queue — so the other scope still reconciles, since its file may have nothing in dispute. Neither raises the failure banner or arms a retry; the focus handler asks again on return. A dialog open while the gist is switched is released *and* the session dropped before the switch waits on that queue, or the next queued reconcile re-parks it behind the gist picker.
+
+The re-merge against a mid-flight edit asks as well, through `decideAfterWrite`. It used to settle by policy with nobody asked, on the grounds that the reconcile had already pushed — but both versions in that merge are the user's, so keeping local silently is the same overwrite the resolver exists to prevent. What cannot work there is *cancelling*: the write has gone out and the baseline has moved, so there is nothing to call off. Declining degrades to "not now" — the policy settles it and the caller files it for review — which is also the path a hidden page takes.
 
 Decisions must be sparse rather than a finished list. When the extension returned a list, "Skip This Conflict" deleted the item on both devices (commit 218411c).
 
@@ -599,7 +601,7 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 - **Whole-gist reads.** Every read downloads every file in the gist, plus one request per truncated file.
 - **Requests per reconcile.** No change costs one request; a push costs three (read, re-read, `PATCH`), plus one per retry.
 - **Extension polling.** Each GitHub-mode scope is polled once per interval while a view is visible, with no conditional requests and no rate-limit backoff.
-- **PWA updates are event-driven.** The PWA pulls only on focus, edits and retries, so edits made offline wait for one of those.
+- **PWA polling stops with the page.** A hidden tab does not poll, so a change made elsewhere is seen at the next return, not while the phone is asleep. Edits made offline still wait for a return, an edit or a retry.
 
 **Product scope**
 

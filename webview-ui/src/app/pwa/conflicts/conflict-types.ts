@@ -14,7 +14,7 @@
  * PWA-only: nothing here is reachable from the extension webview build.
  */
 
-import type { ConflictSet, FileConflictSet, Todo } from "@vsc-todo/core";
+import type { ConflictPhase, ConflictSet, FileConflictSet, Todo } from "@vsc-todo/core";
 
 /**
  * Scope a conflict belongs to. Per-file lists live inside the workspace gist file and are
@@ -37,6 +37,16 @@ export interface ConflictPromptRequest {
 	files: FileConflictSet[];
 	/** Every todo id the merge saw, so a keep-both copy can draw an id nothing else uses. */
 	knownIds: number[];
+	/**
+	 * Which merge is asking.
+	 *
+	 * The dialog's own copy depends on it. On `reconcile` nothing has been written, so
+	 * cancelling really does stop the sync. On `after-write` — the re-merge against an edit
+	 * that landed while the reconcile was on the network — the gist is already written and
+	 * the baseline already moved, so there is nothing to call off, and the old wording
+	 * promised a rollback that cannot happen.
+	 */
+	phase: ConflictPhase;
 }
 
 /**

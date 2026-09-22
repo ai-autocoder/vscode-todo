@@ -158,9 +158,11 @@ class FakeGateway {
 		if (res.success && res.data) {
 			const stale = this.guardStaleAdopt && this.userGeneration !== generation;
 			this.userTodos = stale
-				? this.engine.reconcileWithLocalEdits(snapshot, res.data.data, {
-						userTodos: this.userTodos,
-					}).data.userTodos
+				? (
+						await this.engine.reconcileWithLocalEdits(snapshot, res.data.data, {
+							userTodos: this.userTodos,
+						})
+					).data.userTodos
 				: res.data.data.userTodos;
 			if (stale) {
 				this.scheduleUserPush();
@@ -179,11 +181,13 @@ class FakeGateway {
 		if (res.success && res.data) {
 			const stale = this.guardStaleAdopt && this.workspaceGeneration !== generation;
 			const merged = stale
-				? this.engine.reconcileWorkspaceWithLocalEdits(snapshot, res.data.data, {
-						workspaceTodos: this.workspaceTodos,
-						filesData: this.filesData,
-						filesDataPaths: {},
-					}).data
+				? (
+						await this.engine.reconcileWorkspaceWithLocalEdits(snapshot, res.data.data, {
+							workspaceTodos: this.workspaceTodos,
+							filesData: this.filesData,
+							filesDataPaths: {},
+						})
+					).data
 				: res.data.data;
 			this.workspaceTodos = merged.workspaceTodos;
 			this.filesData = merged.filesData;

@@ -239,33 +239,33 @@ describe("merging sync preserves list order", () => {
 });
 
 describe("mid-flight edits keep their position", () => {
-	it("keeps a todo added at the top while a reconcile was on the network", () => {
+	it("keeps a todo added at the top while a reconcile was on the network", async () => {
 		const gist = new FakeGist();
 		const engine = makeEngine(gist);
 		const snapshot: GlobalGistData = { userTodos: [todo(1, "A"), todo(2, "B")] };
 		const reconciled: GlobalGistData = { userTodos: [todo(1, "A"), todo(2, "B")] };
 		const currentLocal: GlobalGistData = { userTodos: [todo(4, "D"), todo(1, "A"), todo(2, "B")] };
 
-		const { data } = engine.reconcileWithLocalEdits(snapshot, reconciled, currentLocal);
+		const { data } = await engine.reconcileWithLocalEdits(snapshot, reconciled, currentLocal);
 
 		expect(texts(data.userTodos)).toEqual(["D", "A", "B"]);
 	});
 
-	it("keeps a mid-flight reorder while folding in what the remote contributed", () => {
+	it("keeps a mid-flight reorder while folding in what the remote contributed", async () => {
 		const gist = new FakeGist();
 		const engine = makeEngine(gist);
 		const snapshot: GlobalGistData = { userTodos: [todo(1, "A"), todo(2, "B")] };
 		const reconciled: GlobalGistData = { userTodos: [todo(1, "A"), todo(2, "B"), todo(5, "R")] };
 		const currentLocal: GlobalGistData = { userTodos: [todo(2, "B"), todo(1, "A")] };
 
-		const { data } = engine.reconcileWithLocalEdits(snapshot, reconciled, currentLocal);
+		const { data } = await engine.reconcileWithLocalEdits(snapshot, reconciled, currentLocal);
 
 		// The reorder holds, and R keeps the neighbour it has on the remote (it follows B there,
 		// so it follows B here) rather than being appended to whatever the local order ends with.
 		expect(texts(data.userTodos)).toEqual(["B", "R", "A"]);
 	});
 
-	it("keeps a workspace mid-flight addition at the top", () => {
+	it("keeps a workspace mid-flight addition at the top", async () => {
 		const gist = new FakeGist();
 		const engine = makeEngine(gist);
 		const snapshot: WorkspaceGistData = {
@@ -279,7 +279,7 @@ describe("mid-flight edits keep their position", () => {
 			filesDataPaths: {},
 		};
 
-		const { data } = engine.reconcileWorkspaceWithLocalEdits(snapshot, snapshot, currentLocal);
+		const { data } = await engine.reconcileWorkspaceWithLocalEdits(snapshot, snapshot, currentLocal);
 
 		expect(texts(data.workspaceTodos)).toEqual(["D", "A", "B"]);
 	});

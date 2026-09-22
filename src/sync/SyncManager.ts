@@ -29,6 +29,60 @@ import { MementoCacheStore } from "./MementoCacheStore";
 import { ConflictResolutionUI } from "./ConflictResolutionUI";
 import { getGistId } from "../utilities/syncConfig";
 
+/**
+ * How many times a sync will fold in edits that arrived while its own conflict dialog was up.
+ *
+ * Bounded so that someone typing faster than they answer cannot hold a sync open indefinitely;
+ * whatever is left over is carried by the debounced re-sync the fold already triggers.
+ */
+const MAX_REMERGE_FOLDS = 3;
+
+/**
+ * What each *after-write* dialog of one sync came back with, one entry per dialog.
+ *
+ * The engine reports every conflict its re-merge saw, decided or not, because only the caller
+ * knows which ones the dialog answered. Without that distinction the warning at the end of a
+ * sync tells someone who has just chosen "Keep All Remote" that their conflicts were settled
+ * automatically by keeping this device's version — the opposite of what they picked.
+ *
+ * One entry per dialog rather than one set per sync, because a fold can re-raise an id an
+ * earlier fold settled: the user answers it, edits it again while the write is in flight, and
+ * the next fold asks once more. Matching each conflict list against its own dialog keeps a
+ * second dialog the user *dismissed* from being filtered out by the first one's answer.
+ *
+ * Created per sync and closed over by that sync's resolver, not held on the manager: the two
+ * scopes have separate in-progress guards and nothing serialises them against each other, so
+ * `startPolling("user")` and `startPolling("workspace")` interleave at the first await and a
+ * shared field would have each scope clearing the other's answers mid-dialog.
+ */
+class AfterWriteAnswers {
+	private readonly rounds: Array<{ todos: Set<number>; files: Set<string> }> = [];
+
+	/** A marker to pass to {@link since}, taken before a merge that may put a dialog up. */
+	mark(): number {
+		return this.rounds.length;
+	}
+
+	record(todos: Iterable<number>, files: Iterable<string>): void {
+		this.rounds.push({ todos: new Set(todos), files: new Set(files) });
+	}
+
+	/** Everything answered since `mark`, unioned across the dialogs in that span. */
+	since(mark: number): { todos: Set<number>; files: Set<string> } {
+		const todos = new Set<number>();
+		const files = new Set<string>();
+		for (const round of this.rounds.slice(mark)) {
+			for (const id of round.todos) {
+				todos.add(id);
+			}
+			for (const path of round.files) {
+				files.add(path);
+			}
+		}
+		return { todos, files };
+	}
+}
+
 export class SyncManager {
 	private apiClient: GitHubApiClient;
 	private storageManager: SyncStorageManager;
@@ -209,7 +263,11 @@ export class SyncManager {
 	 * Construction is trivial (it holds no connection), and the caches it reads are the
 	 * extension's existing mementos — see {@link MementoCacheStore}.
 	 */
-	private engineFor(gistId: string, cacheStore: MementoCacheStore): GistSyncEngine {
+	private engineFor(
+		gistId: string,
+		cacheStore: MementoCacheStore,
+		answers: AfterWriteAnswers
+	): GistSyncEngine {
 		return new GistSyncEngine({
 			// `GitHubApiClient` already satisfies `GistFileIO` structurally.
 			client: this.apiClient,
@@ -219,8 +277,16 @@ export class SyncManager {
 			// keeping this device's version is the non-destructive answer and the conflict is
 			// raised again on the next sync.
 			conflictPolicy: "prefer-local",
-			conflictResolver: ({ todos, files, knownIds }) =>
-				ConflictResolutionUI.resolve(todos, files, knownIds),
+			conflictResolver: async ({ todos, files, knownIds, phase }) => {
+				const decisions = await ConflictResolutionUI.resolve(todos, files, knownIds, phase);
+				// Only the after-write phase is recorded: the reconcile's own conflicts are already
+				// reported separately, and it is only the re-merge that claims to have settled things
+				// "automatically". See {@link AfterWriteAnswers}.
+				if (phase === "after-write") {
+					answers.record(decisions?.todos?.keys() ?? [], decisions?.files?.keys() ?? []);
+				}
+				return decisions;
+			},
 			logger: (message) => console.log(message),
 		});
 	}
@@ -290,7 +356,8 @@ export class SyncManager {
 
 		try {
 			const cacheStore = new MementoCacheStore(this.context);
-			const engine = this.engineFor(gistId, cacheStore);
+			const answers = new AfterWriteAnswers();
+			const engine = this.engineFor(gistId, cacheStore, answers);
 			const snapshot = await this.readLocalUser(fileName);
 
 			const res = await engine.reconcileUser(fileName, snapshot);
@@ -327,21 +394,59 @@ export class SyncManager {
 			// (see handleTodoChange), so which half an edit falls in is pure timing.
 			const engineWrote = res.data.data;
 			const afterReconcile = await this.readLocalUser(fileName);
-			const current = !isEqual(afterReconcile, engineWrote)
+			const firstCurrent = !isEqual(afterReconcile, engineWrote)
 				? afterReconcile
 				: cacheStore.displacedData<GlobalGistData>(StorageKeys.globalGistCache(fileName)) ??
 					snapshot;
-			const editedDuringSync = !isEqual(current, snapshot);
+			const editedDuringSync = !isEqual(firstCurrent, snapshot);
 			let remergeConflicts = 0;
+			let current = firstCurrent;
 			if (editedDuringSync) {
 				// The whole result, not just the data: this second merge resolves conflicts of its
-				// own — a todo the user edited mid-flight that the reconcile was also changing — and
-				// it resolves them by policy, with no dialog, because the reconcile has already
-				// pushed. Dropping them would leave exactly the silent overwrite this change exists
-				// to remove, so they are reported below.
-				const remerge = engine.reconcileWithLocalEdits(snapshot, reconciled, current);
-				reconciled = remerge.data;
-				remergeConflicts = remerge.conflicts.length;
+				// own — a todo the user edited mid-flight that the reconcile was also changing. It
+				// puts the same quick picks up that the reconcile's own merge does; what the user
+				// leaves undecided still falls to the policy, and is reported below. The one thing
+				// they cannot do here is call the write off, because it has already gone out.
+				//
+				// Looped, because that dialog is an unbounded await — `ignoreFocusOut` keeps the quick
+				// pick up while the user clicks back into the Todo view — and anything they type there
+				// lands in the same storage this read from. Folding once against the pre-dialog copy
+				// would write the merge straight over it, and the queued re-sync would only re-read the
+				// clobbered state.
+				//
+				// The loop test compares storage against storage, never against `current`: `current` may
+				// have come from `displacedData` rather than from a read, in which case it differs from
+				// what is on disk for a reason that has nothing to do with a new edit. Comparing the two
+				// made every displaced-edit sync fold a second time with the pre-edit state as local,
+				// which reads as a deletion and dropped the edit outright. Bounded: someone typing
+				// faster than they answer must not hold the sync open.
+				//
+				// If the bound is reached with an edit still unfolded, the write-back below does put the
+				// merge over it. That needs three conflicting dialogs each with an interleaved edit in a
+				// single sync, and the alternative — not writing — is worse: the engine has already moved
+				// the baseline, so leaving local behind makes the next reconcile read the remote's
+				// contribution as a local deletion and push it away.
+				let base = snapshot;
+				// What storage held when `current` was worked out. Only a *new* edit moves it from here.
+				let seenInStorage = afterReconcile;
+				for (let fold = 0; fold < MAX_REMERGE_FOLDS; fold++) {
+					// Per fold, not per sync: this fold may re-raise an id an earlier one settled, and
+					// filtering against that earlier answer would hide a dialog this one dismissed.
+					const asked = answers.mark();
+					const remerge = await engine.reconcileWithLocalEdits(base, reconciled, current);
+					const decided = answers.since(asked);
+					reconciled = remerge.data;
+					remergeConflicts += remerge.conflicts.filter(
+						(conflict) => !decided.todos.has(conflict.todoId)
+					).length;
+					const latest = await this.readLocalUser(fileName);
+					if (isEqual(latest, seenInStorage)) {
+						break;
+					}
+					base = current;
+					current = latest;
+					seenInStorage = latest;
+				}
 				this.triggerDebounceSync("user");
 			}
 
@@ -418,7 +523,8 @@ export class SyncManager {
 
 		try {
 			const cacheStore = new MementoCacheStore(this.context);
-			const engine = this.engineFor(gistId, cacheStore);
+			const answers = new AfterWriteAnswers();
+			const engine = this.engineFor(gistId, cacheStore, answers);
 			const snapshot = await this.readLocalWorkspace(fileName);
 
 			const res = await engine.reconcileWorkspace(fileName, snapshot);
@@ -436,18 +542,36 @@ export class SyncManager {
 			// cache, so a mid-flight edit to one has no other copy anywhere.
 			const engineWrote = res.data.data;
 			const afterReconcile = await this.readLocalWorkspace(fileName);
-			const current = !isEqual(afterReconcile, engineWrote)
+			const firstCurrent = !isEqual(afterReconcile, engineWrote)
 				? afterReconcile
 				: cacheStore.displacedData<WorkspaceGistData>(
 						StorageKeys.workspaceGistCache(fileName)
 					) ?? snapshot;
-			const editedDuringSync = !isEqual(current, snapshot);
+			const editedDuringSync = !isEqual(firstCurrent, snapshot);
 			let remergeConflicts = 0;
+			let current = firstCurrent;
 			if (editedDuringSync) {
-				// See syncUser.
-				const remerge = engine.reconcileWorkspaceWithLocalEdits(snapshot, reconciled, current);
-				reconciled = remerge.data;
-				remergeConflicts = remerge.conflicts.length + remerge.fileConflicts.length;
+				// See syncUser, including why this folds in a loop.
+				let base = snapshot;
+				// See syncUser: storage against storage, never against `current`.
+				let seenInStorage = afterReconcile;
+				for (let fold = 0; fold < MAX_REMERGE_FOLDS; fold++) {
+					// See syncUser: per fold, not per sync.
+					const asked = answers.mark();
+					const remerge = await engine.reconcileWorkspaceWithLocalEdits(base, reconciled, current);
+					const decided = answers.since(asked);
+					reconciled = remerge.data;
+					remergeConflicts +=
+						remerge.conflicts.filter((conflict) => !decided.todos.has(conflict.todoId)).length +
+						remerge.fileConflicts.filter((conflict) => !decided.files.has(conflict.filePath)).length;
+					const latest = await this.readLocalWorkspace(fileName);
+					if (isEqual(latest, seenInStorage)) {
+						break;
+					}
+					base = current;
+					current = latest;
+					seenInStorage = latest;
+				}
 				this.triggerDebounceSync("workspace");
 			}
 

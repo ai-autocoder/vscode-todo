@@ -1,6 +1,7 @@
 import {
 	MemoryCacheStore,
 	mergeFilesData,
+	SyncConstants,
 	resolveFileConflict,
 	serialize,
 	SyncErrorType,
@@ -594,6 +595,8 @@ describe("GistGateway sync status reporting", () => {
 		retrySync(): void;
 		startManualSync(options: { forgetSuppressedFailures: boolean }): void;
 		refresh(): Promise<void>;
+		pullAll(): Promise<void>;
+		lastPullAt: number;
 		consecutiveSyncFailures: Map<TodoScope.user | TodoScope.workspace, number>;
 		reconcileUser(): Promise<void>;
 		scheduleUserPush(): void;
@@ -917,10 +920,10 @@ describe("GistGateway sync status reporting", () => {
 	});
 
 	it("ignores a second manual sync while the first is still running", () => {
-		let refreshes = 0;
+		let pulls = 0;
 		// Never settles, so the guard stays closed for the duration of the test.
-		internals.refresh = () => {
-			refreshes++;
+		internals.pullAll = () => {
+			pulls++;
 			return new Promise(() => {});
 		};
 
@@ -930,7 +933,31 @@ describe("GistGateway sync status reporting", () => {
 
 		// Each press is another four-to-eight gist requests; pressing again is the obvious
 		// response to a sync that looks stuck.
-		expect(refreshes).toBe(1);
+		expect(pulls).toBe(1);
+	});
+
+	/**
+	 * A manual sync goes straight to `pullAll`, never through `refresh`.
+	 *
+	 * `refresh` is the return-to-visibility path and pulls only when the poll interval is up,
+	 * so routing the button through it made "Sync all now" do nothing at all for up to a whole
+	 * interval whenever the scopes were already clean — no request, no spinner, no status
+	 * change. The menu item is not gated on dirty or error, so this was the ordinary happy
+	 * path, and it is the same broken-looking button the no-gist branch already guards against.
+	 */
+	it("pulls on a manual sync even when no poll is due", async () => {
+		let pulls = 0;
+		internals.pullAll = () => {
+			pulls++;
+			return Promise.resolve();
+		};
+		// Freshly polled and nothing owed: the exact state in which the button used to be inert.
+		internals.lastPullAt = Date.now();
+
+		gateway.syncNow();
+		await Promise.resolve();
+
+		expect(pulls).toBe(1);
 	});
 
 	/**
@@ -1630,5 +1657,153 @@ describe("GistGateway prompt and the sync queue", () => {
 		expect(internals.engine).toBeUndefined();
 		expect(internals.userFile).toBeUndefined();
 		expect(internals.workspaceFile).toBeUndefined();
+	});
+});
+
+/**
+ * Polling, and the rule for making up a poll missed while the page was hidden.
+ *
+ * The PWA used to pull on focus and nothing else, so an app left open and visible never re-synced
+ * at all — the stale state that let it read `remote == base` and push over the other peer without
+ * ever raising a conflict. It now polls while it is on screen and stops while it is not, which
+ * puts three decisions in `refresh`: resume the cadence, pull if one is due, and measure "due"
+ * from the last pull rather than from the return, so tabbing away and back cannot reset the clock
+ * or push the next pull out to a full interval from now.
+ */
+describe("GistGateway polling", () => {
+	interface Internals {
+		token: string | undefined;
+		gistId: string | undefined;
+		userFile: string | undefined;
+		lastPullAt: number;
+		pollIntervalMs: number;
+		pollingSuspended: boolean;
+		pollTimer: ReturnType<typeof setTimeout> | undefined;
+		pullAll(): Promise<void>;
+		pendingUserPush: boolean;
+		pendingWorkspacePush: boolean;
+	}
+
+	let gateway: GistGateway;
+	let internals: Internals;
+	let pulls: number;
+
+	beforeEach(() => {
+		gateway = new GistGateway({
+			clientId: "test-client",
+			deviceFlowProxyUrl: "https://example.invalid",
+			pushDebounceMs: 60_000,
+		});
+		internals = gateway as unknown as Internals;
+		internals.token = "stub-token";
+		internals.gistId = "stub-gist";
+		internals.userFile = "user-todos.json";
+
+		// Stub the pull itself: these tests are about when it is called, not what it does. The
+		// real one is driven through the engine in the suites above.
+		pulls = 0;
+		internals.pullAll = async () => {
+			pulls++;
+			internals.lastPullAt = Date.now();
+		};
+	});
+
+	afterEach(() => {
+		// Nothing here should leave a timer behind, but a stray one would fire into a torn-down
+		// gateway and fail an unrelated spec.
+		gateway.suspendPolling();
+	});
+
+	it("defaults to the interval the extension ships", () => {
+		// Both peers spend one rate-limit budget, so the PWA has no business polling harder.
+		expect(internals.pollIntervalMs).toBe(SyncConstants.defaultPollInterval * 1000);
+	});
+
+	it("clamps an interval below the shared floor", () => {
+		const fast = new GistGateway({
+			clientId: "c",
+			deviceFlowProxyUrl: "https://example.invalid",
+			pollIntervalMs: 1000,
+		});
+		expect((fast as unknown as Internals).pollIntervalMs).toBe(SyncConstants.minPollInterval * 1000);
+	});
+
+	it("pulls on return when the interval has passed while hidden", async () => {
+		internals.lastPullAt = Date.now() - (SyncConstants.defaultPollInterval * 1000 + 1);
+
+		await gateway.refresh();
+
+		expect(pulls).toBe(1);
+	});
+
+	it("does not pull on return when the interval has not passed", async () => {
+		// The regression this guards: refreshing on every focus meant a user flicking between
+		// tabs spent a full reconcile — two round trips per scope — on each flick.
+		internals.lastPullAt = Date.now();
+
+		await gateway.refresh();
+
+		expect(pulls).toBe(0);
+	});
+
+	it("still arms the next poll when it declines to pull", async () => {
+		internals.lastPullAt = Date.now();
+
+		await gateway.refresh();
+
+		expect(pulls).toBe(0);
+		// Without this the cadence would end at the first early return: a user who tabbed away
+		// and back inside one period would never poll again.
+		expect(internals.pollTimer).toBeDefined();
+	});
+
+	it("pulls on return regardless of the clock when a scope owes a push", async () => {
+		// Covers an edit still on the device and a conflict prompt declined because the page was
+		// hidden. Coming back is exactly when both should be finished, and making the user wait
+		// out an interval to be asked again is how a dialog starts looking broken.
+		internals.lastPullAt = Date.now();
+		internals.pendingUserPush = true;
+
+		await gateway.refresh();
+
+		expect(pulls).toBe(1);
+	});
+
+	it("stops the cadence while hidden", () => {
+		internals.pollTimer = setTimeout(() => undefined, 60_000);
+
+		gateway.suspendPolling();
+
+		expect(internals.pollingSuspended).toBe(true);
+		expect(internals.pollTimer).toBeUndefined();
+	});
+
+	it("arms nothing while hidden, even after a pull", async () => {
+		gateway.suspendPolling();
+
+		// The real pullAll re-arms on its way out; a suspended gateway must not let it.
+		await (GistGateway.prototype as unknown as Internals).pullAll.call(gateway);
+
+		expect(internals.pollTimer).toBeUndefined();
+	});
+
+	it("does not poll once the session is gone", async () => {
+		// A pull already on the network when the user disconnects would otherwise re-arm a timer
+		// that reconciles against file names the gateway no longer holds.
+		internals.token = undefined;
+
+		await (GistGateway.prototype as unknown as Internals).pullAll.call(gateway);
+
+		expect(internals.pollTimer).toBeUndefined();
+	});
+
+	it("resumes the cadence on return after being hidden", async () => {
+		gateway.suspendPolling();
+		internals.lastPullAt = Date.now();
+
+		await gateway.refresh();
+
+		expect(internals.pollingSuspended).toBe(false);
+		expect(internals.pollTimer).toBeDefined();
 	});
 });
