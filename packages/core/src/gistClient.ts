@@ -1,8 +1,9 @@
 /**
  * Framework-agnostic GitHub Gist REST client. Mirrors the extension's GitHubApiClient but
- * takes a token provider instead of a VS Code auth manager, so it runs unchanged in a
- * browser/PWA, a worker, or Node. `api.github.com` supports CORS, so these calls work
- * directly from a browser with a `gist`-scoped token.
+ * takes a token provider instead of a VS Code auth manager. `api.github.com` supports CORS, so
+ * these calls work directly from a browser with a `gist`-scoped token — which is what the PWA,
+ * its only consumer today, does. Node hosts it unchanged; see {@link NO_HTTP_CACHE} before
+ * hosting it in a worker runtime.
  */
 
 import {
@@ -34,6 +35,40 @@ const API_HEADERS = {
 	Accept: "application/vnd.github+json",
 	"X-GitHub-Api-Version": "2022-11-28",
 } as const;
+
+/**
+ * Every READ goes out with this. Not optional, and not a micro-optimisation in reverse.
+ *
+ * `api.github.com` answers a gist GET with `Cache-Control: private, max-age=60`, so a browser's
+ * HTTP cache satisfies the next 60 seconds of identical GETs *without touching the network*.
+ *
+ * The bug was one-sided because the HTTP client is the one piece of gist sync that is NOT shared:
+ * the engine, the merge and the equality are, but each host brings its own `GistFileIO`. This one
+ * is the PWA's, and the PWA is the only thing that constructs it. The extension's is
+ * `src/sync/GitHubApiClient.ts`, which is `vscode`-bound and runs in the extension host — Node,
+ * no HTTP cache — so it read fresh throughout and raised the conflict correctly while this client
+ * silently lost the same edit.
+ *
+ * What it costs when it bites: a reconcile reads a gist the other peer has already updated, gets
+ * its own 60-second-old copy back, and computes `remote === base`. That is not "both sides
+ * changed" — it is "only local changed", which takes the straight push path: no merge, no
+ * conflict, no prompt. `pushVerified`'s re-read, the guard that exists precisely to catch a peer
+ * writing inside the read-write window, hits the same cache entry and agrees nothing moved. The
+ * PATCH then overwrites the other peer's edit and `saveCache` records the overwrite as the clean
+ * baseline, so the lost edit is never pulled back — which is how a conflict the extension raises
+ * correctly becomes a silent overwrite in the PWA.
+ *
+ * `no-cache` rather than `no-store`: it forces revalidation on every read but still sends the
+ * ETag, and GitHub's 304s do not count against the rate limit — so polling stays cheap while the
+ * answer is always current. A 304 can only come back when the ETag still matches, so the body the
+ * browser replays is current by definition.
+ *
+ * Node ignores the field, which is all the hosting this client has today. A worker runtime is the
+ * one to check before adding: workerd *validates* `cache` rather than ignoring it and rejects
+ * values it has not implemented, so an old compatibility date would turn every read into a
+ * `TypeError` that `networkError` reports as a plain retryable network failure.
+ */
+const NO_HTTP_CACHE: Pick<RequestInit, "cache"> = { cache: "no-cache" };
 
 export class GistClient {
 	constructor(private readonly options: GistClientOptions) {}
@@ -90,7 +125,11 @@ export class GistClient {
 		};
 
 		try {
-			const response = await fetch(`${GitHubAPI.gists}?per_page=100`, { method: "GET", headers });
+			const response = await fetch(`${GitHubAPI.gists}?per_page=100`, {
+				method: "GET",
+				headers,
+				...NO_HTTP_CACHE,
+			});
 			if (!response.ok) {
 				return this.handleErrorResponse(response);
 			}
@@ -181,7 +220,11 @@ export class GistClient {
 			return this.authError();
 		}
 		try {
-			const response = await fetch(GitHubAPI.gist(gistId), { method: "GET", headers });
+			const response = await fetch(GitHubAPI.gist(gistId), {
+				method: "GET",
+				headers,
+				...NO_HTTP_CACHE,
+			});
 			if (!response.ok) {
 				return this.handleErrorResponse(response);
 			}
@@ -220,7 +263,7 @@ export class GistClient {
 		}
 
 		try {
-			const response = await fetch(file.raw_url);
+			const response = await fetch(file.raw_url, { ...NO_HTTP_CACHE });
 			if (!response.ok) {
 				return this.handleErrorResponse(response);
 			}

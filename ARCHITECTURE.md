@@ -354,6 +354,8 @@ flowchart TD
 
 Only a genuine "file not found" lets a write skip the comparison. A network error or rate limit aborts instead (commit 4afdfba).
 
+**Reads must be uncached.** Both the change detection and the verified write are only as good as the freshness of the read behind them, and `api.github.com` answers a gist `GET` with `Cache-Control: private, max-age=60`. In a browser that means the HTTP cache answers the next minute of identical reads with no network request — so the PWA could read a gist the extension had already updated, see `remote == base`, classify a peer's edit as "only local changed", and take the straight push path: no merge, no conflict prompt, and the overwrite recorded as the clean baseline. `pushVerified`'s re-read hit the same cache entry and agreed nothing had moved. Only the PWA was affected, and the reason is the `GistFileIO` row of the table above: the engine and the merge are shared, but each host brings its own HTTP client. The extension's is `GitHubApiClient`, which is `vscode`-bound and runs in the extension host — Node, no HTTP cache — so it read fresh throughout and raised the conflict correctly while the PWA silently won. It needs no directive of its own and can never be hosted in a browser. `GistClient` now sends `cache: "no-cache"` on every read (`no-cache`, not `no-store`: it still revalidates with the ETag, and GitHub's 304s are free against the rate limit). Guarded by [`gistClient.test.ts`](packages/core/test/gistClient.test.ts).
+
 **Scheduling.** The engine decides what to write; each app decides when.
 
 | | Extension ([`SyncManager.ts`](src/sync/SyncManager.ts)) | PWA ([`gist-gateway.ts`](webview-ui/src/app/data/gist-gateway.ts)) |

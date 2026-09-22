@@ -205,6 +205,13 @@ export class GitHubApiClient {
 		}
 
 		try {
+			// No `cache: "no-cache"` here, unlike `GistClient`'s reads. GitHub answers this GET with
+			// `Cache-Control: private, max-age=60`, which a browser's HTTP cache honours — and a
+			// stale read makes the engine see `remote == base`, classify a peer's edit as "only
+			// local changed", and push straight over it with no merge and no conflict prompt. This
+			// client is `vscode`-bound and only ever runs in the extension host, where fetch has no
+			// HTTP cache at all, so the directive would be dead weight. Anything that moves these
+			// reads somewhere a cache exists has to add it.
 			const response = await fetch(GitHubAPI.gist(gistId), {
 				method: "GET",
 				headers: {
