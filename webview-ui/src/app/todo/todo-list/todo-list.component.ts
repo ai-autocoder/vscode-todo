@@ -84,12 +84,6 @@ export class TodoList implements OnInit, AfterViewInit {
 
 	enterAnimationEnabledActions: string[] = ["addTodo", "toggleTodo", "undoDelete"];
 	/**
-	 * Actions after which the item that just appeared is scrolled into view. With the default
-	 * `createPosition: bottom` a new todo lands past the end of a list that already fills the
-	 * panel, so its enter animation played off-screen and adding looked like nothing happened.
-	 */
-	private readonly revealNewItemActions = new Set<string>(["addTodo"]);
-	/**
 	 * How long a reveal's smooth scroll is assumed to still be running. The browser picks the
 	 * real duration and `scrollend` is too new to rely on in every host, so this is a generous
 	 * upper bound: overshooting only means the FLIP compensates for a scroll that has already
@@ -138,11 +132,37 @@ export class TodoList implements OnInit, AfterViewInit {
 	}
 
 	handleSubscription(actionType: string) {
-		// Read on every arrival, not only on an add: consuming it here is what keeps a refused
-		// composer add from leaving the flag set for a later slice to claim.
-		const isLocalAdd = this.todoService.consumeLocalAdd(this.scope);
-		this.handleAnimations(actionType);
-		this.pullTodos(isLocalAdd);
+		// Looked up before the animation flags are set, because those have to be right on the
+		// element as it is created and the pull is what creates it.
+		const localAdd = this.peekLocalAdd();
+		this.handleAnimations(actionType, localAdd !== null);
+		this.pullTodos(localAdd);
+	}
+
+	/**
+	 * The item in the arriving slice that this webview's composer is waiting for, if it carries
+	 * one. Identified by what arrived rather than by the action name: in the workspace scope the
+	 * add frequently lands on a `loadData` instead of on its own slice, because the data-file
+	 * watcher and a gist reload each dispatch one.
+	 *
+	 * Peeks rather than claims — the item may still be filtered out of view, and the request
+	 * should stay claimable by the arrival that actually shows it.
+	 */
+	private peekLocalAdd(): Todo | null {
+		const known = new Set(this.allTodos.map((todo) => todo.id));
+		const added = this.incomingTodos().find((todo) => !known.has(todo.id));
+		return added && this.todoService.matchesLocalAdd(this.scope, added.text) ? added : null;
+	}
+
+	private incomingTodos(): Todo[] {
+		switch (this.scope) {
+			case TodoScope.user:
+				return this.todoService.userTodos;
+			case TodoScope.workspace:
+				return this.todoService.workspaceTodos;
+			case TodoScope.currentFile:
+				return this.todoService.currentFileTodos;
+		}
 	}
 
 	private handleSelectionCommand(command: SelectionCommand): void {
@@ -162,16 +182,20 @@ export class TodoList implements OnInit, AfterViewInit {
 		}
 	}
 
-	handleAnimations(actionType: string): void {
+	handleAnimations(actionType: string, carriesLocalAdd = false): void {
 		actionType = actionType.split("/")[1];
 		this.lastActionName = actionType;
 		// enter animation
-		const isAllowedEnter = this.enterAnimationEnabledActions.includes(actionType);
+		const isAllowedEnter = this.enterAnimationEnabledActions.includes(actionType) || carriesLocalAdd;
 		this.isEnterAnimationEnabled = this.isInitialized && !this.isDragging && isAllowedEnter;
 
-		// leave animation
+		// leave animation. Normally off for a loadData, which can replace the whole list and would
+		// animate every row out — but a loadData carrying the composer's own add is the workspace
+		// scope's ordinary path for one, and the list is otherwise unchanged. It has to be on for
+		// that case because this element wraps the entering one, and a disabled animation here
+		// disables the nested one too.
 		const loadData = actionType === "loadData";
-		this.isLeaveAnimationEnabled = !loadData && !this.isDragging;
+		this.isLeaveAnimationEnabled = (!loadData || carriesLocalAdd) && !this.isDragging;
 
 		this.cdRef.detectChanges();
 	}
@@ -191,7 +215,7 @@ export class TodoList implements OnInit, AfterViewInit {
 		return !this.reorderAnimationExcludedActions.has(this.lastActionName);
 	}
 
-	pullTodos(isLocalAdd = false) {
+	pullTodos(localAdd: Todo | null = null) {
 		const prevRects = this.isInitialized ? this.snapshotRects() : new Map<number, DOMRect>();
 		// Captured with the rects, but only while a reveal is mid-flight: `behavior: "smooth"`
 		// keeps scrolling for a few hundred ms, so a pull landing inside that window measures the
@@ -203,7 +227,6 @@ export class TodoList implements OnInit, AfterViewInit {
 					height: this.listScrollEl?.nativeElement.scrollHeight ?? 0,
 				}
 			: null;
-		const prevIds = new Set(this.todos.map((todo) => todo.id));
 		const query = this.todoService.normalizedSearchQuery();
 		this.searchQuery = query;
 		const suppressAnimations = query.length > 0 && !this.isInitialized;
@@ -225,8 +248,8 @@ export class TodoList implements OnInit, AfterViewInit {
 			this.animateReorder(prevRects, prevScroll);
 		}
 
-		if (isLocalAdd) {
-			this.revealNewItem(prevIds);
+		if (localAdd) {
+			this.revealNewItem(localAdd);
 		}
 	}
 
@@ -817,12 +840,12 @@ export class TodoList implements OnInit, AfterViewInit {
 	 * covers both `createPosition` values without caring which one is configured, and skips an
 	 * add that the active filter hides.
 	 */
-	private revealNewItem(prevIds: Set<number>): void {
+	private revealNewItem(added: Todo): void {
 		if (!this.isInitialized || this.isDragging) return;
-		if (!this.lastActionName || !this.revealNewItemActions.has(this.lastActionName)) return;
-
-		const added = this.todos.find((todo) => !prevIds.has(todo.id));
-		if (!added) return;
+		// An active filter can hide the item that just arrived; there is nothing to reveal then,
+		// and leaving the request unclaimed keeps it available if clearing the filter shows it.
+		if (!this.todos.some((todo) => todo.id === added.id)) return;
+		if (!this.todoService.claimLocalAdd(this.scope, added.text)) return;
 
 		// Deferred by one frame so the reorder FLIP — whose own callback is registered first, in
 		// animateReorder — measures the rows before anything scrolls; it compares each row's

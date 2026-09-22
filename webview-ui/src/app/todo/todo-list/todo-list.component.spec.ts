@@ -48,7 +48,8 @@ describe("TodoList tag filtering", () => {
 			normalizedSearchQuery: normalized as TodoService["normalizedSearchQuery"],
 			searchQuery: (() => searchQuery()) as TodoService["searchQuery"],
 			isSearchActive: (() => normalized().length > 0) as TodoService["isSearchActive"],
-			consumeLocalAdd: () => false,
+			matchesLocalAdd: () => false,
+			claimLocalAdd: () => false,
 			selectionCommand: () => new Subject<SelectionCommand>().asObservable(),
 			setSelectionState: () => undefined,
 			getSelectionState: () =>
@@ -119,8 +120,8 @@ describe("TodoList revealing a newly added item", () => {
 	let component: TodoList;
 	let lastAction$: BehaviorSubject<string>;
 	let todos: Todo[];
-	/** Stands in for the composer having just posted an add; see TodoService.consumeLocalAdd. */
-	let localAddPending: boolean;
+	/** The text the composer is waiting for, or null; see TodoService.matchesLocalAdd. */
+	let pendingLocalAddText: string | null;
 
 	const ROW_HEIGHT = 40;
 	const VIEWPORT_HEIGHT = 100;
@@ -143,7 +144,7 @@ describe("TodoList revealing a newly added item", () => {
 	beforeEach(async () => {
 		todos = [1, 2, 3, 4, 5].map((id) => makeTodo(id, `item ${id}`));
 		lastAction$ = new BehaviorSubject<string>("");
-		localAddPending = false;
+		pendingLocalAddText = null;
 
 		const serviceStub: Partial<TodoService> = {
 			get userTodos() {
@@ -155,10 +156,13 @@ describe("TodoList revealing a newly added item", () => {
 			normalizedSearchQuery: (() => "") as TodoService["normalizedSearchQuery"],
 			searchQuery: (() => "") as TodoService["searchQuery"],
 			isSearchActive: (() => false) as TodoService["isSearchActive"],
-			consumeLocalAdd: () => {
-				const pending = localAddPending;
-				localAddPending = false;
-				return pending;
+			matchesLocalAdd: (_scope: TodoScope, text: string) => pendingLocalAddText === text,
+			claimLocalAdd: (_scope: TodoScope, text: string) => {
+				if (pendingLocalAddText !== text) {
+					return false;
+				}
+				pendingLocalAddText = null;
+				return true;
 			},
 			selectionCommand: () => new Subject<SelectionCommand>().asObservable(),
 			setSelectionState: () => undefined,
@@ -202,7 +206,7 @@ describe("TodoList revealing a newly added item", () => {
 		{ origin = "composer", action = "user/addTodo" } = {}
 	) => {
 		position === "top" ? todos.unshift(todo) : todos.push(todo);
-		localAddPending = origin === "composer";
+		pendingLocalAddText = origin === "composer" ? todo.text : null;
 		const scrollBy = spyOn(container(), "scrollBy");
 		lastAction$.next(action);
 		await nextFrame();
@@ -253,21 +257,43 @@ describe("TodoList revealing a newly added item", () => {
 
 	it("does not scroll when nothing was added", async () => {
 		const scrollBy = spyOn(container(), "scrollBy");
-		localAddPending = true;
+		pendingLocalAddText = "something the composer sent";
 		lastAction$.next("user/toggleTodo");
 		await nextFrame();
 
 		expect(scrollBy).not.toHaveBeenCalled();
 	});
 
-	it("does not scroll when an item appears below the fold on a non-add action", async () => {
-		// The item is new to the list and lands off-screen, so only the action gate can stop the
-		// scroll here.
-		const scrollBy = await addAndSettle(makeTodo(6, "arrived with a reorder"), "bottom", {
-			action: "user/reorderTodo",
+	it("scrolls to the composer's item when it arrives on a loadData", async () => {
+		// The workspace scope's ordinary path: the item is carried in by the data-file watcher's
+		// reload or a gist sync rather than by the add's own slice. It is still the add the user
+		// just made, so it is still revealed — keying off the action name missed this entirely.
+		const scrollBy = await addAndSettle(makeTodo(6, "arrived on a reload"), "bottom", {
+			action: "user/loadData",
+		});
+
+		expect(scrollBy).toHaveBeenCalledTimes(1);
+		expect((scrollBy.calls.mostRecent().args[0] as ScrollToOptions).top!).toBeGreaterThan(0);
+	});
+
+	it("animates an item that arrives on a loadData, which normally suppresses animation", async () => {
+		await addAndSettle(makeTodo(6, "arrived on a reload"), "bottom", { action: "user/loadData" });
+
+		// Both flags matter: the leave-animation element wraps the entering one, so leaving it
+		// disabled would disable the enter animation with it.
+		expect(component.isEnterAnimationEnabled).toBeTrue();
+		expect(component.isLeaveAnimationEnabled).toBeTrue();
+	});
+
+	it("leaves a plain loadData unanimated", async () => {
+		const scrollBy = await addAndSettle(makeTodo(6, "someone else's item"), "bottom", {
+			action: "user/loadData",
+			origin: "elsewhere",
 		});
 
 		expect(scrollBy).not.toHaveBeenCalled();
+		expect(component.isEnterAnimationEnabled).toBeFalse();
+		expect(component.isLeaveAnimationEnabled).toBeFalse();
 	});
 
 	it("does not scroll for an add made outside this webview", async () => {
@@ -311,7 +337,7 @@ describe("TodoList revealing a newly added item", () => {
 
 			const spies = spyOnRowAnimations();
 			todos.push(makeTodo(7, "second"));
-			localAddPending = true;
+			pendingLocalAddText = "second";
 			// scrollBy is already spied from the first add, and the spy persists on the element.
 			lastAction$.next("user/addTodo");
 			// The reveal's scroll advances between the snapshot and the frame that measures.
