@@ -155,6 +155,15 @@ export class TodoList implements OnInit, AfterViewInit {
 	 * the list would otherwise animate every displaced row.
 	 */
 	private peekLocalAdd(): { item: Todo; isIncremental: boolean } | null {
+		// Before the first render there is no baseline: switching tabs rebuilds the list and the
+		// replayed slice arrives with nothing known, so every item reads as new — and an older one
+		// that happens to read the same as the pending add would take the request, leaving the
+		// real one unrevealed when its echo lands. (Comparing the item's creationDate with the
+		// request's time would also rule older ones out, but under VS Code Remote the host that
+		// stamps it runs on another machine with its own clock.)
+		if (!this.isInitialized) {
+			return null;
+		}
 		const known = new Set(this.allTodos.map((todo) => todo.id));
 		const incoming = this.incomingTodos();
 		const item = incoming.find(
@@ -948,19 +957,23 @@ export class TodoList implements OnInit, AfterViewInit {
 			// every row alike and is not movement. Only that scroll is cancelled — the browser
 			// moves scrollTop on its own too, clamping it when content shrinks, and that jump is
 			// real on-screen movement, the kind this animation exists to show. The two are told
-			// apart by the content box: an add only ever grows it and a collapse only ever shrinks
-			// it, so a shorter one means the offset moved for a reason that is not ours.
+			// apart by the content box: an add on its own only ever grows it and a collapse only
+			// ever shrinks it, so a shorter one means the offset moved for a reason that is not ours.
 			//
-			// The one case this cannot separate is Chrome's scroll anchoring, which grows the box
-			// and moves the offset at once: inserting a row above the viewport bumps scrollTop by
-			// that row's height to hold the view still (measured in Chrome 153: 100 -> 140 for a
-			// 40px row, with the anchored row not moving on screen). Discounting that bump animates
-			// rows that did not move. It is bounded at one row height and needs a second composer
-			// add inside the window while the first reveal is still travelling, under
-			// `createPosition: top` — so the PWA default only; an extension add goes in below the
-			// viewport, where anchoring does not adjust anything. `overflow-anchor: none` would
-			// remove the ambiguity and is deliberately not used: it would make every add the user
-			// did not make — an MCP add, a remote sync — shove the visible list down by a row.
+			// Two cases this cannot separate, both bounded and both needing a second composer add
+			// inside the window while the first reveal is still travelling:
+			//
+			// - Chrome's scroll anchoring grows the box and moves the offset at once: inserting a
+			//   row above the viewport bumps scrollTop by that row's height to hold the view still
+			//   (measured in Chrome 153: 100 -> 140 for a 40px row, with the anchored row not moving
+			//   on screen). Discounting that bump animates rows that did not move, by at most one
+			//   row height. It needs `createPosition: top`, which is the default on both surfaces.
+			//   `overflow-anchor: none` would remove the ambiguity and is deliberately not used: it
+			//   would make every add the user did not make — an MCP add, a remote sync — shove the
+			//   visible list down by a row.
+			// - A loadData that carries the add can carry a peer's collapse or a shortened edit with
+			//   it, so the box shrinks overall; the reveal's own scroll is then taken for a clamp and
+			//   not discounted, and the rows judder by however far it travelled that frame.
 			const isBrowserClamp = !!prevScroll && (container?.scrollHeight ?? 0) < prevScroll.height;
 			const scrolled =
 				!prevScroll || !container || isBrowserClamp ? 0 : container.scrollTop - prevScroll.top;

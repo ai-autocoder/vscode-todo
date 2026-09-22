@@ -110,10 +110,11 @@ describe("TodoList tag filtering", () => {
 });
 
 /**
- * A new item lands wherever `createPosition` says — the bottom in the extension, the top in
- * the PWA — and in a list that already fills the panel that is off-screen, so its enter
- * animation played where nobody could see it and adding looked like nothing had happened.
- * The list scrolls the item that just appeared into view; these cover both ends.
+ * A new item lands wherever `createPosition` says — the top by default on both surfaces, the
+ * bottom if configured — and in a list that already fills the panel and is scrolled away from
+ * that end, it is off-screen, so its enter animation played where nobody could see it and adding
+ * looked like nothing had happened. The list scrolls the item that just appeared into view;
+ * these cover both ends.
  */
 describe("TodoList revealing a newly added item", () => {
 	let fixture: ComponentFixture<TodoList>;
@@ -334,6 +335,24 @@ describe("TodoList revealing a newly added item", () => {
 		expect(pendingLocalAddText).toBeNull();
 	});
 
+	it("does not let a remount's replay hand the request to an older item that reads the same", () => {
+		// Switching tabs rebuilds the list, and the subject replays its last slice into the new
+		// one before its first render — when nothing is known yet, so every item looks new. An
+		// existing "standup" must not take the request for the "standup" the user just typed,
+		// whose own echo has not arrived.
+		fixture.destroy();
+		todos.push(makeTodo(6, "standup"));
+		pendingLocalAddText = "standup";
+		lastAction$.next("user/addTodo");
+
+		const remounted = TestBed.createComponent(TodoList);
+		remounted.componentInstance.scope = TodoScope.user;
+		remounted.detectChanges();
+
+		expect(pendingLocalAddText).toBe("standup");
+		remounted.destroy();
+	});
+
 	it("leaves a plain loadData unanimated", async () => {
 		const scrollBy = await addAndSettle(makeTodo(6, "someone else's item"), "bottom", {
 			action: "user/loadData",
@@ -429,6 +448,35 @@ describe("TodoList revealing a newly added item", () => {
 
 			expect(spies.get(1)!).toHaveBeenCalled();
 			expect(animatedFromY(spies.get(1)!)).toBeCloseTo(40, 0);
+		});
+
+		it("slides the rows a composer add pushes down, even when it arrives on a loadData", async () => {
+			// The workspace scope's ordinary insert path. A loadData normally skips this animation
+			// as a wholesale replacement; without the exception the new row faded in at the top
+			// while every row below it jumped down.
+			const spies = spyOnRowAnimations();
+			todos.unshift(makeTodo(6, "typed here"));
+			pendingLocalAddText = "typed here";
+			lastAction$.next("user/loadData");
+			await nextFrame();
+
+			// Pushed down one row, so each is animated from a row above where it now sits.
+			expect(spies.get(1)!).toHaveBeenCalled();
+			expect(animatedFromY(spies.get(1)!)).toBeCloseTo(-ROW_HEIGHT, 0);
+			expect(animatedFromY(spies.get(5)!)).toBeCloseTo(-ROW_HEIGHT, 0);
+		});
+
+		it("does not slide rows when the loadData carrying the add also drops some", async () => {
+			// Prepends the add and drops the last row, so rows 1–4 really do move down — only the
+			// replacement check can stop them animating here.
+			const spies = spyOnRowAnimations();
+			todos = [makeTodo(6, "typed here"), ...todos.slice(0, 4)];
+			pendingLocalAddText = "typed here";
+			lastAction$.next("user/loadData");
+			await nextFrame();
+
+			expect(spies.get(1)!).not.toHaveBeenCalled();
+			expect(spies.get(4)!).not.toHaveBeenCalled();
 		});
 	});
 });
