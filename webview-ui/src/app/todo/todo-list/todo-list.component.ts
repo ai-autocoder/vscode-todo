@@ -867,12 +867,15 @@ export class TodoList implements OnInit, AfterViewInit {
 	 * add that the active filter hides.
 	 */
 	private revealNewItem(added: Todo): void {
-		// Claimed by the arrival that carried the item, whatever happens next: the item is in the
-		// list from here on, so no later slice can recognise it as new, and an unclaimed request
-		// would only sit there for the rest of its life waiting to be matched by someone else's
-		// item that happens to read the same.
+		// Nothing is claimable before the first render, for the reason peekLocalAdd gives. Checked
+		// ahead of the claim so the two agree even if pullTodos, which is public, is called early.
+		if (!this.isInitialized) return;
+		// Otherwise claimed by the arrival that carried the item, whatever happens next: the item
+		// is in the list from here on, so no later slice can recognise it as new, and an unclaimed
+		// request would only sit there for the rest of its life waiting to be matched by someone
+		// else's item that happens to read the same.
 		if (!this.todoService.claimLocalAdd(this.scope, added.text)) return;
-		if (!this.isInitialized || this.isDragging) return;
+		if (this.isDragging) return;
 		// An active filter can hide the item that just arrived; there is then nothing to scroll to.
 		if (!this.todos.some((todo) => todo.id === added.id)) return;
 
