@@ -6,84 +6,22 @@ VS Code Todo
 
 </h1>
 
-<h3 align="center">Todo lists, notes, markdown checklists, and reusable AI prompts for Visual Studio Code with GitHub Gist sync.</h3>
+<h3 align="center">Todos and notes your AI agent can read and update. In your editor, synced to your phone.</h3>
 
 <p align="center">
-  Also runs on your phone: <strong><a href="https://plans-app.pages.dev">plans-app.pages.dev</a></strong> — no VS Code required.
+  A built-in <a href="#mcp-server-ai-agent-integration">MCP server</a> lets Claude Code, Cursor, or any MCP client manage your lists.
+  Works in VS Code, Cursor, Windsurf, VSCodium, and other VS Code-based editors.
+  The same lists open on your phone at <strong><a href="https://plans-app.pages.dev">plans-app.pages.dev</a></strong>.
 </p>
 
 <p align="center">
-  <!-- VS Code Marketplace -->
-  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-    <img
-      alt="VS Marketplace Version"
-      src="https://vsmarketplacebadges.dev/version-short/FrancescoAnzalone.vsc-todo.png"
-    />
-  </a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-    <img
-      alt="VS Marketplace Installs"
-      src="https://vsmarketplacebadges.dev/installs-short/FrancescoAnzalone.vsc-todo.png"
-    />
-  </a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-  <img
-    alt="VS Marketplace Downloads"
-    src="https://vsmarketplacebadges.dev/downloads-short/FrancescoAnzalone.vsc-todo.png"
-  >
-  </a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">
-    <img
-      alt="VS Marketplace Rating"
-      src="https://vsmarketplacebadges.dev/rating-star/FrancescoAnzalone.vsc-todo.png"
-    />
-  </a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo"><img alt="VS Marketplace Installs" src="https://vsmarketplacebadges.dev/installs-short/FrancescoAnzalone.vsc-todo.png" /></a>
+  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo"><img alt="Open VSX Downloads" src="https://img.shields.io/open-vsx/dt/FrancescoAnzalone/vsc-todo" /></a>
+  <a href="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml/badge.svg?branch=master" /></a>
 </p>
 
 <p align="center">
-  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
-    <img
-      src="https://img.shields.io/open-vsx/v/FrancescoAnzalone/vsc-todo"
-      alt="Open VSX Version"
-    >
-  </a>
-  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
-    <img
-      alt="Open VSX Downloads"
-      src="https://img.shields.io/open-vsx/dt/FrancescoAnzalone/vsc-todo"
-    >
-  </a>
-  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">
-    <img
-      alt="Open VSX Rating"
-      src="https://img.shields.io/open-vsx/stars/FrancescoAnzalone/vsc-todo"
-    >
-  </a>
-</p>
-
-  <!-- Project meta -->
-
-<p align="center">
-  <a href="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml">
-    <img
-      alt="CI"
-      src="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml/badge.svg?branch=master"
-    />
-  </a>
-  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" />
-  <a href="https://prettier.io/">
-    <img
-      alt="Code style: Prettier"
-      src="https://img.shields.io/badge/code_style-Prettier-ff69b4.svg"
-    />
-  </a>
-  <a href="https://eslint.org/">
-    <img
-      alt="Lint: ESLint"
-      src="https://img.shields.io/badge/lint-ESLint-4B32C3.svg"
-    />
-  </a>
-
+  <img src="./assets/screenshots/UI-overview.gif" alt="VS Code Todo UI with markdown checklist" />
 </p>
 
 <p align="center">
@@ -98,10 +36,10 @@ VS Code Todo
 - [Introduction](#introduction)
 - [Getting Started](#getting-started)
 - [Key Features](#key-features)
+  - [MCP Server (AI Agent Integration)](#mcp-server-ai-agent-integration)
   - [User, Workspace & File-specific Management](#user-workspace--file-specific-management)
   - [Sync Modes (User and Workspace)](#sync-modes-user-and-workspace)
   - [Plans (Mobile PWA Companion)](#plans-mobile-pwa-companion)
-  - [MCP Server (AI Agent Integration)](#mcp-server-ai-agent-integration)
   - [Markdown Support for Todos and Notes](#markdown-support-for-todos-and-notes)
   - [Syntax Highlighting](#syntax-highlighting)
   - [Mermaid Diagram Support](#mermaid-diagram-support)
@@ -154,17 +92,147 @@ Quick start:
 
 ## Key Features
 
+- **Local MCP server for AI agents** exposes your todos via the Model Context Protocol with optional read-only and scope restrictions.
 - **Todo and note scopes (profile, workspace, file)** keep personal, project, and file-linked checklists organised.
 - **Cloud sync via GitHub Gist** keeps user/workspace lists in sync across devices and profiles.
 - **Mobile PWA companion (Plans)** opens the same gist-synced lists from your phone's browser or home screen.
-- **Local MCP server for AI agents** exposes your todos via the Model Context Protocol with optional read-only and scope restrictions.
 - **Markdown note-taking** with syntax highlighting, Mermaid diagrams, and KaTeX math for rich technical docs.
 - **Keyboard-first capture** with quick add, drag-and-drop ordering, and multi-select bulk actions.
 - **Status bar & activity bar access** keeps your task list one click away anywhere in VS Code.
 - **Search, filters, and auto-cleanup** surface the next task and archive completed work automatically.
 - **Import / export (JSON & Markdown)** to back up, share, or move your todos and notes.
 
-![VS Code Todo UI with markdown checklist](./assets/screenshots/UI-overview.gif)
+### MCP Server (AI Agent Integration)
+
+VS Code Todo can run a local [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server so AI agents (Claude Code, Claude Desktop, Cursor, or any MCP-capable client) can read and manage your todos and notes directly, without you copy-pasting them into chat.
+
+Once connected, you can ask an agent to:
+
+- **Capture work as you go**: _"Add a todo to refactor the auth module."_ or _"Save these release steps as a note in the workspace list."_
+- **Plan from your lists**: _"What's still open in my workspace todos? Suggest an order to tackle them."_
+- **Keep lists tidy**: _"Mark the 'update changelog' todo as done."_ or _"Delete the completed items in this file's list."_
+- **Turn code findings into tasks**: _"Review this file and add a todo for each TODO comment you find."_
+
+The server is **read-only by default** and binds only to loopback (`127.0.0.1`), so nothing is exposed to the network and agents can't change anything until you opt in to writes.
+
+#### Quick start
+
+1. **Enable the server** (User or Workspace settings):
+
+   ```json
+   {
+     "vscodeTodo.mcp.enabled": true,
+     // Set false to let agents add/edit/delete (default: true = read-only).
+     "vscodeTodo.mcp.readOnly": true,
+     // Listen port. Use 0 for a random free port.
+     "vscodeTodo.mcp.port": 7337,
+     // Optional shared-secret token. Leave empty to disable auth.
+     "vscodeTodo.mcp.token": ""
+   }
+   ```
+
+   Or run **VS Code Todo: Start MCP Server** from the Command Palette (and **Stop MCP Server** to turn it off). The **workspace must be trusted**.
+
+2. **Connect your agent.** The server speaks streamable HTTP at `http://127.0.0.1:<port>/mcp`. Send `Authorization: Bearer <token>` if you set a token.
+
+   For **Claude Code**:
+
+   ```bash
+   claude mcp add --transport http vscode-todo http://127.0.0.1:7337/mcp
+   # With a token:
+   claude mcp add --transport http vscode-todo http://127.0.0.1:7337/mcp \
+     --header "Authorization: Bearer YOUR_TOKEN"
+   ```
+
+   For clients that use a JSON config (Claude Desktop, Cursor, `.mcp.json`):
+
+   ```json
+   {
+     "mcpServers": {
+       "vscode-todo": {
+         "type": "http",
+         "url": "http://127.0.0.1:7337/mcp",
+         "headers": { "Authorization": "Bearer YOUR_TOKEN" }
+       }
+     }
+   }
+   ```
+
+3. **Ask away** using the example prompts above. The agent discovers the available actions automatically.
+
+#### Capabilities
+
+The agent works with three lists (scopes), matching the extension's tabs:
+
+- **user**: your global list, shared across all projects
+- **workspace**: the current project's list
+- **currentFile**: todos attached to a specific file (the agent passes the file path)
+
+It can **list** todos and notes (with filtering and paging, including by `tag`), **add** todos/notes, one at a time or as an ordered batch that preserves the given order (handy for laying down a multi-step plan), **edit** text, **complete/reopen** todos, **convert** between task and note, **toggle Markdown** rendering, **tag** items to group them (e.g. all steps of a plan, then track progress with a tag-scoped count), and **delete** items. All edits are rejected while `readOnly` is `true`.
+
+You can also narrow what's reachable with `vscodeTodo.mcp.allowedScopes` (default `["user", "workspace", "file"]`). For example, drop `"file"` so agents can't touch per-file lists.
+
+#### Tips for `CLAUDE.md` / agent instructions
+
+<details>
+<summary>Add a note to your project's <code>CLAUDE.md</code> / <code>AGENTS.md</code> (click to expand)</summary>
+
+Drop this into your project's `CLAUDE.md`, `AGENTS.md`, or equivalent so the agent uses the
+lists consistently, and only when the work actually calls for it (so it doesn't read your
+todos on every unrelated turn):
+
+```markdown
+## Task tracking (VS Code Todo MCP)
+
+When the `todo_*` tools are connected, the MCP is this project's task tracker. Reach for it
+when the task at hand actually involves tracked work. Don't call it on every turn:
+
+- **When the user refers to tasks, todos, plans, or "what's next"** (or you need to find
+  existing tracked work), read with `todo_list_items` / `todo_count_items` (`workspace` scope)
+  before searching the repo. The MCP is the source of truth for outstanding work.
+- **When you produce a multi-step plan worth keeping**, save it with `todo_add_items`
+  (`workspace`) and tag every step with one shared plan tag via `todo_set_tags`; re-read it
+  with the `tag` filter.
+- **When you finish a tracked step**, mark it with `todo_set_completed` (don't delete).
+
+Skip it for quick questions or one-off edits that aren't about tracked work. Each tool's
+description covers scopes, notes, filtering, and read-only behavior.
+```
+
+For read-only setups (`vscodeTodo.mcp.readOnly: true`), drop the "save"/"mark" lines and keep
+only the "read existing tracked work" guidance.
+
+</details>
+
+<details>
+<summary>Full tool &amp; resource reference (click to expand)</summary>
+
+**Tools**: most tools take a `scope` of `user`, `workspace`, or `currentFile` (for `currentFile`, also pass `filePath`); `todo_count_items` and `todo_list_files` span all scopes and take no `scope`. Write tools are rejected in read-only mode.
+
+| Tool | What it does |
+| --- | --- |
+| `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix` (prefix match), `search` (substring match anywhere in the text), `tag` (only items carrying that tag; pulls up a whole plan/group). Optional ordering: `sortBy` (`creationDate`/`completionDate`/`completed`) and `order` (`asc`/`desc`). Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set; item text is never truncated. |
+| `todo_count_items` | Return todo/note counts per scope (no arguments): a cheap overview of where the open work is before paging a scope. Pass an optional `tag` to count only items carrying that tag; each scope then also reports a `completed` count, giving tag-scoped progress (e.g. "3 of 9 done"). |
+| `todo_list_files` | List workspace files that have file-scoped todos, with per-file counts; paginated. |
+| `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). Optional `position` (`top`/`bottom`) overrides the `createPosition` setting for this call; omit it to use the setting. _Write._ |
+| `todo_add_items` | Create several todos/notes in one call from an ordered `items` array, preserving the given order. Use it to lay down an ordered list (e.g. a multi-step plan) without the list coming out reversed. Each item may set its own `isNote`/`isMarkdown`; optional `position` (`top`/`bottom`, default `bottom`) places the whole block while keeping its order. _Write._ |
+| `todo_update_text` | Change an item's text by `id`. _Write._ |
+| `todo_set_completed` | Mark a todo completed/reopened by `id`. _Write._ |
+| `todo_set_note` | Convert an item between task and note by `id`. _Write._ |
+| `todo_set_markdown` | Toggle Markdown rendering for an item by `id`. _Write._ |
+| `todo_set_tags` | Replace an item's tags by `id` with a given list (tags are normalized; an empty list clears them). Tag related items (e.g. every step of a plan), then read them back with the `tag` filter. _Write._ |
+| `todo_delete_items` | Delete one or more items by their `ids`. _Write._ |
+
+**Resources**: read-only JSON snapshots of the same data:
+
+- `todo://user`, `todo://workspace`: todos/notes for each scope
+- `todo://counts`: todo/note counts by scope
+- `todo://files`: files that have todos
+- `todo://file?path=<path>`: todos for a specific file
+
+Both tools and resources honor `allowedScopes`. There is also a `vscodeTodo.mcp.transport` setting, which currently only supports `"streamableHttp"`.
+
+</details>
 
 ### User, Workspace & File-specific Management
 
@@ -300,7 +368,7 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 
 ### Plans (Mobile PWA Companion)
 
-**[Plans](https://plans-app.pages.dev)** is an installable web app that opens the same lists on your phone — no VS Code required. It is the same UI as the webview with a touch layout, reading and writing the **same GitHub Gist** the extension syncs with.
+**[Plans](https://plans-app.pages.dev)** is an installable web app that opens the same lists on your phone, no VS Code required. It is the same UI as the webview with a touch layout, reading and writing the **same GitHub Gist** the extension syncs with.
 
 - **Nothing to install**: open [plans-app.pages.dev](https://plans-app.pages.dev) and "Add to Home Screen" for a standalone app.
 - **Same data**: user and workspace lists sync through your gist, so edits on either side show up on the other.
@@ -310,142 +378,10 @@ The extension uses **three-way, content-based conflict detection** to protect yo
 #### Setup
 
 1. **Connect GitHub**: tap **Connect GitHub** and enter the shown code at [github.com/login/device](https://github.com/login/device). Uses the device flow with the `gist` scope only; the token stays on your device.
-2. **Pick a gist**: paste a gist ID, or browse your gists to pick or create a secret one. Use the same gist as the extension — see [GitHub Gist Sync Mode](#github-gist-sync-mode-user--workspace).
+2. **Pick a gist**: paste a gist ID, or browse your gists to pick or create a secret one. Use the same gist as the extension. See [GitHub Gist Sync Mode](#github-gist-sync-mode-user--workspace).
 3. **Choose lists**: select the `user-*.json` and `workspace-*.json` files to sync.
 
-The same plaintext-storage and gist-ID cautions apply — see [Security Warnings](#security-warnings). The MCP server is VS Code-only and is not available in the PWA.
-
-### MCP Server (AI Agent Integration)
-
-VS Code Todo can run a local [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server so AI agents — Claude Code, Claude Desktop, Cursor, or any MCP-capable client — can read and manage your todos and notes directly, without you copy-pasting them into chat.
-
-Once connected, you can ask an agent to:
-
-- **Capture work as you go**: _"Add a todo to refactor the auth module."_ or _"Save these release steps as a note in the workspace list."_
-- **Plan from your lists**: _"What's still open in my workspace todos? Suggest an order to tackle them."_
-- **Keep lists tidy**: _"Mark the 'update changelog' todo as done."_ or _"Delete the completed items in this file's list."_
-- **Turn code findings into tasks**: _"Review this file and add a todo for each TODO comment you find."_
-
-The server is **read-only by default** and binds only to loopback (`127.0.0.1`), so nothing is exposed to the network and agents can't change anything until you opt in to writes.
-
-#### Quick start
-
-1. **Enable the server** (User or Workspace settings):
-
-   ```json
-   {
-     "vscodeTodo.mcp.enabled": true,
-     // Set false to let agents add/edit/delete (default: true = read-only).
-     "vscodeTodo.mcp.readOnly": true,
-     // Listen port. Use 0 for a random free port.
-     "vscodeTodo.mcp.port": 7337,
-     // Optional shared-secret token. Leave empty to disable auth.
-     "vscodeTodo.mcp.token": ""
-   }
-   ```
-
-   Or run **VS Code Todo: Start MCP Server** from the Command Palette (and **Stop MCP Server** to turn it off). The **workspace must be trusted**.
-
-2. **Connect your agent.** The server speaks streamable HTTP at `http://127.0.0.1:<port>/mcp`. Send `Authorization: Bearer <token>` if you set a token.
-
-   For **Claude Code**:
-
-   ```bash
-   claude mcp add --transport http vscode-todo http://127.0.0.1:7337/mcp
-   # With a token:
-   claude mcp add --transport http vscode-todo http://127.0.0.1:7337/mcp \
-     --header "Authorization: Bearer YOUR_TOKEN"
-   ```
-
-   For clients that use a JSON config (Claude Desktop, Cursor, `.mcp.json`):
-
-   ```json
-   {
-     "mcpServers": {
-       "vscode-todo": {
-         "type": "http",
-         "url": "http://127.0.0.1:7337/mcp",
-         "headers": { "Authorization": "Bearer YOUR_TOKEN" }
-       }
-     }
-   }
-   ```
-
-3. **Ask away** using the example prompts above. The agent discovers the available actions automatically.
-
-#### Capabilities
-
-The agent works with three lists (scopes), matching the extension's tabs:
-
-- **user** — your global list, shared across all projects
-- **workspace** — the current project's list
-- **currentFile** — todos attached to a specific file (the agent passes the file path)
-
-It can **list** todos and notes (with filtering and paging, including by `tag`), **add** todos/notes — one at a time or as an ordered batch that preserves the given order (handy for laying down a multi-step plan) — **edit** text, **complete/reopen** todos, **convert** between task and note, **toggle Markdown** rendering, **tag** items to group them (e.g. all steps of a plan, then track progress with a tag-scoped count), and **delete** items. All edits are rejected while `readOnly` is `true`.
-
-You can also narrow what's reachable with `vscodeTodo.mcp.allowedScopes` (default `["user", "workspace", "file"]`) — e.g. drop `"file"` so agents can't touch per-file lists.
-
-#### Tips for `CLAUDE.md` / agent instructions
-
-<details>
-<summary>Add a note to your project's <code>CLAUDE.md</code> / <code>AGENTS.md</code> (click to expand)</summary>
-
-Drop this into your project's `CLAUDE.md`, `AGENTS.md`, or equivalent so the agent uses the
-lists consistently — and only when the work actually calls for it (so it doesn't read your
-todos on every unrelated turn):
-
-```markdown
-## Task tracking (VS Code Todo MCP)
-
-When the `todo_*` tools are connected, the MCP is this project's task tracker. Reach for it
-when the task at hand actually involves tracked work — don't call it on every turn:
-
-- **When the user refers to tasks, todos, plans, or "what's next"** (or you need to find
-  existing tracked work), read with `todo_list_items` / `todo_count_items` (`workspace` scope)
-  before searching the repo — the MCP is the source of truth for outstanding work.
-- **When you produce a multi-step plan worth keeping**, save it with `todo_add_items`
-  (`workspace`) and tag every step with one shared plan tag via `todo_set_tags`; re-read it
-  with the `tag` filter.
-- **When you finish a tracked step**, mark it with `todo_set_completed` (don't delete).
-
-Skip it for quick questions or one-off edits that aren't about tracked work. Each tool's
-description covers scopes, notes, filtering, and read-only behavior.
-```
-
-For read-only setups (`vscodeTodo.mcp.readOnly: true`), drop the "save"/"mark" lines and keep
-only the "read existing tracked work" guidance.
-
-</details>
-
-<details>
-<summary>Full tool &amp; resource reference (click to expand)</summary>
-
-**Tools** — most tools take a `scope` of `user`, `workspace`, or `currentFile` (for `currentFile`, also pass `filePath`); `todo_count_items` and `todo_list_files` span all scopes and take no `scope`. Write tools are rejected in read-only mode.
-
-| Tool | What it does |
-| --- | --- |
-| `todo_list_items` | List todos/notes for a scope. Optional filters: `kind` (`task`/`note`/`all`), `completed` (open/done), `textPrefix` (prefix match), `search` (substring match anywhere in the text), `tag` (only items carrying that tag — pulls up a whole plan/group). Optional ordering: `sortBy` (`creationDate`/`completionDate`/`completed`) and `order` (`asc`/`desc`). Paginated (`limit` default 50, max 500; `offset`); a page is also capped by a character budget (`maxChars`), so it may return fewer than `limit` items with `has_more` set — item text is never truncated. |
-| `todo_count_items` | Return todo/note counts per scope (no arguments) — a cheap overview of where the open work is before paging a scope. Pass an optional `tag` to count only items carrying that tag; each scope then also reports a `completed` count, giving tag-scoped progress (e.g. "3 of 9 done"). |
-| `todo_list_files` | List workspace files that have file-scoped todos, with per-file counts; paginated. |
-| `todo_add_item` | Create a todo or note (`isNote`, `isMarkdown` optional). Optional `position` (`top`/`bottom`) overrides the `createPosition` setting for this call; omit it to use the setting. _Write._ |
-| `todo_add_items` | Create several todos/notes in one call from an ordered `items` array, preserving the given order — use it to lay down an ordered list (e.g. a multi-step plan) without the list coming out reversed. Each item may set its own `isNote`/`isMarkdown`; optional `position` (`top`/`bottom`, default `bottom`) places the whole block while keeping its order. _Write._ |
-| `todo_update_text` | Change an item's text by `id`. _Write._ |
-| `todo_set_completed` | Mark a todo completed/reopened by `id`. _Write._ |
-| `todo_set_note` | Convert an item between task and note by `id`. _Write._ |
-| `todo_set_markdown` | Toggle Markdown rendering for an item by `id`. _Write._ |
-| `todo_set_tags` | Replace an item's tags by `id` with a given list (tags are normalized; an empty list clears them). Tag related items — e.g. every step of a plan — then read them back with the `tag` filter. _Write._ |
-| `todo_delete_items` | Delete one or more items by their `ids`. _Write._ |
-
-**Resources** — read-only JSON snapshots of the same data:
-
-- `todo://user`, `todo://workspace` — todos/notes for each scope
-- `todo://counts` — todo/note counts by scope
-- `todo://files` — files that have todos
-- `todo://file?path=<path>` — todos for a specific file
-
-Both tools and resources honor `allowedScopes`. There is also a `vscodeTodo.mcp.transport` setting, which currently only supports `"streamableHttp"`.
-
-</details>
+The same plaintext-storage and gist-ID cautions apply. See [Security Warnings](#security-warnings). The MCP server is VS Code-only and is not available in the PWA.
 
 ### Markdown Support for Todos and Notes
 
@@ -549,13 +485,13 @@ Default: **sortType1**.
 
 ### Tags
 
-Tag any todo or note to group related items — for example, label every step of a plan with the same tag, then pull the whole group up at once and track its progress.
+Tag any todo or note to group related items. For example, label every step of a plan with the same tag, then pull the whole group up at once and track its progress.
 
-- **Add or remove tags**: open an item for editing; a tag input appears next to the dates in the edit footer. Type a tag and press **Enter** (or click away) to add it — you can also enter a comma-separated list and it's split into several tags. Click the **×** on a chip, or press **Backspace** in an empty input, to remove one. Tags are normalized automatically (trimmed, de-duplicated case-insensitively, with a sensible length/count cap).
+- **Add or remove tags**: open an item for editing; a tag input appears next to the dates in the edit footer. Type a tag and press **Enter** (or click away) to add it. You can also enter a comma-separated list and it's split into several tags. Click the **×** on a chip, or press **Backspace** in an empty input, to remove one. Tags are normalized automatically (trimmed, de-duplicated case-insensitively, with a sensible length/count cap).
 - **Show Tags**: tag chips are hidden by default to keep dense lists clean. Turn them on from the gear/settings menu (**Show Tags** / **Hide Tags**), or set `vscodeTodo.showTags` directly. Chips then appear under each item in both the collapsed and expanded views.
 - **Filter by tag**: click a chip to filter the list to that tag, or type `tag:<name>` in the search box. A plain search query also matches tags (not just the item text); a `tag:` query matches **only** tags, so it pulls up exactly the items in that plan/group.
 
-Tags are part of the item, so they sync and round-trip through JSON export/import like any other field. AI agents can read and set them through the MCP server (the `tag` filter on `todo_list_items` / `todo_count_items` and the `todo_set_tags` tool — see [MCP Server (AI Agent Integration)](#mcp-server-ai-agent-integration)), so a plan laid down by an agent and one tagged by hand share the same grouping.
+Tags are part of the item, so they sync and round-trip through JSON export/import like any other field. AI agents can read and set them through the MCP server (the `tag` filter on `todo_list_items` / `todo_count_items` and the `todo_set_tags` tool; see [MCP Server (AI Agent Integration)](#mcp-server-ai-agent-integration)), so a plan laid down by an agent and one tagged by hand share the same grouping.
 
 ```json
 "vscodeTodo.showTags": true

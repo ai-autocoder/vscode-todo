@@ -2,7 +2,7 @@
 	"name": "vsc-todo",
 	"displayName": "VS Code Todo",
 	"publisher": "FrancescoAnzalone",
-	"description": "Markdown notes, todos, tasks, and AI prompt snippets with profile, workspace, and file context plus cloud sync via GitHub Gist. Render inline Mermaid diagrams, KaTeX math, and code highlighting.",
+	"description": "Todos and notes your AI agent can read and update, via a built-in MCP server for Claude Code, Cursor and any MCP client. Markdown, Mermaid, KaTeX, GitHub Gist sync, and a phone companion app.",
 	"icon": "icon.png",
 	"galleryBanner": {
 		"color": "#0f172a",
@@ -13,43 +13,32 @@
 	"keywords": [
 		"todo",
 		"todos",
-		"note",
-		"notes",
-		"note-taking",
-		"sync",
-		"cloud",
-		"cloud sync",
-		"github",
-		"gist",
-		"github gist",
-		"cross-device",
-		"markdown",
-		"markdown rendering",
-		"code highlighting",
+		"todo list",
 		"tasks",
-		"list",
+		"notes",
 		"checklist",
+		"markdown",
 		"productivity",
-		"management",
-		"workspace",
-		"mermaid",
-		"diagrams",
-		"katex",
-		"math",
-		"code snippets",
-		"snippets",
-		"ai",
+		"mcp",
+		"model context protocol",
+		"ai agent",
+		"claude",
+		"claude code",
+		"cursor",
 		"ai prompts",
-		"ai snippets",
 		"prompt snippets",
-		"prompts",
-		"prompt",
-		"prompt-engineering"
+		"github gist",
+		"sync",
+		"mermaid",
+		"katex",
+		"mobile",
+		"pwa"
 	],
 	"engines": {
 		"vscode": "^1.75.0"
 	},
 	"categories": [
+		"AI",
 		"Other"
 	],
 	"activationEvents": [
@@ -325,6 +314,10 @@
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/ai-autocoder/vscode-todo.git"
+	},
+	"homepage": "https://plans-app.pages.dev",
+	"bugs": {
+		"url": "https://github.com/ai-autocoder/vscode-todo/issues"
 	},
 	"scripts": {
 		"install:all": "npm install && npm --prefix webview-ui install && npm --prefix packages/core install && npm --prefix worker install",
