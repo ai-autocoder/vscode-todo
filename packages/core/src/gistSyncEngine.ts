@@ -247,10 +247,56 @@ export class GistSyncEngine {
 		await this.persistLocal(this.cacheKey("workspace", fileName), localData);
 	}
 
-	private async persistLocal<T extends object>(key: string, localData: T): Promise<void> {
+	/**
+	 * Like {@link persistLocalUser}, but also writes for a file this device has never reconciled.
+	 *
+	 * For a caller about to drop its only in-memory copy of an unsynced edit — the PWA switching
+	 * to another list while the push for this one failed — when the file has no cache entry yet.
+	 * `persistLocal` declines that case because on the ordinary edit path the next reconcile runs
+	 * from memory anyway. Here there will be no such reconcile, so the entry is written without a
+	 * baseline: the file's next reconcile reads it as a cold cache and bootstraps, merging this
+	 * data with the remote against an empty base, so neither side is deleted.
+	 */
+	public async persistUnsyncedUser(fileName: string, localData: GlobalGistData): Promise<void> {
+		await this.persistUnsynced(this.cacheKey("global", fileName), localData);
+	}
+
+	/** Workspace counterpart of {@link persistUnsyncedUser}. */
+	public async persistUnsyncedWorkspace(
+		fileName: string,
+		localData: WorkspaceGistData
+	): Promise<void> {
+		await this.persistUnsynced(this.cacheKey("workspace", fileName), localData);
+	}
+
+	private persistUnsynced<T extends object>(key: string, localData: T): Promise<void> {
+		return this.exclusive(async () => {
+			if (await this.writeLocalData(key, localData)) {
+				return;
+			}
+			await this.store.save<T>(key, {
+				data: localData,
+				lastCleanRemoteData: undefined,
+				lastSynced: new Date(0).toISOString(),
+				isDirty: true,
+			});
+		});
+	}
+
+	private persistLocal<T extends object>(key: string, localData: T): Promise<void> {
+		return this.exclusive(async () => {
+			await this.writeLocalData(key, localData);
+		});
+	}
+
+	/**
+	 * Replaces an entry's `data`, keeping its baseline. False, writing nothing, when there is no
+	 * entry. Only ever called inside {@link exclusive}: it reads, then writes what it read back.
+	 */
+	private async writeLocalData<T extends object>(key: string, localData: T): Promise<boolean> {
 		const cache = await this.store.load<T>(key);
 		if (!cache) {
-			return;
+			return false;
 		}
 		const base = cache.lastCleanRemoteData;
 		await this.store.save<T>(key, {
@@ -258,6 +304,32 @@ export class GistSyncEngine {
 			data: localData,
 			isDirty: base === undefined || !isEqual(localData, base),
 		});
+		return true;
+	}
+
+	/**
+	 * Tail of the cache writes in progress; see {@link exclusive}.
+	 */
+	private storeWrites: Promise<void> = Promise.resolve();
+
+	/**
+	 * Runs `work` once every cache write started before it has finished.
+	 *
+	 * `persistLocal` reads an entry and writes it back — two operations, and in the PWA two
+	 * IndexedDB transactions — while callers fire it on every edit without waiting. A reconcile
+	 * finishing between the two saved its new baseline, and the persist's write then put the old
+	 * one back. The next merge read a todo the reconcile had pushed, and the user had since
+	 * deleted, as an addition from the other device, and restored it. `saveCache` goes through
+	 * here too, so neither can land inside the other. Nothing in here waits on the network, so a
+	 * persist is held up by at most a store write or two, never by a round trip.
+	 */
+	private exclusive<R>(work: () => Promise<R>): Promise<R> {
+		const run = this.storeWrites.then(work, work);
+		this.storeWrites = run.then(
+			() => undefined,
+			() => undefined
+		);
+		return run;
 	}
 
 	/**
@@ -847,14 +919,20 @@ export class GistSyncEngine {
 	 * That is not hypothetical — it is exactly what the VS Code extension does. Its cache lives
 	 * in a memento, whose `get` hands back the live stored object, and `SyncStorageManager`
 	 * records an edit with `cache.data.userTodos = todos`, in place.
+	 *
+	 * Through {@link exclusive}, so a `persistLocal` already reading the entry cannot write the
+	 * old baseline back over this one.
 	 */
 	private async saveCache<T>(key: string, data: T, lastCleanRemoteData: T): Promise<void> {
-		await this.store.save<T>(key, {
-			data,
-			lastCleanRemoteData: cloneData(lastCleanRemoteData),
-			lastSynced: new Date().toISOString(),
-			isDirty: false,
-		});
+		const baseline = cloneData(lastCleanRemoteData);
+		await this.exclusive(() =>
+			this.store.save<T>(key, {
+				data,
+				lastCleanRemoteData: baseline,
+				lastSynced: new Date().toISOString(),
+				isDirty: false,
+			})
+		);
 	}
 
 	private ok<T>(result: ReconcileResult<T>): SyncResult<ReconcileResult<T>> {

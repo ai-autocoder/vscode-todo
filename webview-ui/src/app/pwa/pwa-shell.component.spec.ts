@@ -14,6 +14,9 @@ const gistFile = (fullPath: string): GistFileInfo => ({
 	size: 128,
 });
 
+/** What the fake gateway reports for `switchingFiles`; a test sets it, `beforeEach` resets it. */
+let switching = false;
+
 /**
  * A stand-in for the gateway that satisfies the shell's `instanceof GistGateway` guard without
  * touching IndexedDB or the network: only the members the connection flow reads are defined,
@@ -41,6 +44,7 @@ function fakeGateway(connection: BehaviorSubject<GistConnectionState>, chooseFil
 	})) {
 		Object.defineProperty(gateway, name, { value });
 	}
+	Object.defineProperty(gateway, "switchingFiles", { get: () => switching });
 	return gateway;
 }
 
@@ -99,6 +103,7 @@ describe("PwaShellComponent — naming a new list", () => {
 	};
 
 	beforeEach(async () => {
+		switching = false;
 		connection = new BehaviorSubject<GistConnectionState>({ phase: "disconnected" });
 		chooseFiles = jasmine.createSpy("chooseFiles").and.resolveTo(undefined);
 
@@ -174,6 +179,27 @@ describe("PwaShellComponent — naming a new list", () => {
 		await typeName(nameFields()[0], "home");
 		await clickOk();
 		expect(chooseFiles).toHaveBeenCalledWith("user-todos.json", "workspace-home.json");
+	});
+
+	/**
+	 * A switch waits for any sync in flight, so the picker can stay up after Ok. Nothing on it may
+	 * act meanwhile: Cancel would show the old list for the switch to land on top of, and Change
+	 * gist would open a chooser the switch then closes.
+	 */
+	it("should hold every control on the picker while a switch is under way", async () => {
+		// Set before the picker renders: flipping a getter behind change detection's back is what
+		// dev mode's second pass exists to reject.
+		switching = true;
+		await enterPicker();
+
+		const button = (label: string): HTMLButtonElement =>
+			Array.from(host().querySelectorAll("button")).find((b) =>
+				(b.textContent ?? "").includes(label)
+			)!;
+		expect(button("Ok").disabled).toBe(true);
+		expect(button("Change gist").disabled).toBe(true);
+		expect(button("Disconnect").disabled).toBe(true);
+		expect(text()).toContain("Switching lists");
 	});
 });
 

@@ -64,6 +64,8 @@ export interface PendingTodoConflict {
 	/** Identity key — a fresh conflict on the same todo replaces the pending one. */
 	key: string;
 	scope: ConflictScope;
+	/** See {@link PendingFileConflict.fileName}. */
+	fileName?: string;
 	todoId: number;
 	/**
 	 * `id-collision` never reaches here: two todos created independently that happened to draw
@@ -92,6 +94,19 @@ export interface PendingTodoConflict {
 export interface PendingFileConflict {
 	kind: "file";
 	key: string;
+	/**
+	 * The gist file the sync that made this record was reconciling — for a per-file list, the
+	 * workspace file it lives in.
+	 *
+	 * Todo ids and per-file paths identify an item only within one gist file, so a record may be
+	 * reviewed or applied only while its scope has that file selected: applied to another list,
+	 * it would write this list's todo into that one. The gateway keeps records for the other
+	 * lists and shows them again when their file is picked. Absent on records saved before
+	 * records were kept per file; the gateway assigns those the files selected at startup — the
+	 * best attribution available, and where that build would have applied them — and saves the
+	 * result, so the assignment is made once.
+	 */
+	fileName?: string;
 	filePath: string;
 	conflictType: "file-added-both" | "file-edit-edit" | "file-edit-delete" | "file-delete-edit";
 	base: Todo[] | null;
@@ -109,6 +124,8 @@ export interface KeptBothConflict {
 	kind: "kept-both";
 	key: string;
 	scope: ConflictScope;
+	/** See {@link PendingFileConflict.fileName}. */
+	fileName?: string;
 	/** The id both devices independently drew. Kept by the local todo. */
 	todoId: number;
 	local: Todo;
