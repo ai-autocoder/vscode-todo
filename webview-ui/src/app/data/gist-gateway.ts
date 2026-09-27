@@ -469,6 +469,15 @@ export class GistGateway implements DataGateway {
 	private userGeneration = 0;
 	private workspaceGeneration = 0;
 
+	/**
+	 * How many {@link chooseFiles} calls are waiting on or running in the sync queue. While any
+	 * is, no reconcile may open the conflict dialog: the file picker is still on screen and
+	 * covers it, so a reconcile parked on it would hold the queue — and the switch waiting in
+	 * it — with nothing visible to answer. A counter rather than a flag, so a double-tapped Ok
+	 * cannot re-enable prompts while the first switch is still queued.
+	 */
+	private fileSwitches = 0;
+
 	constructor(private readonly opts: GistGatewayConfig) {
 		this.config = { ...DEFAULT_CONFIG, ...opts.config };
 		this.reducerConfig = {
@@ -509,7 +518,19 @@ export class GistGateway implements DataGateway {
 			await this.rehydrateFromCache();
 			// Conflicts belong to the gist that produced them and are cleared when it changes, so
 			// they load alongside the cache rather than on their own.
-			this.pendingConflicts = await this.conflictStore.load();
+			// Records saved before they carried a file name are assigned the files just restored:
+			// the best attribution there is, and the one that build would have applied them to
+			// anyway. Saved straight back, so a switch before the next startup cannot re-assign
+			// them to whatever is selected then.
+			const stored = await this.conflictStore.load();
+			this.pendingConflicts = stored.map((conflict) =>
+				conflict.fileName === undefined
+					? { ...conflict, fileName: this.selectedFileFor(conflict) }
+					: conflict
+			);
+			if (stored.some((conflict) => conflict.fileName === undefined)) {
+				void this.conflictStore.save(this.pendingConflicts);
+			}
 			this.publishConflicts();
 		}
 
@@ -836,14 +857,21 @@ export class GistGateway implements DataGateway {
 	 * and would otherwise overwrite each other, so a failed local write on a scope whose token had
 	 * been revoked would replace the `auth` entry and take the "Reconnect" button away with it.
 	 */
-	private notePersistFailure(scope: TodoScope.user | TodoScope.workspace, error: unknown): void {
+	private notePersistFailure(
+		scope: TodoScope.user | TodoScope.workspace,
+		error: unknown,
+		options: { refusedSwitch?: boolean } = {}
+	): void {
 		const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
+		// A list switch refused for this reason has to say so, or the picker looks like it ignored
+		// the choice.
+		const consequence = options.refusedSwitch ? ", so the list was not switched" : "";
 		this.persistFailures.set(scope, {
 			kind: "other",
 			// Retrying is worth offering: a blocked upgrade or a transient quota rejection can
 			// clear on its own, and the retry re-runs the write.
 			canRetry: true,
-			message: `This device could not save your latest change${detail}. Keep the app open until syncing recovers.`,
+			message: `This device could not save your latest change${detail}${consequence}. Keep the app open until syncing recovers.`,
 		});
 		this.publishSyncFailure();
 		// A local write that failed is worse than an unpushed change, so it outranks "dirty".
@@ -1326,7 +1354,12 @@ export class GistGateway implements DataGateway {
 		this.pendingUserPush = false;
 		this.beginConflictRun();
 		try {
-			const local: GlobalGistData = { userTodos: this.user.todos };
+			// A copy, not the live array. The mutations edit the slice in place — `unshift`,
+			// `splice`, a todo's own fields — so a snapshot sharing it takes on any edit made while
+			// this reconcile is on the network. The re-merge below then compares that edit with
+			// itself, sees no local change and a gist without it, and drops it as a remote delete
+			// (a delete comes back the same way, as a remote add).
+			const local: GlobalGistData = { userTodos: structuredClone(this.user.todos) };
 			const generation = this.userGeneration;
 			const res = await engine.reconcileUser(fileName, local);
 			if (res.success && res.data) {
@@ -1359,10 +1392,26 @@ export class GistGateway implements DataGateway {
 				this.user.todos = reconciled.userTodos;
 				// Surface what the engine settled on its own. Runs before anything is emitted or
 				// persisted below, because keep-both adds a todo to the slice.
-				const keptBoth = this.captureTodoConflicts("user", [
-					...this.undecidedTodos(res.data.conflicts, decidedByReconcile.todos),
-					...this.undecidedTodos(remerge?.conflicts ?? [], decidedByRemerge.todos),
-				]);
+				const keptBoth = this.captureTodoConflicts(
+					"user",
+					[
+						...this.undecidedTodos(res.data.conflicts, decidedByReconcile.todos),
+						...this.undecidedTodos(remerge?.conflicts ?? [], decidedByRemerge.todos),
+					],
+					fileName
+				);
+				// Shown before the re-persist below, not after it. That await is an IndexedDB write
+				// a tap can land in, and a drag-and-drop sends back the whole list the screen holds
+				// (`reorderTodo` assigns it): a screen still on the pre-pull list would write that
+				// back and delete whatever the pull had just brought in.
+				if (changed || keptBoth) {
+					this.user.lastActionType = "loadData";
+					this.recount(this.user);
+					this.emitScope(TodoScope.user);
+					// The header's counts ride on the full state payload, so a pull that changed
+					// the list has to refresh it too or the badge keeps the pre-pull number.
+					this.emitReload();
+				}
 				if (this.userGeneration !== generation || keptBoth) {
 					// Re-persist *after* adopting. The reconcile's own `saveCache` has just replaced
 					// the cache entry wholesale, discarding the `persistLocal` that ran when the
@@ -1373,14 +1422,6 @@ export class GistGateway implements DataGateway {
 					// a push carries it to the gist.
 					await this.persistUserLocal();
 					this.scheduleUserPush();
-				}
-				if (changed || keptBoth) {
-					this.user.lastActionType = "loadData";
-					this.recount(this.user);
-					this.emitScope(TodoScope.user);
-					// The header's counts ride on the full state payload, so a pull that changed
-					// the list has to refresh it too or the badge keeps the pre-pull number.
-					this.emitReload();
 				}
 			} else if (this.promptOutcome !== "none") {
 				// The user backed out of the conflict dialog, or the page was hidden so nobody could
@@ -1437,13 +1478,15 @@ export class GistGateway implements DataGateway {
 		this.pendingWorkspacePush = false;
 		this.beginConflictRun();
 		try {
-			// Round-trip the per-file todos we last saw: the PWA never edits them, but sending
-			// `{}` would make the merge treat them as locally deleted and wipe them from the gist.
-			const local: WorkspaceGistData = {
+			// Round-trip the per-file todos we last saw: sending `{}` would make the merge treat them
+			// as locally deleted and wipe them from the gist. Copied for the reason given in
+			// reconcileUser — and `filesData` needs it as much: after the first per-file edit its
+			// entry for the open file *is* `currentFile.todos`, which the next edit changes in place.
+			const local: WorkspaceGistData = structuredClone({
 				workspaceTodos: this.workspace.todos,
 				filesData: this.filesData,
 				filesDataPaths: this.filesDataPaths,
-			};
+			});
 			const generation = this.workspaceGeneration;
 			const res = await engine.reconcileWorkspace(fileName, local);
 			if (res.success && res.data) {
@@ -1477,32 +1520,12 @@ export class GistGateway implements DataGateway {
 				this.filesData = merged.filesData;
 				this.filesDataPaths = merged.filesDataPaths ?? {};
 				this.workspace.todos = merged.workspaceTodos;
-
-				// See reconcileUser. File-level conflicts are recorded too: the PWA never renders
-				// those per-file lists, but it is the side that just overwrote one.
-				const keptBoth = this.captureTodoConflicts("workspace", [
-					...this.undecidedTodos(res.data.conflicts, decidedByReconcile.todos),
-					...this.undecidedTodos(remerge?.conflicts ?? [], decidedByRemerge.todos),
-				]);
-				this.captureFileConflicts([
-					...this.undecidedFiles(res.data.fileConflicts, decidedByReconcile.files),
-					...this.undecidedFiles(remerge?.fileConflicts ?? [], decidedByRemerge.files),
-				]);
-
-				if (stale || keptBoth) {
-					// See reconcileUser: re-persist after adopting, because the reconcile's own
-					// `saveCache` has already discarded the mid-flight `persistLocal`.
-					await this.persistWorkspaceLocal();
-					this.scheduleWorkspacePush();
-				}
-
-				if (workspaceChanged || keptBoth) {
-					this.workspace.lastActionType = "loadData";
-					this.recount(this.workspace);
-					this.emitScope(TodoScope.workspace);
-				}
 				// Per-file todos live in `filesData` and change independently of `workspaceTodos`,
-				// so the open file is re-projected off its own comparison.
+				// so the open file is re-projected off its own comparison — here, with `filesData`,
+				// and not after the re-persist below. That await is an IndexedDB write, and a
+				// per-file edit landing in it went through `mutate`, which writes the *projection*
+				// back into `filesData`: a stale one dropped every todo this pull had just brought
+				// in for the open file, and the next push deleted them from the gist.
 				if (filesChanged && this.currentFile.filePath) {
 					this.currentFile = {
 						...this.currentFile,
@@ -1510,11 +1533,45 @@ export class GistGateway implements DataGateway {
 						lastActionType: "loadData",
 					};
 					this.recount(this.currentFile);
+				}
+
+				// See reconcileUser. File-level conflicts are recorded too: the PWA never renders
+				// those per-file lists, but it is the side that just overwrote one.
+				const keptBoth = this.captureTodoConflicts(
+					"workspace",
+					[
+						...this.undecidedTodos(res.data.conflicts, decidedByReconcile.todos),
+						...this.undecidedTodos(remerge?.conflicts ?? [], decidedByRemerge.todos),
+					],
+					fileName
+				);
+				this.captureFileConflicts(
+					[
+						...this.undecidedFiles(res.data.fileConflicts, decidedByReconcile.files),
+						...this.undecidedFiles(remerge?.fileConflicts ?? [], decidedByRemerge.files),
+					],
+					fileName
+				);
+
+				// Shown before the re-persist, for the reason given in reconcileUser.
+				if (workspaceChanged || keptBoth) {
+					this.workspace.lastActionType = "loadData";
+					this.recount(this.workspace);
+					this.emitScope(TodoScope.workspace);
+				}
+				if (filesChanged && this.currentFile.filePath) {
 					this.emitScope(TodoScope.currentFile);
 				}
 				if (workspaceChanged || filesChanged || keptBoth) {
 					// File list / counts may have changed too.
 					this.emitReload();
+				}
+
+				if (stale || keptBoth) {
+					// See reconcileUser: re-persist after adopting, because the reconcile's own
+					// `saveCache` has already discarded the mid-flight `persistLocal`.
+					await this.persistWorkspaceLocal();
+					this.scheduleWorkspacePush();
 				}
 			} else if (this.promptOutcome !== "none") {
 				// See reconcileUser.
@@ -1893,6 +1950,14 @@ export class GistGateway implements DataGateway {
 			return;
 		}
 
+		// Per-file todos live inside the workspace gist file, so any of these three counts as a
+		// workspace-scope edit.
+		const workspaceTouched =
+			result.changed.workspace || result.changed.filesData || result.changed.filesDataPaths;
+
+		// Every half is applied before the first await. The merge above was computed from the
+		// state as it is now; a pull that lands during an await in between would be overwritten by
+		// the half applied after it, and its todos deleted from the gist by the next push.
 		if (result.changed.user) {
 			this.userGeneration++;
 			this.userRetries = 0;
@@ -1900,14 +1965,7 @@ export class GistGateway implements DataGateway {
 			this.user.lastActionType = "loadData";
 			this.recount(this.user);
 			this.emitScope(TodoScope.user);
-			await this.persistUserLocal();
-			this.scheduleUserPush();
 		}
-
-		// Per-file todos live inside the workspace gist file, so any of these three counts as a
-		// workspace-scope edit.
-		const workspaceTouched =
-			result.changed.workspace || result.changed.filesData || result.changed.filesDataPaths;
 
 		if (workspaceTouched) {
 			this.workspaceGeneration++;
@@ -1934,13 +1992,20 @@ export class GistGateway implements DataGateway {
 				this.recount(this.currentFile);
 				this.emitScope(TodoScope.currentFile);
 			}
-
-			await this.persistWorkspaceLocal();
-			this.scheduleWorkspacePush();
 		}
-
 		// The file list and counts may both have moved.
 		this.emitReload();
+
+		// Owed, persisted and pushed the way any edit is. Not an awaited save first: one that threw
+		// rejected this whole import after its todos were already on screen, reported "The import
+		// failed", and left both scopes looking synced with nothing armed to push them.
+		// `scheduleXPush` marks the scope dirty, and reports a failed save as a persist failure.
+		if (result.changed.user) {
+			this.scheduleUserPush();
+		}
+		if (workspaceTouched) {
+			this.scheduleWorkspacePush();
+		}
 		this._importExport.next({
 			phase: "done",
 			message: `Imported ${describeImportChanges(result.changed)} from ${fileName}.`,
@@ -2182,6 +2247,11 @@ export class GistGateway implements DataGateway {
 	 * exists — during first-time setup there is nothing to go back to, so the picker stays.
 	 */
 	cancelFileSelection(): void {
+		// Too late once Ok is pressed: the switch is queued and will land. Closing the picker now
+		// would show the old list, then change it under a user who had just pressed Cancel.
+		if (this.switchingFiles) {
+			return;
+		}
 		if (this.gistId && this.userFile) {
 			this._connection.next({
 				phase: "connected",
@@ -2194,6 +2264,14 @@ export class GistGateway implements DataGateway {
 	/** True once a session exists, so the picker can offer Cancel rather than trapping the user. */
 	get canCancelFileSelection(): boolean {
 		return !!this.gistId && !!this.userFile;
+	}
+
+	/**
+	 * True while a list switch is waiting on or running in the sync queue — behind a reconcile
+	 * on a slow network, it can take a while — so the picker can show it is busy.
+	 */
+	get switchingFiles(): boolean {
+		return this.fileSwitches > 0;
 	}
 
 	/** Switches to an existing gist (from the list or a pasted id). */
@@ -2293,23 +2371,263 @@ export class GistGateway implements DataGateway {
 	 * fine — the sync engine seeds missing files on first reconcile. Both files are required:
 	 * the PWA has no local storage, so a scope with no gist file behind it would accept edits
 	 * and silently drop them.
+	 *
+	 * A scope whose file changes gets a **new** slice: the cached data of the file just picked,
+	 * or an empty list for one this device has never synced. Never the list that was on screen.
+	 * The slice is the `localData` the next reconcile hands the engine, and the engine trusts it
+	 * as that file's local state — so carrying the old list over made the first reconcile of the
+	 * new file read every old todo as a local edit. With no baseline it merged them in as
+	 * additions; with one it pushed them over the file outright. The extension never had this
+	 * bug because it reads each reconcile's snapshot from the per-file cache, not from a slice.
+	 *
+	 * The switch runs on the sync queue so a reconcile of the old file — on the network, queued
+	 * behind a debounce, or fired by the poll — can neither land its result in the new file's
+	 * slice nor be handed that slice under the old file's name. The file name and the slice
+	 * change together, with nothing awaited in between.
+	 *
+	 * An edit the old file is still owed is pushed or saved first; if it can be neither, the
+	 * switch is refused rather than dropping it. See {@link settleOldFile}.
 	 */
 	async chooseFiles(userFile: string, workspaceFile: string): Promise<void> {
-		this.userFile = userFile || DefaultFileNames.user;
-		await this.tokenStore.setUserFile(this.userFile);
-		this.workspaceFile = workspaceFile || DefaultFileNames.workspace("default");
-		await this.tokenStore.setWorkspaceFile(this.workspaceFile);
-		// A newly chosen workspace file has no cached baseline or todos on this device yet, so
-		// load whatever a previous session stored for it before the first reconcile runs.
-		await this.rehydrateFromCache();
+		const nextUserFile = userFile || DefaultFileNames.user;
+		const nextWorkspaceFile = workspaceFile || DefaultFileNames.workspace("default");
+		// The picker is on screen and covers the conflict dialog, so no reconcile may park on one
+		// until the switch is done: the queue wait below would never end, and nothing on screen
+		// would say why. A dialog already open (a poll that raised it behind the picker) is
+		// released for the same reason; declining writes nothing, and the question comes back the
+		// next time that file syncs.
+		this.fileSwitches++;
+		this.abandonConflictPrompt();
+		// The queue wait can outlast the session: a disconnect or a gist switch started meanwhile
+		// drops the engine before it waits on the same queue. Writing these file names back after
+		// that would revive a selection for a gist that is no longer in use.
+		const engine = this.engine;
+		// Widened by the cast: assigned only inside the closure, so a plain annotation would be
+		// narrowed to "switched" and the checks after the queue would not compile.
+		let outcome = "switched" as "switched" | "superseded" | "refused";
+		try {
+			await this.enqueue(async () => {
+				if (!engine || this.engine !== engine) {
+					outcome = "superseded";
+					return;
+				}
+				const userChanged = nextUserFile !== this.userFile;
+				const workspaceChanged = nextWorkspaceFile !== this.workspaceFile;
+				// Both before anything is reset, so a refusal leaves the old selection whole.
+				const userSettled = !userChanged || (await this.settleOldFile(TodoScope.user));
+				const workspaceSettled = !workspaceChanged || (await this.settleOldFile(TodoScope.workspace));
+				if (!userSettled || !workspaceSettled) {
+					outcome = "refused";
+					return;
+				}
+				const cachedUser = userChanged ? await engine.loadCachedUser(nextUserFile) : undefined;
+				const cachedWorkspace = workspaceChanged
+					? await engine.loadCachedWorkspace(nextWorkspaceFile)
+					: undefined;
+				if (this.engine !== engine) {
+					outcome = "superseded";
+					return;
+				}
+				// No awaits from here to the end of the swap. See the method comment.
+				if (userChanged) {
+					this.forgetOldFile(TodoScope.user);
+				}
+				if (workspaceChanged) {
+					this.forgetOldFile(TodoScope.workspace);
+				}
+				if (userChanged) {
+					this.userFile = nextUserFile;
+					this.user = { ...newUserSlice(), todos: cachedUser?.userTodos ?? [] };
+					this.recount(this.user);
+				}
+				if (workspaceChanged) {
+					this.workspaceFile = nextWorkspaceFile;
+					this.workspace = {
+						...newWorkspaceSlice(),
+						todos: cachedWorkspace?.workspaceTodos ?? [],
+					};
+					this.recount(this.workspace);
+					// Per-file lists live inside the workspace file, so they belong to it too — and
+					// `currentFile` is a projection of them. Left behind, a per-file edit would write
+					// the old file's list into the new file's `filesData`.
+					this.filesData = cachedWorkspace?.filesData ?? {};
+					this.filesDataPaths = cachedWorkspace?.filesDataPaths ?? {};
+					this.currentFile = newCurrentFileSlice();
+				}
+				// The review screen shows only the records made against the files now selected, so
+				// the old file's go out of view with it — kept, for when it is picked again.
+				this.publishConflicts();
+				await this.tokenStore.setUserFile(nextUserFile);
+				await this.tokenStore.setWorkspaceFile(nextWorkspaceFile);
+			});
+		} finally {
+			this.fileSwitches--;
+		}
+		if (outcome === "refused" && this.userFile) {
+			// Back to the list the user is still on, under the banner saying why.
+			this._connection.next({
+				phase: "connected",
+				userFile: this.userFile,
+				workspaceFile: this.workspaceFile,
+			});
+			return;
+		}
+		if (outcome !== "switched" || !this.userFile) {
+			return;
+		}
 		this._connection.next({
 			phase: "connected",
 			userFile: this.userFile,
 			workspaceFile: this.workspaceFile,
 		});
+		// Show the new list now rather than after the pull, which may be slow or fail.
+		this.emitReload();
 		this.emitGitHubStatus();
 		this.emitSyncInfo();
 		await this.pullAll();
+	}
+
+	/**
+	 * Makes sure nothing owed to a scope's file is lost when the selection moves off it. Returns
+	 * false when that cannot be guaranteed, and the switch must not happen.
+	 *
+	 * An edit still owed to the gist is pushed now, against the file it was made in: after the
+	 * switch nothing would push it until that file was picked again. Prompts are suppressed for
+	 * the duration (see {@link fileSwitches}), so a push that runs into a conflict declines
+	 * instead of asking, and writes nothing.
+	 *
+	 * If the edit is still not on the gist — declined, offline, a failing file — the slice is the
+	 * only copy guaranteed to hold it, and the switch is about to replace it. The debounced
+	 * persist in {@link scheduleUserPush} normally has it in the file's cache already, but not
+	 * for a file whose first reconcile never succeeded (the engine keeps no entry without a
+	 * baseline), nor after a failed write. So it is written again here, awaited, in a form the
+	 * next reconcile of that file bootstraps from. Failing that too, the switch is refused: the
+	 * persist-failure banner says why, and the edit stays on screen — unless the cache turns out
+	 * to hold this very list already. A pull that failed marks the scope as owing a push with no
+	 * edit behind it, and refusing then would blame "your latest change" when there is none.
+	 *
+	 * Runs on the sync queue, from {@link chooseFiles}, so the reconcile is called directly.
+	 */
+	private async settleOldFile(scope: TodoScope.user | TodoScope.workspace): Promise<boolean> {
+		const engine = this.engine;
+		const user = scope === TodoScope.user;
+		const fileName = user ? this.userFile : this.workspaceFile;
+		if (!engine || !fileName) {
+			return true;
+		}
+		const owed = (): boolean => (user ? this.pendingUserPush : this.pendingWorkspacePush);
+		if (owed()) {
+			await (user ? this.reconcileUser() : this.reconcileWorkspace());
+		}
+		if (!owed()) {
+			return true;
+		}
+		const unsynced: GlobalGistData | WorkspaceGistData = user
+			? { userTodos: this.user.todos }
+			: {
+					workspaceTodos: this.workspace.todos,
+					filesData: this.filesData,
+					filesDataPaths: this.filesDataPaths,
+				};
+		try {
+			await (user
+				? engine.persistUnsyncedUser(fileName, unsynced as GlobalGistData)
+				: engine.persistUnsyncedWorkspace(fileName, unsynced as WorkspaceGistData));
+			this.clearPersistFailure(scope);
+			return true;
+		} catch (error: unknown) {
+			if (await this.cacheAlreadyHolds(scope, fileName, unsynced)) {
+				return true;
+			}
+			this.notePersistFailure(scope, error, { refusedSwitch: true });
+			return false;
+		}
+	}
+
+	/**
+	 * Whether a file's cache entry already holds `data`, so dropping the slice loses nothing.
+	 * With no entry at all, only an empty list is held: a file whose first pull failed, with
+	 * nothing added since. False when it cannot tell: storage that just refused a write may
+	 * refuse the read too.
+	 */
+	private async cacheAlreadyHolds(
+		scope: TodoScope.user | TodoScope.workspace,
+		fileName: string,
+		data: GlobalGistData | WorkspaceGistData
+	): Promise<boolean> {
+		const engine = this.engine;
+		if (!engine) {
+			return false;
+		}
+		try {
+			// A missing entry reads as an empty list, which only an empty slice equals.
+			if (scope === TodoScope.user) {
+				const cached = await engine.loadCachedUser(fileName);
+				return isEqual(cached?.userTodos ?? [], (data as GlobalGistData).userTodos);
+			}
+			const cached = await engine.loadCachedWorkspace(fileName);
+			const workspace = data as WorkspaceGistData;
+			return isEqual(
+				{
+					todos: cached?.workspaceTodos ?? [],
+					files: cached?.filesData ?? {},
+					paths: cached?.filesDataPaths ?? {},
+				},
+				{
+					todos: workspace.workspaceTodos,
+					files: workspace.filesData ?? {},
+					paths: workspace.filesDataPaths ?? {},
+				}
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Clears what a scope's old file left armed or recorded, once {@link settleOldFile} has made
+	 * the switch safe. Synchronous, so it can sit inside the swap with nothing awaited.
+	 */
+	private forgetOldFile(scope: TodoScope.user | TodoScope.workspace): void {
+		if (scope === TodoScope.user) {
+			if (this.userPushTimer) {
+				clearTimeout(this.userPushTimer);
+				this.userPushTimer = undefined;
+			}
+			if (this.userRetryTimer) {
+				clearTimeout(this.userRetryTimer);
+				this.userRetryTimer = undefined;
+			}
+			this.userRetries = 0;
+			this.pendingUserPush = false;
+			this.userEverSynced = false;
+		} else {
+			if (this.workspacePushTimer) {
+				clearTimeout(this.workspacePushTimer);
+				this.workspacePushTimer = undefined;
+			}
+			if (this.workspaceRetryTimer) {
+				clearTimeout(this.workspaceRetryTimer);
+				this.workspaceRetryTimer = undefined;
+			}
+			this.workspaceRetries = 0;
+			this.pendingWorkspacePush = false;
+			this.workspaceEverSynced = false;
+		}
+		// A sync failure was recorded against the file being left — a banner about a missing or
+		// unreadable file, over the new list, would send the user to fix one they no longer use.
+		// Anything that is not about the file (a dead token, no network) the next pull records
+		// again. The streak counter stays: it measures the connection, not the file.
+		const hadSyncFailure = this.syncFailures.delete(scope);
+		// So does a persist failure: it said the old list's latest change was not saved (or, from
+		// a refused switch, that the list was not switched), and the switch only gets here once
+		// that change is on the gist or in the old file's cache. Storage that is still broken says
+		// so again on the first edit to the new list.
+		const hadPersistFailure = this.persistFailures.delete(scope);
+		if (hadSyncFailure || hadPersistFailure) {
+			this.publishSyncFailure();
+		}
+		this.settleSyncStatus(scope);
 	}
 
 	async disconnectGitHub(): Promise<void> {
@@ -2486,9 +2804,16 @@ export class GistGateway implements DataGateway {
 	 * Absent `document` counts as "cannot ask" rather than "ask anyway": the caller is awaiting
 	 * this and holds the sync queue, so failing closed leaves the scope visibly dirty while
 	 * failing open would hang every later sync with nothing on screen to explain it.
+	 *
+	 * A list switch in progress counts as "cannot ask" for the same reason: the file picker is
+	 * covering the dialog. See {@link fileSwitches}.
 	 */
 	private canPrompt(): boolean {
-		return typeof document !== "undefined" && document.visibilityState !== "hidden";
+		return (
+			this.fileSwitches === 0 &&
+			typeof document !== "undefined" &&
+			document.visibilityState !== "hidden"
+		);
 	}
 
 	/** Clears the per-reconcile prompt bookkeeping. Runs whether or not anything is asked. */
@@ -2572,8 +2897,14 @@ export class GistGateway implements DataGateway {
 	 * by re-adding the other device's todo under a fresh id.
 	 *
 	 * Returns true when keep-both added a todo, so the caller re-emits and schedules a push.
+	 *
+	 * `fileName` is the file the reconcile ran against, taken by the caller when it started.
 	 */
-	private captureTodoConflicts(scope: ConflictScope, conflicts: ConflictSet[]): boolean {
+	private captureTodoConflicts(
+		scope: ConflictScope,
+		conflicts: ConflictSet[],
+		fileName: string | undefined = scope === "user" ? this.userFile : this.workspaceFile
+	): boolean {
 		if (conflicts.length === 0) {
 			return false;
 		}
@@ -2604,6 +2935,7 @@ export class GistGateway implements DataGateway {
 					kind: "kept-both",
 					key: todoConflictKey(scope, conflict.todoId),
 					scope,
+					fileName,
 					todoId: conflict.todoId,
 					local: conflict.local,
 					remote: conflict.remote,
@@ -2616,6 +2948,7 @@ export class GistGateway implements DataGateway {
 				kind: "todo",
 				key: todoConflictKey(scope, conflict.todoId),
 				scope,
+				fileName,
 				todoId: conflict.todoId,
 				conflictType: conflict.conflictType,
 				base: conflict.base,
@@ -2645,7 +2978,10 @@ export class GistGateway implements DataGateway {
 	 * the other device — storing them would mis-state both sides of the choice, mark every record
 	 * permanently stale, and applying one would delete the other device’s additions outright.
 	 */
-	private captureFileConflicts(fileConflicts: FileConflictSet[]): void {
+	private captureFileConflicts(
+		fileConflicts: FileConflictSet[],
+		fileName: string | undefined = this.workspaceFile
+	): void {
 		if (fileConflicts.length === 0) {
 			return;
 		}
@@ -2662,6 +2998,7 @@ export class GistGateway implements DataGateway {
 				return {
 					kind: "file" as const,
 					key: fileConflictKey(conflict.filePath),
+					fileName,
 					filePath: conflict.filePath,
 					conflictType: conflict.conflictType,
 					base: conflict.base,
@@ -2683,19 +3020,47 @@ export class GistGateway implements DataGateway {
 		if (records.length === 0) {
 			return;
 		}
-		const superseded = new Set(records.map((record) => record.key));
+		// Copies, not the merge's own objects. The engine assembles the merged list from those
+		// same todos and the slice adopts it, so an in-place edit (`editTodo`, `toggleTodo`, …)
+		// changed the record with it: `isStale` then compared the todo with itself, and "keep
+		// everything from the other device" overwrote an edit made after the sync without the
+		// skip or the confirmation it promises.
+		const filed = structuredClone(records);
+		// Keyed by file as well: the same todo id or per-file path in another list is another item.
+		const identity = (conflict: PendingConflict): string =>
+			`${conflict.fileName}\u0000${conflict.key}`;
+		const superseded = new Set(filed.map(identity));
 		this.pendingConflicts = [
-			...records,
-			...this.pendingConflicts.filter((conflict) => !superseded.has(conflict.key)),
+			...filed,
+			...this.pendingConflicts.filter((conflict) => !superseded.has(identity(conflict))),
 		].slice(0, MAX_PENDING_CONFLICTS);
 		void this.conflictStore.save(this.pendingConflicts);
 		this.publishConflicts();
 	}
 
-	/** Republishes the list, recomputing each record's staleness against current local state. */
+	/**
+	 * Republishes the reviewable records, recomputing each one's staleness against current local
+	 * state. Records for lists not selected now stay stored, and come back when their file does.
+	 */
 	private publishConflicts(): void {
 		this._conflicts.next(
-			this.pendingConflicts.map((conflict) => ({ conflict, stale: this.isStale(conflict) }))
+			this.reviewableConflicts().map((conflict) => ({ conflict, stale: this.isStale(conflict) }))
+		);
+	}
+
+	/** The file a record's scope has selected now. Per-file records live in the workspace file. */
+	private selectedFileFor(conflict: PendingConflict): string | undefined {
+		return conflict.kind !== "file" && conflict.scope === "user" ? this.userFile : this.workspaceFile;
+	}
+
+	/**
+	 * The records that can be shown and acted on: those made against the file their scope has
+	 * selected now. Anything else names todos and paths of another list, and applying it would
+	 * write that list's todo into this one. See {@link PendingFileConflict.fileName}.
+	 */
+	private reviewableConflicts(): PendingConflict[] {
+		return this.pendingConflicts.filter(
+			(conflict) => conflict.fileName === this.selectedFileFor(conflict)
 		);
 	}
 
@@ -2736,7 +3101,7 @@ export class GistGateway implements DataGateway {
 		merged?: Todo,
 		force = false
 	): Promise<ConflictApplyResult> {
-		const conflict = this.pendingConflicts.find((candidate) => candidate.key === key);
+		const conflict = this.reviewableConflicts().find((candidate) => candidate.key === key);
 		if (!conflict || conflict.kind === "kept-both") {
 			return "missing";
 		}
@@ -2754,7 +3119,7 @@ export class GistGateway implements DataGateway {
 
 	/** Removes the copy an id collision added, undoing the automatic keep-both. */
 	async undoKeptBoth(key: string): Promise<ConflictApplyResult> {
-		const conflict = this.pendingConflicts.find((candidate) => candidate.key === key);
+		const conflict = this.reviewableConflicts().find((candidate) => candidate.key === key);
 		if (!conflict || conflict.kind !== "kept-both") {
 			return "missing";
 		}
@@ -2768,9 +3133,11 @@ export class GistGateway implements DataGateway {
 		this.forgetConflict(key);
 	}
 
+	/** Dismisses what the review screen shows; records for the other lists are not on it. */
 	dismissAllConflicts(): void {
-		this.pendingConflicts = [];
-		void this.conflictStore.save([]);
+		const shown = new Set(this.reviewableConflicts());
+		this.pendingConflicts = this.pendingConflicts.filter((conflict) => !shown.has(conflict));
+		void this.conflictStore.save(this.pendingConflicts);
 		this.publishConflicts();
 	}
 
@@ -2784,7 +3151,7 @@ export class GistGateway implements DataGateway {
 	async keepAllFromOtherDevice(): Promise<{ applied: number; skipped: number }> {
 		let applied = 0;
 		let skipped = 0;
-		for (const conflict of [...this.pendingConflicts]) {
+		for (const conflict of this.reviewableConflicts()) {
 			if (conflict.kind === "kept-both") {
 				// Both versions are already in the list; there is no other side to switch to.
 				this.forgetConflict(conflict.key);
@@ -2855,8 +3222,10 @@ export class GistGateway implements DataGateway {
 		this.scheduleWorkspacePush();
 	}
 
+	/** Drops the reviewable record under `key`; another list's record with that key stays. */
 	private forgetConflict(key: string): void {
-		this.pendingConflicts = this.pendingConflicts.filter((conflict) => conflict.key !== key);
+		const forgotten = this.reviewableConflicts().find((conflict) => conflict.key === key);
+		this.pendingConflicts = this.pendingConflicts.filter((conflict) => conflict !== forgotten);
 		void this.conflictStore.save(this.pendingConflicts);
 		this.publishConflicts();
 	}

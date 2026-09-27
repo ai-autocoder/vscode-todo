@@ -302,6 +302,15 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		return this.gateway?.canCancelFileSelection ?? false;
 	}
 
+	/**
+	 * Whether a switch is already under way. It waits for any sync in flight, so on a slow
+	 * network the picker can stay up for a while after Ok — and pressing Cancel then would show
+	 * the old list only for the switch to land on top of it.
+	 */
+	get switchingFiles(): boolean {
+		return this.gateway?.switchingFiles ?? false;
+	}
+
 	cancelFileSelection(): void {
 		this.gateway?.cancelFileSelection();
 	}
