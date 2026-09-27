@@ -1,5 +1,17 @@
 # Change Log
 
+## [2.3.2]
+
+- Sync: improve reliability when todos are edited while a sync is in progress.
+- Plans: fix switching between lists, and make edits during a sync more reliable.
+
+## [2.3.1]
+
+- Sync: improve how Plans detects changes made on other devices.
+- Plans: check for remote changes while the app is open, and ask about conflicts that appear during a sync.
+- Webview: fix a newly added todo sometimes not scrolling into view.
+- Docs: lead the Marketplace listing with the MCP server.
+
 ## [2.3.0]
 
 - Add **Plans**, a mobile PWA companion at [plans-app.pages.dev](https://plans-app.pages.dev): the same lists on your phone, installable to the home screen, usable offline, and syncing through the same GitHub Gist as the extension. Sign in with GitHub device flow, choose which gist and which files to sync, review sync conflicts, and import/export from the browser.
