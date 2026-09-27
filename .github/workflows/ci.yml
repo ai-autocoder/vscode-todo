@@ -117,6 +117,25 @@ jobs:
             || { echo "::error::index.html was not built from index.pwa.html"; exit 1; }
           echo "PWA bundle verified."
 
+  # The device-flow CORS proxy: the one deployable anybody on the internet can reach. Its
+  # tests use Node's own runner and built-in TypeScript stripping, so they need no install —
+  # but they do need Node 22.18 or later, hence the version pinned here rather than NODE_VERSION.
+  worker:
+    name: Worker (auth proxy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run worker tests
+        run: npm test
+        working-directory: worker
+
   extension:
     name: Extension
     runs-on: ubuntu-latest
