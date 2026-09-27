@@ -522,15 +522,16 @@ The cost is a port any local process can reach, hence loopback binding, the Orig
 
 ## 15. Testing and CI
 
-Three suites on three runners guard three layers. CI runs them all, plus both Angular builds, on every pull request ([`ci.yml`](.github/workflows/ci.yml)).
+Four suites on four runners guard four layers. CI runs them all, plus both Angular builds, on every pull request ([`ci.yml`](.github/workflows/ci.yml)).
 
 | Suite | Runner | Cases | Protects |
 | --- | --- | --- | --- |
-| [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 268 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export |
-| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 298 | Shared components, `GistGateway` (including list switching and mid-sync edits over the real engine), the conflict prompt and review, PWA shell |
-| [`src/test`](src/test/sync/syncManagerConcurrency.test.ts) | Mocha in real VS Code (`@vscode/test`) | 204 | `SyncManager` concurrency and status, cache-key compatibility, cross-peer equality, truncation, MCP request gates |
+| [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 384 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export; the gist client and device flow |
+| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 308 | Shared components, `GistGateway` (including list switching and mid-sync edits over the real engine), the conflict prompt and review, PWA shell |
+| [`src/test`](src/test/sync/syncManagerConcurrency.test.ts) | Mocha in real VS Code (`@vscode/test`) | 215 | `SyncManager` concurrency and status, cache-key compatibility, cross-peer equality, truncation, MCP request gates, polling visibility |
+| [`worker/test`](worker/test/index.test.ts) | Node's built-in `node:test` (Node 22.18+) | 18 | The CORS proxy's method, path, origin and client-id gates, and what it forwards |
 
-Counts are declared test cases (`it(`/`test(` call sites; none skipped) as of 27 Sep 2026. One webview call site runs in a loop: the model-based walk declares one case per seed, 24 in all, so Karma reports 321.
+Counts are declared test cases (`it(`/`test(` call sites, including `it.fails` and the known-bug helpers; none skipped) as of 27 Sep 2026. Some call sites run more than once: the webview's model-based walk declares one case per seed, 24 in all, so Karma reports 331; four `it.each` tables in core expand to 398 Vitest cases. The `auditFindings` suites (and the `it.fails`/`KNOWN BUG` cases elsewhere) reproduce open defects from the September 2026 audit, which are tracked in the workspace todo list under the tag `audit-2026-09`: each passes while its defect is present and fails once it is fixed, which is the cue to turn it into a plain regression test. The worker's 18 call sites run 26 cases (two loop over methods and paths), three of them `todo`s for known gaps in its client-id allowlist.
 
 **Regression tests follow the bugs.**
 
@@ -547,10 +548,11 @@ Counts are declared test cases (`it(`/`test(` call sites; none skipped) as of 27
   - Nobody went looking for the three losses it found, and each now has a targeted test: the shared snapshot, the baseline a persist put back (above), and a per-file edit landing while a pull re-persisted, which wrote the open file's stale list back over what the pull had brought in.
   - Review turned up three more of the same family, outside what the walk does, and they are pinned beside it. A drag-and-drop in the same window; an import's second half applied after its first save; and review records that shared todo objects with the list. The last meant an edit after the sync changed the record too, so "edited since" never fired and keep-all overwrote the later edit.
 
-**CI** runs three parallel jobs:
+**CI** runs four parallel jobs:
 
 - **core:** typecheck and Vitest.
 - **webview:** Karma, the extension webview build, then the PWA build. The PWA output is then asserted (`app-pwa-shell` in `index.html`, plus manifest, service worker and Pages headers), because a build with the wrong configuration still exits 0.
+- **worker:** the proxy's `node:test` suite, on Node 24 (it needs built-in TypeScript stripping, so it does not use the pinned Node 20).
 - **extension:** lint, compile, Mocha under `xvfb`.
 
 Both Angular targets are built because nothing else type-checks the PWA-only files. The extension test glob was also widened after the sync suites turned out never to have run (commit a608fd5).
