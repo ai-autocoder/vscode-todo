@@ -635,7 +635,15 @@ export class GistSyncEngine {
 		}
 	): Promise<SyncResult<ReconcileResult<T>>> {
 		try {
-			return await this.reconcileInner(scope, fileName, localData, strategy);
+			// The reconcile works on its own copy of the caller's data. It holds that data across
+			// network awaits: it compares and merges it, serializes it for the write, and then
+			// stores it as the cache's `data` and returns it as the result. A caller that still
+			// holds the object and edits it in place meanwhile would change all of those after
+			// the fact. Before the baseline was parsed from the written bytes, it also put an edit
+			// in the baseline that never reached the gist, and the next reconcile read
+			// local == base, remote != base and pulled the edit away. The extension's per-file
+			// persist did exactly that through the live memento object (audit finding C1).
+			return await this.reconcileInner(scope, fileName, cloneData(localData), strategy);
 		} catch (error) {
 			// A resolver that declined. Nothing was written and the baseline is untouched, so the
 			// next sync re-derives the same conflicts and asks again — which is what "decide
@@ -720,11 +728,12 @@ export class GistSyncEngine {
 			if (recheck.error?.type !== SyncErrorType.FileNotFoundError) {
 				return { success: false, error: recheck.error };
 			}
-			const write = await this.client.writeFile(this.gistId, fileName, serialize(localData));
+			const body = serialize(localData);
+			const write = await this.client.writeFile(this.gistId, fileName, body);
 			if (!write.success) {
 				return { success: false, error: write.error };
 			}
-			await this.saveCache(key, localData, localData);
+			await this.saveCache(key, localData, JSON.parse(body) as T);
 			return this.ok({ data: localData, changedRemotely: false, pushed: true, conflicts: [], fileConflicts: [] });
 		}
 
@@ -841,11 +850,14 @@ export class GistSyncEngine {
 				continue;
 			}
 
-			const write = await this.client.writeFile(this.gistId, fileName, serialize(data));
+			// The baseline is parsed from the bytes that went out, not taken from `data`: it has to
+			// be what the gist now holds, whatever happens to `data` while the write is in flight.
+			const body = serialize(data);
+			const write = await this.client.writeFile(this.gistId, fileName, body);
 			if (!write.success) {
 				return { success: false, error: write.error };
 			}
-			await this.saveCache(key, data, data);
+			await this.saveCache(key, data, JSON.parse(body) as T);
 			return this.ok({
 				data,
 				changedRemotely: pulledConcurrent,
@@ -908,7 +920,7 @@ export class GistSyncEngine {
 	/**
 	 * Persists `data` and the baseline it was reconciled against.
 	 *
-	 * Every caller passes the SAME object for both — the reconciled result is also the new
+	 * Most callers pass the SAME object for both — the reconciled result is also the new
 	 * baseline — so the baseline is cloned before it is stored. Without that, `data` and
 	 * `lastCleanRemoteData` are one object in the saved cache, and any {@link CacheStore} that
 	 * persists by reference lets a later in-place edit of `data` silently move the baseline with
@@ -916,9 +928,10 @@ export class GistSyncEngine {
 	 * so a genuine local edit reads as "nothing to push", the untouched remote reads as a remote
 	 * change, and the edit is pulled away and deleted.
 	 *
-	 * That is not hypothetical — it is exactly what the VS Code extension does. Its cache lives
+	 * That is not hypothetical — it is exactly what the VS Code extension did. Its cache lives
 	 * in a memento, whose `get` hands back the live stored object, and `SyncStorageManager`
-	 * records an edit with `cache.data.userTodos = todos`, in place.
+	 * recorded an edit with `cache.data.userTodos = todos` on that object, in place. It now
+	 * works on copies, but the engine does not rely on every store and caller doing so.
 	 *
 	 * Through {@link exclusive}, so a `persistLocal` already reading the entry cannot write the
 	 * old baseline back over this one.

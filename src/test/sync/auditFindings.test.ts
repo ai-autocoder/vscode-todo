@@ -5,7 +5,8 @@
  *
  * A `testKnownBug` case states the correct behaviour and passes only while the code still fails
  * it. When one starts failing the defect has been fixed: turn it into a plain `test`, and it
- * becomes the regression test. Plain `test` cases are controls.
+ * becomes the regression test. The other plain `test` cases are either controls or regression
+ * tests for fixed findings; each one's comment says which.
  */
 
 import * as assert from "assert";
@@ -150,15 +151,15 @@ suite("Audit: per-file edits during a workspace push", () => {
 	});
 
 	/**
-	 * CRITICAL. `readLocalWorkspace` hands the engine `cache.data.filesData` — the live memento
-	 * object — and the GitHub branch of `persistSlice` edits that same object in place
-	 * (`filesData[key] = todos`). An edit landing while the PATCH is in flight therefore mutates
-	 * the snapshot the engine is pushing: the gist gets the old bytes, the baseline the new
-	 * content, `editedDuringSync` compares the mutated snapshot with itself, and the follow-up
-	 * sync reads the edit as "the remote deleted it". The user list and workspace list are not
-	 * affected (their setters replace the array rather than mutating the object).
+	 * Regression test for C1 (fixed). `readLocalWorkspace` used to hand the engine
+	 * `cache.data.filesData` — the live memento object — and the GitHub branch of `persistSlice`
+	 * edited that same object in place (`filesData[key] = todos`). An edit landing while the
+	 * PATCH was in flight therefore mutated the snapshot the engine was pushing: the gist got the
+	 * old bytes, the baseline the new content, `editedDuringSync` compared the mutated snapshot
+	 * with itself, and the follow-up sync read the edit as "the remote deleted it". Now
+	 * `SyncStorageManager` reads and writes copies, and the engine reconciles its own copy.
 	 */
-	testKnownBug("an edit to the open file's list during the push survives the next sync", async () => {
+	test("an edit to the open file's list during the push survives the next sync", async () => {
 		gist.duringWrite = () => editOpenFile([todo(1, "one"), todo(2, "two"), todo(3, "three")]);
 
 		await runWorkspaceSync(); // pushes [one, two]; "three" lands mid-PATCH

@@ -221,11 +221,12 @@ describe("GistSyncEngine conflict resolver", () => {
 	});
 
 	it("stores the baseline as its own object, not an alias of data", async () => {
-		// Every success path calls `saveCache(key, X, X)` — the reconciled result IS the new
-		// baseline — so without a clone the two fields are one object in the stored cache. A
-		// CacheStore that persists by reference (VS Code's mementos do) then lets an in-place
-		// edit of `data` move the merge baseline with it, and the next reconcile sees
-		// local === base, treats the untouched remote as a remote change, and deletes the edit.
+		// The pull and no-op paths (a bootstrap that adopts the remote included) call
+		// `saveCache(key, X, X)` — the reconciled result IS the new baseline — so without a
+		// clone the two fields are one object in the stored cache. A CacheStore that persists by
+		// reference (VS Code's mementos do) then lets an in-place edit of `data` move the merge
+		// baseline with it, and the next reconcile sees local === base, treats the untouched
+		// remote as a remote change, and deletes the edit.
 		const remote: GlobalGistData = { userTodos: [todo(1, "one")] };
 		const gist = new FakeGist(serialize(remote));
 		const store = new MemoryCacheStore();

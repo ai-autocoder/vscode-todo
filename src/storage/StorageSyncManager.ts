@@ -179,7 +179,9 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 					let filesDataPaths: TodoFilesDataPaths;
 
 					if (workspaceSyncMode === "github") {
-						// Get current files data from gist cache
+						// Get current files data from gist cache. These are copies, and the code below
+						// edits them in place: never pass it the cache's own objects, which a sync on
+						// the network may be holding as its snapshot.
 						const workspaceMode = WorkspaceSyncMode.GitHub;
 						const workspaceName = vscode.workspace.name || "default";
 						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;

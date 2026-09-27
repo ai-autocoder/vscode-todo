@@ -14,9 +14,21 @@ import {
 	StorageKeys,
 } from "./syncTypes";
 
+/** Deep copy. Everything stored here is JSON: todo lists and gist file contents. */
+function cloneData<T>(value: T): T {
+	return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
+}
+
 /**
  * Storage manager with data isolation per sync mode
  * Each mode maintains completely separate data storage
+ *
+ * Every read hands out a copy and every write stores one, as `MementoCacheStore` does. A
+ * memento's `get` returns the object it holds, not a copy, so a live object handed out here
+ * would be the stored state itself. The per-file persist edits `filesData` in place, and when
+ * the getters returned that object, the sync's snapshot changed under a reconcile on the
+ * network. An edit made during the PATCH reached the baseline but not the gist, and the next
+ * sync pulled it away.
  */
 export class SyncStorageManager {
 	private context: vscode.ExtensionContext;
@@ -295,14 +307,14 @@ export class SyncStorageManager {
 	 * Implementation
 	 */
 	private getFromGlobalState<T>(key: string, defaultValue: T | undefined): T | undefined {
-		return this.context.globalState.get<T>(key) ?? defaultValue;
+		return cloneData(this.context.globalState.get<T>(key)) ?? defaultValue;
 	}
 
 	/**
 	 * Helper: Set to global state
 	 */
 	private async setToGlobalState<T>(key: string, value: T): Promise<void> {
-		await this.context.globalState.update(key, value);
+		await this.context.globalState.update(key, cloneData(value));
 	}
 
 	/**
@@ -317,14 +329,14 @@ export class SyncStorageManager {
 	 * Implementation
 	 */
 	private getFromWorkspaceState<T>(key: string, defaultValue: T | undefined): T | undefined {
-		return this.context.workspaceState.get<T>(key) ?? defaultValue;
+		return cloneData(this.context.workspaceState.get<T>(key)) ?? defaultValue;
 	}
 
 	/**
 	 * Helper: Set to workspace state
 	 */
 	private async setToWorkspaceState<T>(key: string, value: T): Promise<void> {
-		await this.context.workspaceState.update(key, value);
+		await this.context.workspaceState.update(key, cloneData(value));
 	}
 
 	/**

@@ -162,4 +162,35 @@ suite("SyncStorageManager Test Suite", () => {
 		assert.strictEqual(Array.isArray(retrieved), true);
 		assert.strictEqual(retrieved.length, 0);
 	});
+
+	/**
+	 * The mock mementos above store by reference, as VS Code's do. Audit finding C1: the getters
+	 * used to return the stored object, the per-file persist edited it in place, and a sync on
+	 * the network was holding that same object as its snapshot.
+	 */
+	test("Reads and writes are copies, never the memento's own objects", async () => {
+		const fileName = "workspace/ProjectA.json";
+		const filePath = "/repo/a.ts";
+		const todo: Todo = {
+			id: 1,
+			text: "one",
+			completed: false,
+			creationDate: new Date().toISOString(),
+			isMarkdown: false,
+			isNote: false,
+		};
+		const written = { [filePath]: [todo] };
+		await manager.setFilesData(WorkspaceSyncMode.GitHub, written, fileName);
+		written[filePath].push({ ...todo, id: 2, text: "two" });
+
+		const read = await manager.getFilesData(WorkspaceSyncMode.GitHub, fileName);
+		assert.deepStrictEqual(read[filePath].map((t) => t.text), ["one"], "a write stores a copy");
+
+		read[filePath] = [];
+		const cache = await manager.getWorkspaceGistCache(fileName);
+		cache!.data.filesData[filePath].push({ ...todo, id: 3, text: "three" });
+
+		const again = await manager.getFilesData(WorkspaceSyncMode.GitHub, fileName);
+		assert.deepStrictEqual(again[filePath].map((t) => t.text), ["one"], "a read returns a copy");
+	});
 });

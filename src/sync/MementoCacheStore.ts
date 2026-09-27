@@ -47,7 +47,10 @@ export class MementoCacheStore implements CacheStore {
 	constructor(private readonly context: vscode.ExtensionContext) {}
 
 	async load<T>(key: string): Promise<GistCache<T> | undefined> {
-		return this.memento(key).get<GistCache<T>>(key);
+		// A copy, for the reason `save` stores one: the memento's own object is the persisted
+		// cache, and the engine holds what it loads across network awaits.
+		const cache = this.memento(key).get<GistCache<T>>(key);
+		return cache === undefined ? undefined : cloneData(cache);
 	}
 
 	async save<T>(key: string, cache: GistCache<T>): Promise<void> {
@@ -66,7 +69,8 @@ export class MementoCacheStore implements CacheStore {
 		// Stored as a copy, never as the caller's live object. A memento's `get` returns the
 		// object it holds, not a copy, so anything still holding a reference to what was saved
 		// can mutate the persisted cache from underneath the sync — and `SyncStorageManager`
-		// does exactly that, recording an edit with `cache.data.userTodos = todos` in place.
+		// used to do exactly that, recording an edit with `cache.data.userTodos = todos` in
+		// place. It now reads and writes copies too; this boundary does not depend on it.
 		// Cloning here keeps that edit confined to `data` instead of also moving the merge
 		// baseline, which would make the edit read as "nothing to push" and get pulled away.
 		// (The engine de-aliases the two fields as well; this is the same guarantee held at the

@@ -310,6 +310,10 @@ export class SyncManager {
 	 * code loaded the cache once and wrote that same in-memory object back after two network
 	 * calls, so an edit landing in between was overwritten by the stale copy — the local change
 	 * disappeared from the gist and from storage both. Nothing may span the awaits.
+	 *
+	 * The result is a copy (`SyncStorageManager` never hands out the memento's own object), so
+	 * the snapshot stays what local state was when it was read. An edit during the sync lands in
+	 * storage, not in the snapshot, and the re-read after the round trip finds it.
 	 */
 	private async readLocalUser(fileName: string): Promise<GlobalGistData> {
 		return {
@@ -317,18 +321,16 @@ export class SyncManager {
 		};
 	}
 
-	/** Workspace counterpart of {@link readLocalUser}. */
+	/**
+	 * Workspace counterpart of {@link readLocalUser}. One read of the cache, so the three fields
+	 * come from the same moment: reading them one at a time let an edit land between the reads.
+	 */
 	private async readLocalWorkspace(fileName: string): Promise<WorkspaceGistData> {
+		const data = (await this.storageManager.getWorkspaceGistCache(fileName))?.data;
 		return {
-			workspaceTodos: await this.storageManager.getWorkspaceTodos(
-				WorkspaceSyncMode.GitHub,
-				fileName
-			),
-			filesData: await this.storageManager.getFilesData(WorkspaceSyncMode.GitHub, fileName),
-			filesDataPaths: await this.storageManager.getFilesDataPaths(
-				WorkspaceSyncMode.GitHub,
-				fileName
-			),
+			workspaceTodos: data?.workspaceTodos || [],
+			filesData: data?.filesData || {},
+			filesDataPaths: data?.filesDataPaths || {},
 		};
 	}
 

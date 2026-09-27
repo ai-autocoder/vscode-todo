@@ -139,12 +139,12 @@ suite("SyncManager concurrency", () => {
 	/**
 	 * Records a local edit through the REAL storage path, exactly as `persistSlice` does.
 	 *
-	 * Tests must not hand-roll this. `SyncStorageManager.setGlobalTodos` mutates the cached
-	 * object *in place* (`cache.data.userTodos = todos`) on the object a memento's `get` returns
-	 * — which is the stored object itself, not a copy. A test that instead writes a fresh
-	 * `{...cache, data}` object silently sidesteps that, and a whole class of aliasing bug with
-	 * it: the first version of this suite did exactly that and passed against code that deleted
-	 * the user's next edit on every sync.
+	 * Tests must not hand-roll this. `SyncStorageManager.setGlobalTodos` used to mutate the
+	 * cached object *in place* (`cache.data.userTodos = todos`) on the object a memento's `get`
+	 * returns — which is the stored object itself, not a copy. It works on copies now, but a test
+	 * that writes a fresh `{...cache, data}` object of its own would sidestep whatever the real
+	 * path does, and a whole class of aliasing bug with it: the first version of this suite did
+	 * exactly that and passed against code that deleted the user's next edit on every sync.
 	 */
 	async function editLocally(todos: Todo[]): Promise<void> {
 		await new SyncStorageManager(context).setGlobalTodos(GlobalSyncMode.GitHub, todos, FILE);
@@ -173,7 +173,7 @@ suite("SyncManager concurrency", () => {
 	 * The edit must reach the gist.
 	 *
 	 * This is the regression test for an aliasing bug that survived the whole first pass of this
-	 * suite. Every engine success path calls `saveCache(key, X, X)`, passing one object as both
+	 * suite. Every engine success path called `saveCache(key, X, X)`, passing one object as both
 	 * `data` and `lastCleanRemoteData` — the reconciled result IS the new baseline. A cache store
 	 * that persists by reference therefore stored them as a single object, and VS Code mementos
 	 * hand the stored object straight back. `setGlobalTodos` then recorded the user's edit with

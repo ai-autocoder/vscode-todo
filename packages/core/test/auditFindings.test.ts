@@ -4,8 +4,9 @@
  * Every `it.fails` here passes today *because* its assertion fails: each one states the correct
  * behaviour and the code does not meet it yet. When a fix lands its test starts failing — flip
  * it to `it` and it becomes the regression test. Each block's comment names the finding, the
- * code at fault and the user-visible consequence. Plain `it` cases are controls showing the
- * scenario is otherwise healthy.
+ * code at fault and the user-visible consequence. The other plain `it` cases are either
+ * controls, showing the scenario is otherwise healthy, or regression tests for fixed findings;
+ * each block's comment says which.
  */
 
 /* eslint-disable @typescript-eslint/naming-convention -- filesData is keyed by file path. */
@@ -79,22 +80,24 @@ class FakeGist implements GistFileIO {
 }
 
 // ---------------------------------------------------------------------------------------------
-// CRITICAL — the baseline can record content that never reached the gist
+// CRITICAL (C1, fixed) — the baseline could record content that never reached the gist
 // ---------------------------------------------------------------------------------------------
 
 describe("AUDIT: baseline must be what was written, not what the caller's object became", () => {
 	/**
-	 * `pushVerified` serializes `data` for the PATCH, awaits it, and only then clones `data` into
-	 * the baseline. On the "only local changed" path `data` IS the caller's object. The extension
-	 * hands in `cache.data.filesData` — the live memento object — and `StorageSyncManager`'s
-	 * per-file persist mutates that object in place (`filesData[key] = todos`). An edit landing
-	 * during the PATCH is therefore in the baseline but not on the gist; the next reconcile reads
-	 * local == base, remote != base, and pulls the edit away. Silent loss of a per-file todo.
+	 * Regression tests for C1. `pushVerified` serialized `data` for the PATCH, awaited it, and
+	 * only then cloned `data` into the baseline. On the "only local changed" path `data` WAS the
+	 * caller's object. The extension handed in `cache.data.filesData` — the live memento object —
+	 * and `StorageSyncManager`'s per-file persist mutated that object in place
+	 * (`filesData[key] = todos`). An edit landing during the PATCH was therefore in the baseline
+	 * but not on the gist; the next reconcile read local == base, remote != base, and pulled the
+	 * edit away. The engine now reconciles its own copy of the input and parses the baseline from
+	 * the bytes it wrote.
 	 */
 	const WS = "workspace-app.json";
 	const P = "/repo/a.ts";
 
-	it.fails("records the written bytes as the baseline even if the input object is mutated mid-write", async () => {
+	it("records the written bytes as the baseline even if the input object is mutated mid-write", async () => {
 		const gist = new FakeGist();
 		const store = new CopyingCacheStore();
 		const engine = new GistSyncEngine({ client: gist, gistId: "g", cacheStore: store });
@@ -110,7 +113,8 @@ describe("AUDIT: baseline must be what was written, not what the caller's object
 			filesData: { [P]: [todo(1, "one"), todo(2, "two")] },
 			filesDataPaths: {},
 		};
-		// …while the user adds todo 3 through the same live object, as persistSlice does.
+		// …while the user adds todo 3 through the same object, as persistSlice used to through
+		// the live memento object.
 		gist.onWrite = () => {
 			snapshot.filesData[P] = [todo(1, "one"), todo(2, "two"), todo(3, "three")];
 		};
@@ -121,7 +125,7 @@ describe("AUDIT: baseline must be what was written, not what the caller's object
 		expect(cached.lastCleanRemoteData).toEqual(onGist);
 	});
 
-	it.fails("does not drop an edit that landed during the write on the next sync", async () => {
+	it("does not drop an edit that landed during the write on the next sync", async () => {
 		const gist = new FakeGist();
 		const store = new CopyingCacheStore();
 		const engine = new GistSyncEngine({ client: gist, gistId: "g", cacheStore: store });
