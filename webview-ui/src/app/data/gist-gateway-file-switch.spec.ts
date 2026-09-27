@@ -1691,3 +1691,83 @@ describe("GistGateway list switching, model-based", () => {
 		}, 30_000);
 	}
 });
+
+/**
+ * Switching to another GIST, found by the September 2026 audit.
+ *
+ * A list switch settles what the old file is owed first (push it, save it, or refuse). A gist
+ * switch does none of that: `resetForNewGist` cancels the owed pushes, clears the whole sync
+ * cache and empties the slices. So an edit made in the debounce window before "Change gist" is
+ * gone from this device and never reached the gist it was made in. The "gist not found" banner's
+ * "Choose a gist" leads down the same path with everything the device holds.
+ *
+ * The known-bug case states the correct behaviour and passes only while the code still fails it;
+ * when it starts failing the defect is fixed — turn it into a plain `it`.
+ */
+describe("GistGateway switching gists (audit)", () => {
+	const CURRENT_GIST = "a".repeat(32);
+	const OTHER_GIST = "c".repeat(32);
+
+	/** The fake gist, plus the calls the gist picker makes. */
+	class PickerGist extends FakeGist {
+		async fetchGist(id: string) {
+			return { success: true as const, data: { id, files: {} } };
+		}
+		async listFiles() {
+			return { success: true as const, data: [] };
+		}
+	}
+
+	function itKnownBug(name: string, check: () => Promise<void>): void {
+		it(`KNOWN BUG — ${name}`, async () => {
+			let failure: unknown;
+			try {
+				await check();
+			} catch (error) {
+				failure = error;
+			}
+			expect(failure)
+				.withContext("This defect appears to be fixed: turn this case into a plain it().")
+				.toBeDefined();
+		});
+	}
+
+	let gist: PickerGist;
+	let gateway: GistGateway;
+	let internals: Internals;
+
+	beforeEach(async () => {
+		gist = new PickerGist({
+			[USER_A]: userFile(todo(11, "user A one")),
+			[WS_A]: workspaceFile([todo(31, "ws A one")]),
+		});
+		({ gateway, internals } = createGateway(gist));
+		// A real-looking id, so the picker's validation lets a same-gist pick through.
+		internals.gistId = CURRENT_GIST;
+		internals.tokenStore = Object.assign(new FakeTokenStore(), { setGistId: async () => undefined });
+		await gateway.chooseFiles(USER_A, WS_A);
+		gist.writes.length = 0;
+	});
+
+	afterEach(() => teardown(gateway));
+
+	it("control: picking the same gist again keeps the lists and the owed edit", async () => {
+		gateway.addTodo(TodoScope.user, { text: "kept" });
+
+		await gateway.selectGist(CURRENT_GIST);
+
+		expect(internals.gistId).toBe(CURRENT_GIST);
+		expect(texts(internals.user.todos)).toContain("kept");
+		expect(internals.pendingUserPush).toBe(true);
+	});
+
+	itKnownBug("an edit made just before switching gists reaches the gist it was made in", async () => {
+		gateway.addTodo(TodoScope.user, { text: "added right before switching gists" });
+
+		await gateway.selectGist(OTHER_GIST);
+
+		if (!gist.texts(USER_A).includes("added right before switching gists")) {
+			throw new Error(`the old gist's user file holds ${JSON.stringify(gist.texts(USER_A))}`);
+		}
+	});
+});
