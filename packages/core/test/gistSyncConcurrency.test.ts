@@ -477,6 +477,130 @@ describe("persistLocal* keeps a debounced edit across a reload", () => {
 });
 
 /**
+ * `persistLocal*` is a read followed by a separate write — two IndexedDB transactions in the PWA —
+ * and the caller fires it on every edit without waiting. A reconcile finishing in between saves
+ * its new baseline, and the persist's write then puts the old one back. The next merge reads a
+ * todo the reconcile pushed, and the user has since deleted, as an addition from the other
+ * device, and restores it. Found by the PWA's model-based walk (gist-gateway-file-switch.spec.ts).
+ */
+describe("persistLocal* cannot put back a baseline a reconcile has just moved", () => {
+	/** A store whose next write can be parked, so a reconcile can finish inside a persist. */
+	class GatedStore extends PersistentCacheStore {
+		private gate: { reached: () => void; open: Promise<void> } | undefined;
+
+		holdNextSave(): { reached: Promise<void>; release: () => void } {
+			let reached!: () => void;
+			let release!: () => void;
+			const arrived = new Promise<void>((resolve) => (reached = resolve));
+			const open = new Promise<void>((resolve) => (release = resolve));
+			this.gate = { reached, open };
+			return { reached: arrived, release };
+		}
+
+		override async save<T>(key: string, cache: T) {
+			const gate = this.gate;
+			if (gate) {
+				this.gate = undefined;
+				gate.reached();
+				await gate.open;
+			}
+			return super.save<T>(key, cache);
+		}
+	}
+
+	/** Yields a macrotask at a time until `condition` holds. */
+	async function until(condition: () => boolean): Promise<void> {
+		for (let i = 0; i < 100 && !condition(); i++) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		expect(condition()).toBe(true);
+	}
+
+	it("keeps the reconcile's baseline, so a todo pushed then deleted stays deleted", async () => {
+		const gist = new LatentGist();
+		const store = new GatedStore();
+		gist.seed(USER_FILE, { userTodos: [todo(1, "existing")] });
+		const engine = newEngine(gist, store);
+		await engine.reconcileUser(USER_FILE, { userTodos: [] });
+
+		// An edit adds todo 2. Its fire-and-forget persist has read the cache — the old baseline —
+		// and its write is still pending.
+		const added = { userTodos: [todo(2, "added"), todo(1, "existing")] };
+		const parked = store.holdNextSave();
+		const persist = engine.persistLocalUser(USER_FILE, added);
+		await parked.reached;
+		// Meanwhile the push for that edit goes out and moves the baseline to include todo 2.
+		const writes = gist.writeLog.length;
+		const push = engine.reconcileUser(USER_FILE, added);
+		await until(() => gist.writeLog.length > writes);
+		// Only then does the persist's write land.
+		parked.release();
+		await Promise.all([persist, push]);
+		expect(gist.user().userTodos.map((t) => t.text)).toContain("added");
+
+		// The user deletes todo 2; the next sync must delete it, not bring it back.
+		const res = await engine.reconcileUser(USER_FILE, { userTodos: [todo(1, "existing")] });
+
+		expect(res.success).toBe(true);
+		expect(gist.user().userTodos.map((t) => t.text)).toEqual(["existing"]);
+	});
+});
+
+/**
+ * `persistUnsynced*` is for a caller about to drop its only copy of an edit — the PWA switching
+ * lists after the push for the old one failed — including for a file whose first reconcile never
+ * succeeded, which `persistLocal*` deliberately skips.
+ */
+describe("persistUnsynced* keeps an edit the caller is about to drop", () => {
+	it("writes an entry for a file that was never reconciled, with no baseline", async () => {
+		const store = new PersistentCacheStore();
+		const engine = newEngine(new LatentGist(), store);
+
+		await engine.persistUnsyncedUser(USER_FILE, { userTodos: [todo(9, "offline edit")] });
+
+		expect((await engine.loadCachedUser(USER_FILE))!.userTodos.map((t) => t.text)).toEqual([
+			"offline edit",
+		]);
+		const cache = await store.load<GlobalGistData>(`gistCache_global_${USER_FILE}`);
+		expect(cache!.lastCleanRemoteData).toBeUndefined();
+		expect(cache!.isDirty).toBe(true);
+	});
+
+	it("bootstraps from it next time, merging with the remote instead of replacing either", async () => {
+		const gist = new LatentGist();
+		const store = new PersistentCacheStore();
+		gist.seed(USER_FILE, { userTodos: [todo(1, "remote only")] });
+		const engine = newEngine(gist, store);
+		await engine.persistUnsyncedUser(USER_FILE, { userTodos: [todo(9, "offline edit")] });
+
+		// The caller rehydrates from the cache, then reconciles what it rehydrated.
+		const local = (await engine.loadCachedUser(USER_FILE))!;
+		const res = await engine.reconcileUser(USER_FILE, local);
+
+		expect(res.success).toBe(true);
+		const texts = gist.user().userTodos.map((t) => t.text);
+		expect(texts.sort()).toEqual(["offline edit", "remote only"]);
+	});
+
+	it("behaves like persistLocal* once the file has a baseline", async () => {
+		const gist = new LatentGist();
+		const store = new PersistentCacheStore();
+		gist.seed(WS_FILE, { ...emptyWorkspace(), workspaceTodos: [todo(1, "existing")] });
+		const engine = newEngine(gist, store);
+		await engine.reconcileWorkspace(WS_FILE, emptyWorkspace());
+
+		const edited = { ...emptyWorkspace(), workspaceTodos: [todo(1, "existing"), todo(2, "new")] };
+		await engine.persistUnsyncedWorkspace(WS_FILE, edited);
+
+		const cache = await store.load<WorkspaceGistData>(`gistCache_workspace_${WS_FILE}`);
+		expect(cache!.data).toEqual(edited);
+		// The baseline is left alone, so the next reconcile reads the edit as local and pushes it.
+		expect(cache!.lastCleanRemoteData!.workspaceTodos.map((t) => t.text)).toEqual(["existing"]);
+		expect(cache!.isDirty).toBe(true);
+	});
+});
+
+/**
  * The gist API has no compare-and-swap, so `reconcile` reading the remote and then writing the
  * merged result is a TOCTOU window. A push from the extension that landed inside it used to be
  * overwritten wholesale — and because `saveCache` then recorded our stale result as the clean
