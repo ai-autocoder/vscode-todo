@@ -138,3 +138,119 @@ describe("todoMutations.toggleTodoNote", () => {
 		expect(s.numberOfTodos).toBe(0);
 	});
 });
+
+describe("todoMutations: the remaining reducers", () => {
+	it("loadData replaces the list and recounts", () => {
+		const s = slice([todo(1)]);
+		todoMutations.loadData(s, { data: [todo(2), todo(3, { isNote: true }), todo(4, { completed: true })] });
+		expect(s.todos.map((t) => t.id)).toEqual([2, 3, 4]);
+		expect(s.numberOfTodos).toBe(1);
+		expect(s.numberOfNotes).toBe(1);
+		expect(s.lastActionType).toBe("loadData");
+	});
+
+	it("editTodo changes only the text", () => {
+		const s = slice([todo(1, { tags: ["a"] })]);
+		todoMutations.editTodo(s, { id: 1, newText: "renamed" });
+		expect(s.todos[0]).toEqual(todo(1, { text: "renamed", tags: ["a"] }));
+		expect(s.lastActionType).toBe("editTodo");
+	});
+
+	it("deleteTodo removes one item and recounts; deleteTodos removes several", () => {
+		const s = slice([todo(1), todo(2), todo(3)]);
+		todoMutations.deleteTodo(s, { id: 2 });
+		expect(s.todos.map((t) => t.id)).toEqual([1, 3]);
+		expect(s.numberOfTodos).toBe(2);
+
+		todoMutations.deleteTodos(s, { ids: [1, 3, 99] });
+		expect(s.todos).toEqual([]);
+		expect(s.numberOfTodos).toBe(0);
+		expect(s.lastActionType).toBe("deleteTodos");
+	});
+
+	it("toggleCollapsed flips one item; setAllCollapsed sets every item", () => {
+		const s = slice([todo(1), todo(2, { collapsed: true })]);
+		todoMutations.toggleCollapsed(s, { id: 1 });
+		expect(s.todos.map((t) => t.collapsed)).toEqual([true, true]);
+
+		todoMutations.setAllCollapsed(s, { collapsed: false });
+		expect(s.todos.map((t) => t.collapsed)).toEqual([false, false]);
+		expect(s.lastActionType).toBe("setAllCollapsed");
+	});
+
+	it("toggleMarkdown flips isMarkdown, treating a missing flag as false", () => {
+		const legacy = { ...todo(1) } as Partial<Todo>;
+		delete legacy.isMarkdown;
+		const s = slice([legacy as Todo]);
+		todoMutations.toggleMarkdown(s, { id: 1 });
+		expect(s.todos[0].isMarkdown).toBe(true);
+		todoMutations.toggleMarkdown(s, { id: 1 });
+		expect(s.todos[0].isMarkdown).toBe(false);
+	});
+
+	it("turning a note back into a task re-sorts the list", () => {
+		const s = slice([todo(1, { isNote: true, completed: true }), todo(2)]);
+		todoMutations.toggleTodoNote(s, { id: 1 }, cfg());
+		// no longer a note, and completed: sinks below the open task
+		expect(s.todos.map((t) => t.id)).toEqual([2, 1]);
+		expect(s.numberOfNotes).toBe(0);
+	});
+
+	it("a bottom add lands above completed tasks under sortType1", () => {
+		const s = slice([todo(1), todo(2, { completed: true })]);
+		todoMutations.addTodo(s, { text: "new" }, cfg({ createPosition: "bottom" }));
+		expect(s.todos.map((t) => t.text)).toEqual(["t1", "new", "t2"]);
+	});
+
+	it.each([
+		["toggleTodo", (s: TodoSliceState) => todoMutations.toggleTodo(s, { id: 99 }, cfg())],
+		["editTodo", (s: TodoSliceState) => todoMutations.editTodo(s, { id: 99, newText: "x" })],
+		["deleteTodo", (s: TodoSliceState) => todoMutations.deleteTodo(s, { id: 99 })],
+		["toggleCollapsed", (s: TodoSliceState) => todoMutations.toggleCollapsed(s, { id: 99 })],
+		["toggleMarkdown", (s: TodoSliceState) => todoMutations.toggleMarkdown(s, { id: 99 })],
+		["toggleTodoNote", (s: TodoSliceState) => todoMutations.toggleTodoNote(s, { id: 99 }, cfg())],
+		["setTags", (s: TodoSliceState) => todoMutations.setTags(s, { id: 99, tags: ["x"] })],
+	])("%s on an unknown id changes nothing, not even lastActionType", (_name, run) => {
+		const s = slice([todo(1)]);
+		const before = JSON.stringify(s);
+		run(s);
+		expect(JSON.stringify(s)).toBe(before);
+	});
+
+	it("undoDelete keeps the restored item's tags", () => {
+		const s = slice([todo(1)]);
+		todoMutations.undoDelete(s, {
+			id: 2,
+			text: "restored",
+			completed: false,
+			creationDate: "2020-01-01T00:00:00.000Z",
+			isMarkdown: false,
+			isNote: false,
+			tags: ["work"],
+			itemPosition: 0,
+		});
+		expect(s.todos[0].tags).toEqual(["work"]);
+	});
+
+	/**
+	 * AUDIT: undo cannot restore `completionDate`. Neither the payload type nor the reducer carries
+	 * it, so a completed todo deleted and undone comes back completed with no completion date —
+	 * and the auto-delete sweep (`todoUtils`, which requires `completionDate`) then never removes
+	 * it. The same holds for the extension's copy in src/todo/store.ts. Flip to `it` once fixed.
+	 */
+	it.fails("undoDelete restores a completed todo's completionDate", () => {
+		const s = slice([]);
+		const payload = {
+			id: 2,
+			text: "done earlier",
+			completed: true,
+			completionDate: "2020-02-02T00:00:00.000Z",
+			creationDate: "2020-01-01T00:00:00.000Z",
+			isMarkdown: false,
+			isNote: false,
+			itemPosition: 0,
+		};
+		todoMutations.undoDelete(s, payload);
+		expect(s.todos[0].completionDate).toBe("2020-02-02T00:00:00.000Z");
+	});
+});
