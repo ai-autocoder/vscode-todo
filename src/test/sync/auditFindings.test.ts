@@ -10,13 +10,18 @@
  */
 
 import * as assert from "assert";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { SyncManager } from "../../sync/SyncManager";
 import { GitHubAuthManager } from "../../sync/GitHubAuthManager";
-import { StorageKeys, WorkspaceGistData } from "../../sync/syncTypes";
+import { GistCache, StorageKeys, WorkspaceGistData } from "../../sync/syncTypes";
 import StorageSyncManager from "../../storage/StorageSyncManager";
+import TodoService from "../../todo/TodoService";
+import createStore from "../../todo/store";
 import { serialize } from "../../core";
-import { CurrentFileSlice, Todo, TodoScope } from "../../todo/todoTypes";
+import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "../../todo/todoTypes";
 
 const GIST_ID = "b".repeat(32);
 const FILE_PATH = process.platform === "win32" ? "C:\\audit\\repo\\a.ts" : "/audit/repo/a.ts";
@@ -166,6 +171,242 @@ suite("Audit: per-file edits during a workspace push", () => {
 		await runWorkspaceSync(); // the re-run the edit's debounce would have queued
 
 		assert.deepStrictEqual(gist.fileTodos(), ["one", "two", "three"], "the edit must reach the gist");
+	});
+});
+
+/**
+ * Regression tests for overlapping persists. `persistSlice` read what was stored, changed it and
+ * wrote it back across several awaits, and persists overlap: the store subscriber does not wait
+ * for its own, and concurrent MCP calls each wait only for theirs. Two overlapping persists both
+ * read the same state, and the later write dropped the earlier one's change. Persists now run one
+ * at a time per storage, and a per-file write reaches the `TodoFilesData` memento at the call.
+ */
+suite("Overlapping per-file writes", () => {
+	const root = process.platform === "win32" ? "C:\\work\\plans" : "/work/plans";
+	const X = path.join(root, "src", "x.ts");
+	const Y = path.join(root, "src", "y.ts");
+
+	function fileSlice(filePath: string, todos: Todo[]): CurrentFileSlice {
+		return {
+			todos,
+			lastActionType: "todo/update",
+			numberOfTodos: todos.length,
+			numberOfNotes: 0,
+			scope: TodoScope.currentFile,
+			filePath,
+			isPinned: false,
+		};
+	}
+
+	function texts(filesData: TodoFilesData | undefined, filePath: string): string[] {
+		return (filesData?.[filePath] ?? []).map((t) => t.text);
+	}
+
+	function emptyGistCache(): GistCache<WorkspaceGistData> {
+		const empty: WorkspaceGistData = { workspaceTodos: [], filesData: {}, filesDataPaths: {} };
+		return { data: empty, lastCleanRemoteData: empty, lastSynced: "2026-01-01T00:00:00.000Z", isDirty: false };
+	}
+
+	/** A workspace in GitHub mode whose gist cache holds no lists. */
+	function githubWorkspace(workspaceStore: Map<string, unknown>) {
+		workspaceStore.set("syncMode", "github");
+		workspaceStore.set(StorageKeys.workspaceGistCache(workspaceFileName()), emptyGistCache());
+		return {
+			globalState: memento(new Map([["syncMode", "profile-local"]])),
+			workspaceState: memento(workspaceStore),
+		} as unknown as vscode.ExtensionContext;
+	}
+
+	function gistFiles(workspaceStore: Map<string, unknown>): TodoFilesData {
+		const cache = workspaceStore.get(StorageKeys.workspaceGistCache(workspaceFileName())) as
+			| GistCache<WorkspaceGistData>
+			| undefined;
+		return cache?.data.filesData ?? {};
+	}
+
+	test("GitHub mode: two files persisted at once both reach the gist cache", async () => {
+		const workspaceStore = new Map<string, unknown>();
+		const storage = new StorageSyncManager(githubWorkspace(workspaceStore), {} as never);
+
+		await Promise.all([
+			storage.persistSlice(fileSlice(X, [todo(1, "x")])),
+			storage.persistSlice(fileSlice(Y, [todo(1, "y")])),
+		]);
+
+		assert.deepStrictEqual(texts(gistFiles(workspaceStore), X), ["x"], "the first write was dropped");
+		assert.deepStrictEqual(texts(gistFiles(workspaceStore), Y), ["y"]);
+		const shown = workspaceStore.get("TodoFilesData") as TodoFilesData;
+		assert.deepStrictEqual([texts(shown, X), texts(shown, Y)], [["x"], ["y"]]);
+	});
+
+	test("local mode: overlapping file and workspace writes all reach workspaceData.json", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vsc-todo-persist-"));
+		const workspaceStore = new Map<string, unknown>([["syncMode", "local"]]);
+		const context = {
+			globalState: memento(new Map([["syncMode", "profile-local"]])),
+			workspaceState: memento(workspaceStore),
+			globalStorageUri: vscode.Uri.file(path.join(dir, "global")),
+			storageUri: vscode.Uri.file(path.join(dir, "workspace")),
+			subscriptions: [] as vscode.Disposable[],
+		} as unknown as vscode.ExtensionContext;
+		const storage = new StorageSyncManager(context, createStore());
+		try {
+			await storage.initialize();
+			const workspaceSlice: TodoSlice = {
+				todos: [todo(1, "w")],
+				lastActionType: "workspace/addTodo",
+				numberOfTodos: 1,
+				numberOfNotes: 0,
+				scope: TodoScope.workspace,
+			};
+
+			await Promise.all([
+				storage.persistSlice(fileSlice(X, [todo(1, "x")])),
+				storage.persistSlice(workspaceSlice),
+				storage.persistSlice(fileSlice(Y, [todo(1, "y")])),
+			]);
+
+			const onDisk = JSON.parse(
+				fs.readFileSync(path.join(dir, "workspace", "workspaceData.json"), "utf8")
+			) as WorkspaceGistData;
+			assert.deepStrictEqual(texts(onDisk.filesData, X), ["x"], "the first file write was dropped");
+			assert.deepStrictEqual(texts(onDisk.filesData, Y), ["y"]);
+			assert.deepStrictEqual(
+				onDisk.workspaceTodos.map((t) => t.text),
+				["w"],
+				"a file write put the old workspace list back"
+			);
+			const shown = workspaceStore.get("TodoFilesData") as TodoFilesData;
+			assert.deepStrictEqual([texts(shown, X), texts(shown, Y)], [["x"], ["y"]]);
+		} finally {
+			context.subscriptions.forEach((disposable) => disposable.dispose());
+			// Windows can hold the directory for a moment after the watchers go. A leftover temp
+			// directory is harmless; an error here would hide the test's own failure.
+			try {
+				fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+			} catch {
+				// Left for the OS to clean up.
+			}
+		}
+	});
+
+	test("the per-file lists show a queued write at once, and keep showing it while earlier ones finish", async () => {
+		// The gist cache writes wait on a gate, so the persists queue up behind each other.
+		const workspaceStore = new Map<string, unknown>();
+		const context = githubWorkspace(workspaceStore);
+		const gistKey = StorageKeys.workspaceGistCache(workspaceFileName());
+		const held: Array<() => void> = [];
+		let gateOpen = false;
+		const plain = context.workspaceState;
+		(context as { workspaceState: unknown }).workspaceState = {
+			get: plain.get,
+			keys: plain.keys,
+			update: (key: string, value: unknown) => {
+				void plain.update(key, value);
+				return key === gistKey && !gateOpen ? new Promise<void>((resolve) => held.push(resolve)) : Promise.resolve();
+			},
+		};
+		const storage = new StorageSyncManager(context, {} as never);
+
+		// Both are accepted before the first starts, so its memento write must not hide the
+		// second, which is still waiting.
+		const persists = [
+			storage.persistSlice(fileSlice(X, [todo(1, "one"), todo(2, "two")])),
+			storage.persistSlice(fileSlice(X, [todo(1, "one"), todo(2, "two"), todo(3, "three")])),
+		];
+		for (let i = 0; i < 50 && held.length === 0; i++) {
+			await new Promise((resolve) => setImmediate(resolve));
+		}
+		assert.strictEqual(held.length, 1, "the first persist should be waiting on its gist cache write");
+		assert.deepStrictEqual(
+			texts(workspaceStore.get("TodoFilesData") as TodoFilesData, X),
+			["one", "two", "three"],
+			"a tab switch now would load an old list"
+		);
+
+		// Accepted while the first is still writing: it shows before its turn comes.
+		persists.push(storage.persistSlice(fileSlice(Y, [todo(1, "y")])));
+		assert.deepStrictEqual(texts(workspaceStore.get("TodoFilesData") as TodoFilesData, Y), ["y"]);
+
+		gateOpen = true;
+		held.splice(0).forEach((release) => release());
+		await Promise.all(persists);
+
+		assert.deepStrictEqual(texts(gistFiles(workspaceStore), X), ["one", "two", "three"]);
+		assert.deepStrictEqual(texts(gistFiles(workspaceStore), Y), ["y"]);
+		const settled = workspaceStore.get("TodoFilesData") as TodoFilesData;
+		assert.deepStrictEqual([texts(settled, X), texts(settled, Y)], [["one", "two", "three"], ["y"]]);
+	});
+
+	suite("through the MCP tools", () => {
+		let originalFolders: PropertyDescriptor | undefined;
+		let originalGetWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder;
+		const folder = { uri: vscode.Uri.file(root), name: "plans", index: 0 } as vscode.WorkspaceFolder;
+
+		// File scopes need an open folder, and the test host has none.
+		suiteSetup(() => {
+			originalFolders = Object.getOwnPropertyDescriptor(vscode.workspace, "workspaceFolders");
+			Object.defineProperty(vscode.workspace, "workspaceFolders", { configurable: true, get: () => [folder] });
+			originalGetWorkspaceFolder = vscode.workspace.getWorkspaceFolder;
+			(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
+				(uri: vscode.Uri) => (uri.fsPath.startsWith(folder.uri.fsPath) ? folder : undefined);
+		});
+
+		suiteTeardown(() => {
+			if (originalFolders) {
+				Object.defineProperty(vscode.workspace, "workspaceFolders", originalFolders);
+			} else {
+				delete (vscode.workspace as { workspaceFolders?: unknown }).workspaceFolders;
+			}
+			(vscode.workspace as { getWorkspaceFolder: typeof vscode.workspace.getWorkspaceFolder }).getWorkspaceFolder =
+				originalGetWorkspaceFolder;
+		});
+
+		function writableService(workspaceStore: Map<string, unknown>): TodoService {
+			const context = githubWorkspace(workspaceStore);
+			const store = createStore();
+			const service = new TodoService(context, store, new StorageSyncManager(context, store));
+			service.updateAccess(false, ["user", "workspace", "file"]);
+			return service;
+		}
+
+		test("adds to two files at once are both stored", async () => {
+			const workspaceStore = new Map<string, unknown>();
+			const service = writableService(workspaceStore);
+
+			await Promise.all([
+				service.addTodo(TodoScope.currentFile, "x", { filePath: X }),
+				service.addTodo(TodoScope.currentFile, "y", { filePath: Y }),
+			]);
+
+			assert.deepStrictEqual(texts(gistFiles(workspaceStore), X), ["x"], "the first add was dropped");
+			assert.deepStrictEqual(texts(gistFiles(workspaceStore), Y), ["y"]);
+		});
+
+		test("edits to two items of one file at once are both stored", async () => {
+			const workspaceStore = new Map<string, unknown>();
+			const service = writableService(workspaceStore);
+			await service.addTodos(TodoScope.currentFile, [{ text: "a" }, { text: "b" }], {
+				filePath: X,
+				position: "bottom",
+			});
+			const [a, b] = service.listTodos(TodoScope.currentFile, { filePath: X }).todos;
+
+			await Promise.all([
+				service.setCompleted(TodoScope.currentFile, a.id, true, { filePath: X }),
+				service.setCompleted(TodoScope.currentFile, b.id, true, { filePath: X }),
+			]);
+
+			const stored = gistFiles(workspaceStore)[X] ?? [];
+			assert.deepStrictEqual(
+				stored.map((t) => [t.text, t.completed]),
+				[
+					["a", true],
+					["b", true],
+				],
+				"the first edit was dropped"
+			);
+		});
 	});
 });
 

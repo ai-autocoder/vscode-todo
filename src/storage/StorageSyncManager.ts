@@ -40,13 +40,53 @@ type GlobalPersistedData = {
 	userTodos: Todo[];
 };
 
+type FilesState = {
+	filesData: TodoFilesData;
+	filesDataPaths: TodoFilesDataPaths;
+};
+
+/**
+ * The two storages persists write to. The workspace scope and the per-file lists share one: both
+ * write `workspaceData.json`, each carrying the other's half from `cachedWorkspaceData`, and in
+ * GitHub mode the same gist cache entry.
+ */
+type PersistStorage = "user" | "workspace";
+
+/**
+ * `files` with `fileState`'s list stored under the file's key, or removed when the list is
+ * empty, and the file's path aliases recorded. Returns new maps and leaves `files` untouched.
+ */
+function withFileTodos(files: FilesState, fileState: CurrentFileSlice): FilesState {
+	const filesData = { ...files.filesData };
+	const filesDataPaths = ensureFilesDataPaths(filesData, files.filesDataPaths, getWorkspacePath());
+	const resolved = resolveFilesDataKey({
+		filePath: fileState.filePath,
+		filesData,
+		filesDataPaths,
+	});
+	const primaryKey = resolved.key ?? fileState.filePath;
+
+	filesData[primaryKey] = fileState.todos;
+	const sorted = sortByFileName(filesData);
+	if (fileState.todos.length === 0) {
+		delete sorted[primaryKey];
+		delete filesDataPaths[primaryKey];
+	} else {
+		upsertFilesDataPathEntry({
+			filesDataPaths,
+			primaryKey,
+			absPath: fileState.filePath,
+			relPath: getRelativePathIfInsideWorkspace(fileState.filePath),
+		});
+	}
+	return { filesData: sorted, filesDataPaths };
+}
+
 export default class StorageSyncManager {
 	private readonly workspaceDataFileName = "workspaceData.json";
 	private readonly globalDataFileName = "globalData.json";
 	private workspaceDataUri: vscode.Uri | undefined;
 	private globalDataUri: vscode.Uri | undefined;
-	private ignoreWorkspaceWatcher = false;
-	private ignoreGlobalWatcher = false;
 	private readonly suppressedScopes = new Set<TodoScope>();
 private cachedWorkspaceData: WorkspacePersistedData = {
 	workspaceTodos: [],
@@ -55,6 +95,13 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 };
 	private cachedGlobalData: GlobalPersistedData = { userTodos: [] };
 	private syncStorageManager: SyncStorageManager;
+	/** Tail of each storage's writes in progress; see {@link exclusive}. */
+	private readonly writeTails: Record<PersistStorage, Promise<void>> = {
+		user: Promise.resolve(),
+		workspace: Promise.resolve(),
+	};
+	/** Per-file persists accepted but not yet started, oldest first; see {@link persistSlice}. */
+	private readonly queuedFileWrites: CurrentFileSlice[] = [];
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -128,16 +175,64 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		this.suppressedScopes.add(scope);
 	}
 
+	/**
+	 * Stores a slice. Resolves when the write has finished, or was suppressed or failed (a
+	 * failure is logged, never thrown).
+	 *
+	 * Persists run one at a time per storage (see {@link exclusive}). Each one reads what is
+	 * stored, changes it and writes it back, and they overlap: the store subscriber does not
+	 * wait for its persist, and concurrent MCP calls each wait only for their own. When two
+	 * overlapped, both read the same state and the later write dropped the earlier one's change.
+	 * Two agent calls that added to `x.ts` and `y.ts` both reported success, and only `y.ts` was
+	 * stored.
+	 *
+	 * Waiting its turn must not make a per-file write invisible, so the `TodoFilesData` memento
+	 * is updated at the call, before anything is awaited. A tab switch and the MCP tools read
+	 * that memento and write back what they read: a tab switch that read the old list while the
+	 * new one waited would persist the old list after it.
+	 */
 	public async persistSlice(state: TodoSlice | CurrentFileSlice): Promise<void> {
 		if (this.suppressedScopes.has(state.scope)) {
 			this.suppressedScopes.delete(state.scope);
 			return;
 		}
 
+		// Where the write goes is settled now, with the edit: a mode switch while it waits must
+		// not send it to the other mode's storage.
 		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
 		const userSyncMode = this.context.globalState.get<string>("syncMode", "profile-local");
 		const workspaceSyncMode = this.context.workspaceState.get<string>("syncMode", "local");
 
+		if (state.scope === TodoScope.currentFile) {
+			const fileState = state as CurrentFileSlice;
+			try {
+				this.showFiles(withFileTodos(this.shownFiles(), fileState)).catch(
+					(error: unknown) => this.logShowFilesFailure(error)
+				);
+				// Only once its list is shown: queued writes are replayed over each memento write.
+				this.queuedFileWrites.push(fileState);
+			} catch (error) {
+				this.logShowFilesFailure(error);
+			}
+		}
+
+		return this.exclusive(state.scope === TodoScope.user ? "user" : "workspace", () => {
+			if (state.scope === TodoScope.currentFile) {
+				const index = this.queuedFileWrites.indexOf(state as CurrentFileSlice);
+				if (index !== -1) {
+					this.queuedFileWrites.splice(index, 1);
+				}
+			}
+			return this.writeSlice(state, config, userSyncMode, workspaceSyncMode);
+		});
+	}
+
+	private async writeSlice(
+		state: TodoSlice | CurrentFileSlice,
+		config: vscode.WorkspaceConfiguration,
+		userSyncMode: string,
+		workspaceSyncMode: string
+	): Promise<void> {
 		try {
 			switch (state.scope) {
 				case TodoScope.user: {
@@ -175,67 +270,54 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 				}
 				case TodoScope.currentFile: {
 					const currentFileState = state as CurrentFileSlice;
-					let filesData: TodoFilesData;
-					let filesDataPaths: TodoFilesDataPaths;
+					let stored: FilesState;
 
 					if (workspaceSyncMode === "github") {
-						// Get current files data from gist cache. These are copies, and the code below
-						// edits them in place: never pass it the cache's own objects, which a sync on
-						// the network may be holding as its snapshot.
+						// The gist cache is the base, not the memento: a pull writes the cache first
+						// and the memento only once the store reloads. `SyncStorageManager` returns
+						// copies, so a sync holding the cache's data as its snapshot is not affected.
 						const workspaceMode = WorkspaceSyncMode.GitHub;
 						const workspaceName = vscode.workspace.name || "default";
 						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
-						filesData = await this.syncStorageManager.getFilesData(workspaceMode, fileName);
-						filesDataPaths = await this.syncStorageManager.getFilesDataPaths(workspaceMode, fileName);
+						stored = withFileTodos(
+							{
+								filesData: await this.syncStorageManager.getFilesData(workspaceMode, fileName),
+								filesDataPaths: await this.syncStorageManager.getFilesDataPaths(
+									workspaceMode,
+									fileName
+								),
+							},
+							currentFileState
+						);
 					} else {
-						filesData = { ...this.cachedWorkspaceData.filesData };
-						filesDataPaths = { ...this.cachedWorkspaceData.filesDataPaths };
+						stored = withFileTodos(this.cachedWorkspaceData, currentFileState);
 					}
 
-					filesDataPaths = ensureFilesDataPaths(filesData, filesDataPaths, getWorkspacePath());
-					const resolved = resolveFilesDataKey({
-						filePath: currentFileState.filePath,
-						filesData,
-						filesDataPaths,
-					});
-					const primaryKey = resolved.key ?? currentFileState.filePath;
-
-					filesData[primaryKey] = currentFileState.todos;
-					const sortedResult = sortByFileName(filesData);
-					if (currentFileState.todos.length === 0) {
-						delete sortedResult[primaryKey];
-						delete filesDataPaths[primaryKey];
-					} else {
-						const relPath = getRelativePathIfInsideWorkspace(currentFileState.filePath);
-						upsertFilesDataPathEntry({
-							filesDataPaths,
-							primaryKey,
-							absPath: currentFileState.filePath,
-							relPath,
-						});
-					}
-
-					await this.context.workspaceState.update("TodoFilesData", sortedResult);
-					await this.context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
 					this.updateWorkspaceCache({
 						workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
-						filesData: sortedResult,
-						filesDataPaths,
+						...stored,
 					});
+					// Persists still queued behind this one have already put their lists in the
+					// memento (see persistSlice); writing only this one's result would hide them
+					// until their turn.
+					await this.showFiles(this.queuedFileWrites.reduce(withFileTodos, stored));
 
 					if (workspaceSyncMode === "github") {
 						// Write to gist cache
 						const workspaceMode = WorkspaceSyncMode.GitHub;
 						const workspaceName = vscode.workspace.name || "default";
 						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
-						await this.syncStorageManager.setFilesData(workspaceMode, sortedResult, fileName);
-						await this.syncStorageManager.setFilesDataPaths(workspaceMode, filesDataPaths, fileName);
+						await this.syncStorageManager.setFilesData(workspaceMode, stored.filesData, fileName);
+						await this.syncStorageManager.setFilesDataPaths(
+							workspaceMode,
+							stored.filesDataPaths,
+							fileName
+						);
 					} else {
 						// Write to local file
 						await this.writeWorkspaceData({
 							workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
-							filesData: sortedResult,
-							filesDataPaths,
+							...stored,
 						});
 					}
 					break;
@@ -248,6 +330,60 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 				`[StorageSync] Failed to persist ${state.scope} data: ${this.describeError(error)}`
 			);
 		}
+	}
+
+	private logShowFilesFailure(error: unknown): void {
+		LogChannel.log(
+			`[StorageSync] Failed to update the per-file lists: ${this.describeError(error)}`
+		);
+	}
+
+	/** A storage file watcher's callback: runs `handler` in the storage's write queue. */
+	private onStorageFileEvent(storage: PersistStorage, handler: () => Promise<void>): () => void {
+		return () => {
+			// The queue's tail swallows failures to keep the queue going, so log them here.
+			this.exclusive(storage, handler).catch((error: unknown) =>
+				LogChannel.log(
+					`[StorageSync] Failed to handle a change to the ${storage} data file: ${this.describeError(error)}`
+				)
+			);
+		};
+	}
+
+	/**
+	 * Runs `work` once every write to `storage` queued before it has finished: persists, and
+	 * the storage file watchers, which read the file and write the cache and the mementos. A
+	 * watcher running between a persist's cache update and its file write would read the older
+	 * file as an outside change and load it over the edit.
+	 */
+	private exclusive(storage: PersistStorage, work: () => Promise<void>): Promise<void> {
+		const run = this.writeTails[storage].then(work);
+		this.writeTails[storage] = run.then(
+			() => undefined,
+			() => undefined
+		);
+		return run;
+	}
+
+	/** The per-file lists as the rest of the extension reads them: the memento. */
+	private shownFiles(): FilesState {
+		return {
+			filesData: this.context.workspaceState.get<TodoFilesData>("TodoFilesData") ?? {},
+			filesDataPaths:
+				this.context.workspaceState.get<TodoFilesDataPaths>("TodoFilesDataPaths") ?? {},
+		};
+	}
+
+	/**
+	 * Replaces the memento's per-file lists. A VS Code memento holds the new value as soon as
+	 * `update` is called, so readers see it at once; the promise resolves when VS Code's storage
+	 * has accepted it. Not `async`, so a value `update` refuses throws at the call.
+	 */
+	private showFiles(files: FilesState): Promise<unknown> {
+		return Promise.all([
+			this.context.workspaceState.update("TodoFilesData", files.filesData),
+			this.context.workspaceState.update("TodoFilesDataPaths", files.filesDataPaths),
+		]);
 	}
 
 	private async ensureGlobalStorageInitialized(): Promise<void> {
@@ -355,11 +491,16 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 			const workspaceWatcher = vscode.workspace.createFileSystemWatcher(
 				new vscode.RelativePattern(this.context.storageUri, this.workspaceDataFileName)
 			);
+			const onChange = this.onStorageFileEvent("workspace", () =>
+				this.handleWorkspaceFileChange()
+			);
 			this.context.subscriptions.push(
 				workspaceWatcher,
-				workspaceWatcher.onDidChange(() => void this.handleWorkspaceFileChange()),
-				workspaceWatcher.onDidCreate(() => void this.handleWorkspaceFileChange()),
-				workspaceWatcher.onDidDelete(() => void this.handleWorkspaceFileDelete())
+				workspaceWatcher.onDidChange(onChange),
+				workspaceWatcher.onDidCreate(onChange),
+				workspaceWatcher.onDidDelete(
+					this.onStorageFileEvent("workspace", () => this.handleWorkspaceFileDelete())
+				)
 			);
 		}
 
@@ -367,20 +508,19 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 			const globalWatcher = vscode.workspace.createFileSystemWatcher(
 				new vscode.RelativePattern(this.context.globalStorageUri, this.globalDataFileName)
 			);
+			const onChange = this.onStorageFileEvent("user", () => this.handleGlobalFileChange());
 			this.context.subscriptions.push(
 				globalWatcher,
-				globalWatcher.onDidChange(() => void this.handleGlobalFileChange()),
-				globalWatcher.onDidCreate(() => void this.handleGlobalFileChange()),
-				globalWatcher.onDidDelete(() => void this.handleGlobalFileDelete())
+				globalWatcher.onDidChange(onChange),
+				globalWatcher.onDidCreate(onChange),
+				globalWatcher.onDidDelete(
+					this.onStorageFileEvent("user", () => this.handleGlobalFileDelete())
+				)
 			);
 		}
 	}
 
 	private async handleWorkspaceFileChange(): Promise<void> {
-		if (this.ignoreWorkspaceWatcher) {
-			return;
-		}
-
 		const data = await this.tryReadWorkspaceData();
 		if (!data) {
 			return;
@@ -397,6 +537,8 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 			filesDataPaths,
 		};
 
+		// Our own writes arrive here too, after they finish. Running in the write queue, they
+		// find the file equal to the cache.
 		if (this.isSameWorkspaceData(this.cachedWorkspaceData, normalizedData)) {
 			return;
 		}
@@ -449,18 +591,10 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	}
 
 	private async handleWorkspaceFileDelete(): Promise<void> {
-		if (this.ignoreWorkspaceWatcher) {
-			return;
-		}
-
 		await this.writeWorkspaceData(this.cachedWorkspaceData);
 	}
 
 	private async handleGlobalFileChange(): Promise<void> {
-		if (this.ignoreGlobalWatcher) {
-			return;
-		}
-
 		const data = await this.tryReadGlobalData();
 		if (!data) {
 			return;
@@ -477,10 +611,6 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	}
 
 	private async handleGlobalFileDelete(): Promise<void> {
-		if (this.ignoreGlobalWatcher) {
-			return;
-		}
-
 		await this.writeGlobalData(this.cachedGlobalData);
 	}
 
@@ -490,7 +620,6 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		}
 
 		try {
-			this.ignoreWorkspaceWatcher = true;
 			const payload: WorkspacePersistedData = {
 				workspaceTodos: Array.isArray(data.workspaceTodos) ? data.workspaceTodos : [],
 				filesData: sortByFileName(data.filesData ?? {}),
@@ -505,8 +634,6 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 			LogChannel.log(
 				`[StorageSync] Failed to write workspace data: ${this.describeError(error)}`
 			);
-		} finally {
-			this.ignoreWorkspaceWatcher = false;
 		}
 	}
 
@@ -516,7 +643,6 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		}
 
 		try {
-			this.ignoreGlobalWatcher = true;
 			const payload: GlobalPersistedData = {
 				userTodos: Array.isArray(data.userTodos) ? data.userTodos : [],
 			};
@@ -529,8 +655,6 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 			LogChannel.log(
 				`[StorageSync] Failed to write global data: ${this.describeError(error)}`
 			);
-		} finally {
-			this.ignoreGlobalWatcher = false;
 		}
 	}
 
