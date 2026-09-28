@@ -1,2 +1,0 @@
-# Cloudflare Pages SPA fallback: serve the app shell for any path that isn't a real file.
-/*    /index.html   200

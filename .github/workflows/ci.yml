@@ -110,7 +110,7 @@ jobs:
       - name: Verify PWA bundle
         run: |
           cd webview-ui/build-pwa/browser
-          for f in index.html manifest.webmanifest ngsw.json ngsw-worker.js _headers _redirects; do
+          for f in index.html manifest.webmanifest ngsw.json ngsw-worker.js _headers; do
             test -f "$f" || { echo "::error::PWA build is missing $f"; exit 1; }
           done
           grep -q "app-pwa-shell" index.html \

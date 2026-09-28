@@ -111,9 +111,9 @@ The extension webview and the PWA are **two builds of one Angular app**, not sep
 - one extra prepended stylesheet, `src/pwa/vscode-theme.css`
 - a separate output directory: `build/browser` vs `build-pwa/browser`
 
-Plus the service worker, web manifest, app icons, the Cloudflare Pages `_headers` and
-`_redirects` files and hashed filenames, which the `pwa` configuration adds; it also turns
-critical-CSS inlining off. The table in ARCHITECTURE.md §7 is the complete list.
+Plus the service worker, web manifest, app icons, the Cloudflare Pages `_headers` file and
+hashed filenames, which the `pwa` configuration adds; it also turns critical-CSS inlining off.
+The table in ARCHITECTURE.md §7 is the complete list.
 
 **PWA-only** paths (safe to change without touching the extension): `src/pwa/**`,
 `src/app/pwa/**`, `src/*.pwa.*`, `src/environments/environment.pwa.ts`.
@@ -129,6 +129,11 @@ supplies the `--vscode-*` theme vars that `vscode-theme.css` only *polyfills* fo
   so a release means running `npm run deploy:pwa` yourself.
 - The PWA is a **static Pages site**; `wrangler deploy` (no `pages`) publishes the *worker*
   and never touches the UI.
+- **Deep links rest on Pages' SPA default** (details in ARCHITECTURE.md §8): a path that
+  matches no file gets the app shell, unless a `404.html` sits in its directory or one above
+  it. Adding a top-level `404.html` therefore makes Pages serve that page, with a 404, for
+  every deep link. There is deliberately no `_redirects`: Pages ignores `/* /index.html 200`
+  as an infinite loop, so it would do nothing.
 - **The two targets have separate output directories**, so neither build clobbers the other:
   the extension build emits to `webview-ui/build/browser`, the PWA build to
   `webview-ui/build-pwa/browser` (set by `outputPath` on the `pwa` configuration in

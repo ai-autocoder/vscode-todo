@@ -114,7 +114,6 @@
 								"src/assets",
 								"src/manifest.webmanifest",
 								"src/icons",
-								"src/_redirects",
 								"src/_headers"
 							],
 							"styles": [
