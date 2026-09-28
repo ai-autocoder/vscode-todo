@@ -214,7 +214,7 @@ Plans is a static site. All state lives on the device and in the gist, so hostin
 
 - **Manifest.** [`manifest.webmanifest`](webview-ui/src/manifest.webmanifest) declares a standalone portrait app with maskable icons.
 - **Service worker.** Angular's service worker is registered only in the PWA production build ([`app.module.ts`](webview-ui/src/app/app.module.ts)). [`ngsw-config.json`](webview-ui/ngsw-config.json) prefetches the app shell and defines no data groups: API responses are never cached, and offline data comes from IndexedDB.
-- **Headers.** [`_headers`](webview-ui/src/_headers) serves the service worker, manifest and `index.html` with `no-cache`, so no client is pinned to an old build.
+- **Headers.** [`_headers`](webview-ui/src/_headers) sends `Cache-Control: no-cache` on `ngsw-worker.js`, `ngsw.json`, `manifest.webmanifest` and the app shell at `/`, so the browser revalidates each before reusing it and no HTTP cache pins a client to an old build. The shell's rule is on `/`, not `/index.html`: a rule matches the request path, and Pages answers `/index.html` with a 308 to `/`, so a rule there would reach only the redirect. The service worker asks for `/index.html` too; it follows the redirect, then fetches `/` again and caches that copy without a hash check, so `/`'s header governs its copy as well. Every other file, the hashed bundles included, and the shell wherever it is served at a path other than `/` keep Pages' default, `public, max-age=0, must-revalidate`, which also forces revalidation.
 
 **Content-Security-Policy.** This origin's IndexedDB holds the gist token, so the page runs no script but the bundle's own. The policy is a meta tag in [`index.pwa.html`](webview-ui/src/index.pwa.html):
 
