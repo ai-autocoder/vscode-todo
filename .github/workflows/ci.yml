@@ -115,6 +115,28 @@ jobs:
           done
           grep -q "app-pwa-shell" index.html \
             || { echo "::error::index.html was not built from index.pwa.html"; exit 1; }
+          # The Content-Security-Policy is a meta tag in index.html, and the page can fetch only
+          # the origins it lists. The device-flow proxy's URL is set in environment.pwa.ts, so a
+          # change there that misses the policy breaks sign-in, and no test would notice.
+          csp=$(tr -d '\n' < index.html | grep -o 'http-equiv="Content-Security-Policy"[^>]*' || true)
+          [ -n "$csp" ] || { echo "::error::index.html has no Content-Security-Policy"; exit 1; }
+          echo "$csp" | grep -q "script-src 'self';" \
+            || { echo "::error::the CSP no longer limits scripts to script-src 'self'"; exit 1; }
+          proxy=$(grep -o 'deviceFlowProxyUrl: "[^"]*' ../../src/environments/environment.pwa.ts | cut -d'"' -f2)
+          [ -n "$proxy" ] \
+            || { echo "::error::could not read deviceFlowProxyUrl from environment.pwa.ts"; exit 1; }
+          echo "$csp" | grep -q "connect-src[^;]* $proxy" \
+            || { echo "::error::the CSP's connect-src does not allow the device-flow proxy $proxy"; exit 1; }
+          # The CSP blocks inline scripts and event handlers, so one in the page would not run.
+          page=$(tr -d '\n' < index.html)
+          if echo "$page" | grep -Eiq '<[a-z][^>]*[[:space:]]on[a-z]+='; then
+            echo "::error::index.html has an inline event handler, which the CSP blocks"; exit 1
+          fi
+          if echo "$page" | grep -Eio '<script[^>]*>' | grep -viq 'src='; then
+            echo "::error::index.html has an inline script, which the CSP blocks"; exit 1
+          fi
+          grep -q "frame-ancestors 'none'" _headers \
+            || { echo "::error::_headers no longer stops other sites framing the app"; exit 1; }
           echo "PWA bundle verified."
 
   # The device-flow CORS proxy: the one deployable anybody on the internet can reach. Its

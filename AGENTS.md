@@ -112,8 +112,8 @@ The extension webview and the PWA are **two builds of one Angular app**, not sep
 - a separate output directory: `build/browser` vs `build-pwa/browser`
 
 Plus the service worker, web manifest, app icons, the Cloudflare Pages `_headers` and
-`_redirects` files, and hashed filenames the `pwa` configuration adds. The table in
-ARCHITECTURE.md §7 is the complete list.
+`_redirects` files and hashed filenames, which the `pwa` configuration adds; it also turns
+critical-CSS inlining off. The table in ARCHITECTURE.md §7 is the complete list.
 
 **PWA-only** paths (safe to change without touching the extension): `src/pwa/**`,
 `src/app/pwa/**`, `src/*.pwa.*`, `src/environments/environment.pwa.ts`.
@@ -145,6 +145,10 @@ supplies the `--vscode-*` theme vars that `vscode-theme.css` only *polyfills* fo
 
 ## Security & Configuration Tips
 - Webview: keep strict CSP; use the provided `getNonce`/`getUri` helpers; avoid `eval`/inline scripts.
+- PWA: the CSP is a meta tag in `webview-ui/src/index.pwa.html` (`script-src 'self'`). A new
+  origin the PWA fetches must be added to its `connect-src`, or its requests fail in the PWA;
+  Karma and the extension webview never load that page, so no test notices. Keep Mermaid's
+  `securityLevel` at `"strict"` (`webview-ui/src/app/mermaid-options.ts`).
 - Settings keys are under `vscodeTodo.*` (see `package.json`). Validate and document new settings.
 - Avoid network calls from the webview; prefer messaging via VS Code APIs.
 

@@ -2,6 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- This origin's IndexedDB holds the gist token, so no script may run here but the bundle's
+         own. The policy lives in the page, not in _headers: that way the dev server, which ignores
+         _headers, applies it too, and it stays off the service worker script, where it would
+         limit the fetches the worker makes for the page. `frame-ancestors` cannot be set from a
+         meta tag and is in _headers.
+         - `script-src 'self'` also rules out inline event handlers, which is why the `pwa`
+           configuration turns off critical-CSS inlining: it loads the stylesheet with one.
+         - `connect-src` is every origin the PWA fetches: the gist API, the raw file URL a
+           truncated gist file is read from (GistClient.readFile), and the device-flow proxy
+           (environment.pwa.ts). A new one must be added here, or its requests fail in the PWA;
+           Karma and the extension webview never load this page, so no test would notice.
+         - Images may come from any https host, since todo Markdown can link to one.
+         - `form-action 'none'`: the app has no forms, but a diagram's HTML label can still draw
+           one, and it could send whatever is typed into it anywhere. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+        script-src 'self';
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data: blob: https:;
+        font-src 'self' data:;
+        connect-src 'self' https://api.github.com https://gist.githubusercontent.com https://agent-plans-auth-proxy.aiautocoder.workers.dev;
+        object-src 'none';
+        base-uri 'self';
+        form-action 'none'"
+    />
     <base href="/" />
     <!-- `interactive-widget=resizes-content` makes the soft keyboard shrink the *layout*
          viewport, so `main`'s `100dvh` recomputes to the space above it and the flex column

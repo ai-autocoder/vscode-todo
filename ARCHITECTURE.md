@@ -166,9 +166,14 @@ The UI never touches storage or the network. It sends commands and renders the s
 
 **Flow.** The webview sends `webview-ready` and receives `reloadWebview`. After that, every edit goes UI → command → Redux action → subscriber → `syncTodoData`. The UI holds no authoritative state.
 
-**CSP.** Both surfaces serve `default-src 'none'; style-src <webview source> 'unsafe-inline'; script-src 'nonce-…'`. Local resources are limited to `out/` and the webview build ([`TodoViewProvider.ts`](src/panels/TodoViewProvider.ts)).
+**CSP.** Both extension surfaces, the sidebar view and the panel, serve `default-src 'none'; style-src <webview source> 'unsafe-inline'; script-src 'nonce-…'`. Local resources are limited to `out/` and the webview build ([`TodoViewProvider.ts`](src/panels/TodoViewProvider.ts)). The PWA has a policy of its own (§8).
 
 The policy has no `connect-src`, so the webview cannot `fetch`. GitHub traffic comes from the Node host, where CORS does not apply, and the token stays in the host's SecretStorage.
+
+**Who may send messages.** Host messages arrive as `message` events on `window`, and any window holding a reference to this one can post there. `TodoService` therefore applies a message only when [`vscode.isHostMessage`](webview-ui/src/app/utilities/vscode.ts) says the host sent it, and drops data that is not an object.
+
+- Inside VS Code the host is the webview frame around the page. VS Code loads the page from the host page's own origin, so the host's messages carry that origin and the check is on it; the workbench and other webviews are on origins of their own. The sending window cannot be checked, because VS Code's injected script sets `window.parent` to the page's own window before the app's scripts run.
+- In the PWA the host is the page itself, where the shell re-posts the gateway's messages (§7), so the check is that this window sent it. Without the check, any other window holding a reference to the page could post a `syncTodoData` of its own. It would replace the list on screen, and the next drag-to-reorder, which sends the whole list on screen back, would store it. On the deployed site `_headers` (§8) also takes those references away from other sites: they cannot frame the page, and COOP cuts the handle between it and any window it opens or that opens it. Under the dev server, which applies no `_headers`, the check is the only guard.
 
 ## 7. One Angular app, two builds
 
@@ -182,6 +187,8 @@ The PWA is not a second UI. It is the webview built with a different configurati
 | Data provider | [`data.providers.ts`](webview-ui/src/app/data/data.providers.ts) → `VsCodeGateway` | [`data.providers.pwa.ts`](webview-ui/src/app/data/data.providers.pwa.ts) → `GistGateway` |
 | Extra stylesheet | none | [`vscode-theme.css`](webview-ui/src/pwa/vscode-theme.css) |
 | Service worker, manifest, app icons, Pages `_headers` and `_redirects` | no | yes — the `pwa` configuration adds `manifest.webmanifest`, `icons`, `_redirects` and `_headers` to `assets`. `_redirects` is the SPA fallback (`/*  /index.html  200`) that serves the app shell for any path that is not a real file |
+| Content-Security-Policy | a meta tag in the page the extension writes for each surface (`TodoViewProvider`, `HelloWorldPanel`), with a new nonce each time it writes the page (§6) | a meta tag in `index.pwa.html`, plus `frame-ancestors` and COOP in `_headers` (§8) |
+| Critical-CSS inlining | on, but moot: the host writes its own page and never loads the built `index.html` | off (`optimization.styles.inlineCritical` on the `pwa` configuration), because it loads the stylesheet with an inline `onload` that `script-src 'self'` blocks, leaving the bundled global stylesheet (every `styles` entry, `vscode-theme.css` included) unapplied |
 | Output hashing | none, because the `build` script passes `--output-hashing=none`, so the host loads `main.js` and friends by name | all |
 | Output directory | `webview-ui/build/browser` | `webview-ui/build-pwa/browser`, set by `outputPath` on the `pwa` configuration. Separate directories, because the builder clears its output path and each build would otherwise delete the other (§16) |
 
@@ -189,7 +196,7 @@ The PWA is not a second UI. It is the webview built with a different configurati
 
 1. The UI's `TodoService` posts through [`vscode.ts`](webview-ui/src/app/utilities/vscode.ts). Outside VS Code there is no `acquireVsCodeApi`, so the wrapper calls an installed delegate.
 2. [`PwaShellComponent`](webview-ui/src/app/pwa/pwa-shell.component.ts) installs that delegate, which routes each message through [`message-dispatcher.ts`](webview-ui/src/app/data/message-dispatcher.ts) to [`GistGateway`](webview-ui/src/app/data/gist-gateway.ts).
-3. The gateway emits the host's message shapes, and the shell re-posts them with `window.postMessage`. `TodoService` handles them as if the extension had sent them.
+3. The gateway emits the host's message shapes, and the shell re-posts them with `window.postMessage`. `TodoService` handles them as if the extension had sent them, and only those: in the PWA it accepts a message only when this window posted it (§6).
 
 [`DataGateway`](webview-ui/src/app/data/data-gateway.ts) types each command as `Parameters<typeof messagesFromWebview.X>`, holding both gateways to the extension's contract. Only the PWA injects it today. In the extension build, `VsCodeGateway` is registered but never constructed; moving `TodoService` onto it is recorded as deferred.
 
@@ -208,6 +215,16 @@ Plans is a static site. All state lives on the device and in the gist, so hostin
 - **Manifest.** [`manifest.webmanifest`](webview-ui/src/manifest.webmanifest) declares a standalone portrait app with maskable icons.
 - **Service worker.** Angular's service worker is registered only in the PWA production build ([`app.module.ts`](webview-ui/src/app/app.module.ts)). [`ngsw-config.json`](webview-ui/ngsw-config.json) prefetches the app shell and defines no data groups: API responses are never cached, and offline data comes from IndexedDB.
 - **Headers.** [`_headers`](webview-ui/src/_headers) serves the service worker, manifest and `index.html` with `no-cache`, so no client is pinned to an old build.
+
+**Content-Security-Policy.** This origin's IndexedDB holds the gist token, so the page runs no script but the bundle's own. The policy is a meta tag in [`index.pwa.html`](webview-ui/src/index.pwa.html):
+
+- `script-src 'self'`, so no inline script, inline handler, `javascript:` URL or `eval`.
+- `connect-src` names every origin the PWA fetches: `api.github.com`, `gist.githubusercontent.com` (the raw URL a truncated file is read from) and the device-flow proxy. A new origin must be added there, or its requests fail in the PWA. Karma and the extension webview never load that page, so no test would notice; CI checks that the proxy URL in `environment.pwa.ts` is listed.
+- Images may come from any https host, because todo Markdown can link one.
+- `style-src` allows inline styles, which Angular, Mermaid and KaTeX all write.
+- `form-action 'none'`. The app has no forms, but a diagram's HTML label can still draw one, which would send whatever is typed into it anywhere.
+
+It is a meta tag rather than a header for two reasons. It travels with the page, so the dev server, which ignores `_headers`, applies it too. And a site-wide header would also land on `ngsw-worker.js`, where a worker's own policy governs its fetches, including the images it fetches on the page's behalf. `_headers` adds on `/*` the two things a meta tag cannot carry: `frame-ancestors 'none'`, and `Cross-Origin-Opener-Policy: same-origin`, so that a window that opens the app, or that the app opens, keeps no handle to post messages through.
 
 **IndexedDB** (database `vsc-todo-pwa`). Each store opens the database unversioned and bumps the version if its own store is missing, so stores are added independently ([`indexedDb.ts`](packages/core/src/indexedDb.ts), commit b3e1b89).
 
@@ -529,11 +546,11 @@ Four suites on four runners guard four layers. CI runs them all, plus both Angul
 | Suite | Runner | Cases | Protects |
 | --- | --- | --- | --- |
 | [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 384 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export; the gist client and device flow |
-| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 308 | Shared components, `GistGateway` (including list switching and mid-sync edits over the real engine), the conflict prompt and review, PWA shell |
+| `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 320 | Shared components, `GistGateway` (including list switching and mid-sync edits over the real engine), the conflict prompt and review, PWA shell, which window may send the app messages, what a diagram's `click` lines can do |
 | [`src/test`](src/test/sync/syncManagerConcurrency.test.ts) | Mocha in real VS Code (`@vscode/test`) | 221 | `SyncManager` concurrency and status, overlapping storage writes, cache-key compatibility, cross-peer equality, truncation, MCP request gates, polling visibility |
 | [`worker/test`](worker/test/index.test.ts) | Node's built-in `node:test` (Node 22.18+) | 18 | The CORS proxy's method, path, origin and client-id gates, and what it forwards |
 
-Counts are declared test cases (`it(`/`test(` call sites, including `it.fails` and the known-bug helpers; none skipped) as of 28 Sep 2026. Some call sites run more than once: the webview's model-based walk declares one case per seed, 24 in all, so Karma reports 331; four `it.each` tables in core expand to 398 Vitest cases. The `auditFindings` suites (and the `it.fails`/`KNOWN BUG` cases elsewhere) reproduce defects from the September 2026 audit, which are tracked in the workspace todo list under the tag `audit-2026-09`. Each open defect's case passes while the defect is present and fails once it is fixed, which is the cue to turn it into a plain regression test; the suites keep those regression tests alongside the open cases. The worker's 18 call sites run 26 cases (two loop over methods and paths), three of them `todo`s for known gaps in its client-id allowlist.
+Counts are declared test cases (`it(`/`test(` call sites, including `it.fails` and the known-bug helpers; none skipped) as of 28 Sep 2026. Some call sites run more than once: the webview's model-based walk declares one case per seed, 24 in all, so Karma reports 343; four `it.each` tables in core expand to 398 Vitest cases. The `auditFindings` suites (and the `it.fails`/`KNOWN BUG` cases elsewhere) reproduce defects from the September 2026 audit, which are tracked in the workspace todo list under the tag `audit-2026-09`. Each open defect's case passes while the defect is present and fails once it is fixed, which is the cue to turn it into a plain regression test; the suites keep those regression tests alongside the open cases. The worker's 18 call sites run 26 cases (two loop over methods and paths), three of them `todo`s for known gaps in its client-id allowlist.
 
 **Regression tests follow the bugs.**
 
@@ -553,7 +570,7 @@ Counts are declared test cases (`it(`/`test(` call sites, including `it.fails` a
 **CI** runs four parallel jobs:
 
 - **core:** typecheck and Vitest.
-- **webview:** Karma, the extension webview build, then the PWA build. The PWA output is then asserted (`app-pwa-shell` in `index.html`, plus manifest, service worker and Pages headers), because a build with the wrong configuration still exits 0.
+- **webview:** Karma, the extension webview build, then the PWA build. The PWA output is then asserted (`app-pwa-shell` in `index.html`, plus manifest, service worker and Pages headers), because a build with the wrong configuration still exits 0. So is its CSP (§8): `script-src 'self'`, a `connect-src` that lists the proxy URL from `environment.pwa.ts`, no inline script or event handler in `index.html`, and `frame-ancestors` in `_headers`.
 - **worker:** the proxy's `node:test` suite, on Node 24 (it needs built-in TypeScript stripping, so it does not use the pinned Node 20).
 - **extension:** lint, compile, Mocha under `xvfb`.
 
@@ -592,6 +609,7 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 | Sync mode in internal state | A setting | Enabling GitHub mode must first connect GitHub and pick a gist (maintainer; 023f782) | Not settable declaratively |
 | Local HTTP MCP in the extension host | stdio process | *(inferred)* Data is the live in-process store; several clients | Local port exposure; only while VS Code runs |
 | PWA token in IndexedDB | `localStorage`; sign in every launch; server session | Survives cold starts, no server | Plaintext, readable by same-origin script |
+| PWA CSP as a meta tag | A `Content-Security-Policy` header in `_headers` | Travels with the page, so the dev server, which ignores `_headers`, applies it too; and it does not reach the service worker, which fetches on the page's behalf | `frame-ancestors` and COOP still need `_headers`; `connect-src` repeats the fetch origins the code names |
 
 ## 18. Known limitations and what changes at scale
 
@@ -605,8 +623,8 @@ Three independent targets. Nothing deploys automatically: the only workflow is C
 
 **Security**
 
-- **PWA token.** Plaintext in IndexedDB, and `gist` covers every gist in the account. Disconnect does not revoke it, and nothing refreshes it: if the registered GitHub app issues expiring tokens, users have to reconnect by hand.
-- **Mermaid rendering.** Mermaid runs with `securityLevel: "loose"` ([`app.module.ts`](webview-ui/src/app/app.module.ts)) on the same origin as the token. Rendered content comes only from the user's own gist.
+- **PWA token.** Plaintext in IndexedDB, and `gist` covers every gist in the account. What keeps other script away from it is the CSP (§8). Disconnect does not revoke it, and nothing refreshes it: if the registered GitHub app issues expiring tokens, users have to reconnect by hand.
+- **Diagram text is not only the user's own.** An MCP agent can write it, an import brings it in, and the other device syncs it. Mermaid therefore renders with `securityLevel: "strict"` ([`mermaid-options.ts`](webview-ui/src/app/mermaid-options.ts)), which sanitizes link URLs and the rendered SVG and binds no `click` callbacks. It used to run `"loose"`, under which a diagram's `click` line could put a `javascript:` link on the page or call any global function, on the same origin as the token. The PWA's CSP (§8) is the second layer.
 - **Worker protection is CORS-only** unless `CLIENT_ID` is set.
 - **MCP auth is off by default.** Once enabled, any local process can call the server unless a token is set.
 - **MCP stale sessions.** An unknown or expired session id gets 400 instead of the 404 the transport specifies, so clients do not re-initialize on their own.

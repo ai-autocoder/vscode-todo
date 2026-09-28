@@ -241,7 +241,13 @@ export class TodoService {
 	}
 
 	private handleMessage(event: MessageEvent) {
+		if (!vscode.isHostMessage(event)) {
+			return;
+		}
 		const { data } = event;
+		if (typeof data !== "object" || data === null) {
+			return;
+		}
 		switch (data.type) {
 			case MessageActionsToWebview.reloadWebview:
 				this.handleReloadWebview(data);

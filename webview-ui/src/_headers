@@ -8,3 +8,10 @@
   Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache
+
+# The Content-Security-Policy is a meta tag in index.pwa.html; these two can only be sent as
+# headers. No other site may frame the app, and no window that opens it, or that it opens, keeps
+# a handle to post messages to it.
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  Cross-Origin-Opener-Policy: same-origin

@@ -34,6 +34,9 @@ export class VsCodeGateway implements DataGateway {
 	}
 
 	private onWindowMessage = (event: MessageEvent): void => {
+		if (!vscode.isHostMessage(event)) {
+			return;
+		}
 		// The extension only ever posts the InboundMessage shapes; forward as-is.
 		this._messages.next(event.data as InboundMessage);
 	};

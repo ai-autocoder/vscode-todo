@@ -23,6 +23,7 @@ import { MermaidZoomOverlayComponent } from "./shared/mermaid-zoom-overlay/merma
 import { provideServiceWorker } from "@angular/service-worker";
 import { dataGatewayProvider } from "./data/data.providers";
 import { environment } from "../environments/environment";
+import { mermaidOptions } from "./mermaid-options";
 import "prismjs";
 import "../app/prism/prism-languages-index.js";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
@@ -56,13 +57,7 @@ import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 			},
 			mermaidOptions: {
 				provide: MERMAID_OPTIONS,
-				useValue: {
-					darkMode: false,
-					theme: "neutral",
-					startOnLoad: true,
-					fontFamily: "monospace",
-					securityLevel: "loose",
-				},
+				useValue: mermaidOptions,
 			},
 		}),
 		AngularSplitModule,

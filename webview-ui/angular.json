@@ -126,7 +126,15 @@
 								"src/styles.css"
 							],
 							"serviceWorker": "ngsw-config.json",
-							"outputHashing": "all"
+							"outputHashing": "all",
+							"optimization": {
+								"scripts": true,
+								"styles": {
+									"minify": true,
+									"inlineCritical": false
+								},
+								"fonts": true
+							}
 						}
 					},
 					"defaultConfiguration": "production"

@@ -1,4 +1,5 @@
-import { TodoScope } from "../../../../src/todo/todoTypes";
+import { MessageActionsToWebview } from "../../../../src/panels/message";
+import { TodoScope, TodoSlice } from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
 import { TodoService } from "./todo.service";
 
@@ -105,5 +106,80 @@ describe("TodoService local add tracking", () => {
 		} finally {
 			Date.now = realNow;
 		}
+	});
+});
+
+/**
+ * The host's messages arrive on `window`, where any window holding a reference to this one can
+ * post. A `syncTodoData` from elsewhere would replace the list on screen, and a drag-to-reorder
+ * sends the whole list on screen back to be stored, so only the host's messages may be applied.
+ */
+describe("TodoService host messages", () => {
+	let service: TodoService;
+	let onMessage: (event: MessageEvent) => void;
+	let frame: HTMLIFrameElement;
+
+	const plantedList: TodoSlice = {
+		scope: TodoScope.user,
+		todos: [
+			{
+				id: 1,
+				text: "planted",
+				completed: false,
+				creationDate: "2026-09-28T00:00:00.000Z",
+				isMarkdown: false,
+				isNote: false,
+			},
+		],
+		lastActionType: "user/loadData",
+		numberOfTodos: 1,
+		numberOfNotes: 0,
+	};
+	const syncMessage = { type: MessageActionsToWebview.syncTodoData, payload: plantedList };
+
+	beforeEach(() => {
+		// The service's `message` listener is captured and called directly, not registered, so
+		// the posts other suites make on this shared page never reach it.
+		const addEventListener = window.addEventListener.bind(window);
+		spyOn(window, "addEventListener").and.callFake(
+			(type: string, listener: unknown, ...rest: unknown[]) => {
+				if (type === "message") {
+					onMessage = listener as (event: MessageEvent) => void;
+				} else {
+					(addEventListener as (...args: unknown[]) => void)(type, listener, ...rest);
+				}
+			}
+		);
+		// Holds the constructor's "webview-ready" timer, as in the suite above.
+		jasmine.clock().install();
+		spyOn(vscode, "postMessage");
+		service = new TodoService();
+		// Karma has no acquireVsCodeApi, so the host is this window, as in the PWA.
+		frame = document.createElement("iframe");
+		document.body.appendChild(frame);
+	});
+
+	afterEach(() => {
+		frame.remove();
+		jasmine.clock().uninstall();
+	});
+
+	it("applies a list the host sent", () => {
+		onMessage(new MessageEvent("message", { data: syncMessage, source: window }));
+
+		expect(service.userTodos.map((todo) => todo.text)).toEqual(["planted"]);
+	});
+
+	it("ignores a list posted by another window", () => {
+		onMessage(new MessageEvent("message", { data: syncMessage, source: frame.contentWindow }));
+
+		expect(service.userTodos).toEqual([]);
+	});
+
+	it("ignores a message that is not an object", () => {
+		for (const data of [null, "syncTodoData", 42]) {
+			expect(() => onMessage(new MessageEvent("message", { data, source: window }))).not.toThrow();
+		}
+		expect(service.userTodos).toEqual([]);
 	});
 });

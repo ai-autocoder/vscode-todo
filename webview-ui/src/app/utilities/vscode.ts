@@ -8,16 +8,23 @@ import type { WebviewApi } from "vscode-webview";
  * This utility also enables webview code to be run in a web browser-based
  * dev server by using native web browser features that mock the functionality
  * enabled by acquireVsCodeApi.
+ *
+ * Exported for tests; the app uses the {@link vscode} singleton.
  */
-class VSCodeAPIWrapper {
+export class VSCodeAPIWrapper {
 	private readonly vsCodeApi: WebviewApi<unknown> | undefined;
 	private postMessageDelegate: ((message: unknown) => void) | undefined;
 
-	constructor() {
+	/**
+	 * @param win The window the app runs in. Tests pass a frame's, set up the way VS Code sets up
+	 * a webview's.
+	 */
+	constructor(private readonly win: Window = window) {
 		// Check if the acquireVsCodeApi function exists in the current development
 		// context (i.e. VS Code development window or web browser)
-		if (typeof acquireVsCodeApi === "function") {
-			this.vsCodeApi = acquireVsCodeApi();
+		const scope = win as Window & { acquireVsCodeApi?: typeof acquireVsCodeApi };
+		if (typeof scope.acquireVsCodeApi === "function") {
+			this.vsCodeApi = scope.acquireVsCodeApi();
 		}
 	}
 
@@ -28,6 +35,23 @@ class VSCodeAPIWrapper {
 	 */
 	public setPostMessageDelegate(delegate: (message: unknown) => void) {
 		this.postMessageDelegate = delegate;
+	}
+
+	/**
+	 * Whether a `message` event was posted by this app's host, and so may be read as one of its
+	 * messages. Any window that can reach this one, such as a page that opened it or a frame
+	 * inside it, can post here too. A `syncTodoData` from it would replace the list on screen,
+	 * and a drag-to-reorder then sends that whole list back to be stored.
+	 *
+	 * - Inside VS Code the host is the webview frame around this document. VS Code loads this
+	 *   document from the host page's own origin, so the host's messages carry this origin,
+	 *   while the workbench and other webviews are on origins of their own. The sending window
+	 *   cannot be checked: VS Code sets `window.parent` to this document's own window before the
+	 *   app's scripts run.
+	 * - Outside it, the PWA shell re-posts its gateway's messages on this same window.
+	 */
+	public isHostMessage(event: MessageEvent): boolean {
+		return this.vsCodeApi ? event.origin === this.win.origin : event.source === this.win;
 	}
 
 	/**
