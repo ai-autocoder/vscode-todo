@@ -1,5 +1,11 @@
 # Change Log
 
+## [2.3.3]
+
+- Sync: fix overlapping writes to different files sometimes dropping each other.
+- Security: render Mermaid diagrams in strict mode, so a diagram can no longer add script links or click handlers. Diagrams that relied on click actions no longer run them.
+- Plans: add a Content-Security-Policy to the app, and tighten its caching rules.
+
 ## [2.3.2]
 
 - Sync: improve reliability when todos are edited while a sync is in progress.
