@@ -1,9 +1,6 @@
-import * as http from "node:http";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { Worker } from "node:worker_threads";
 import * as vscode from "vscode";
 import * as z from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Resource } from "@modelcontextprotocol/sdk/types.js";
 import { TodoScope } from "../todo/todoTypes";
 import TodoService, { PaginatedResult } from "../todo/TodoService";
@@ -13,6 +10,14 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import { StoreState } from "../todo/todoTypes";
 import * as path from "node:path";
 import { McpStatus } from "./mcpStatus";
+import {
+	BridgeRequest,
+	BridgeResult,
+	McpWorkerData,
+	SerializedError,
+	WorkerToHostMessage,
+} from "./mcpBridge";
+import { FILE_RESOURCE, TOOL_INPUTS, ToolArgs, ToolName } from "./mcpDefinitions";
 
 type McpConfig = {
 	enabled: boolean;
@@ -23,23 +28,17 @@ type McpConfig = {
 	token: string;
 };
 
-type McpSdk = {
-	mcpServer: typeof import("@modelcontextprotocol/sdk/server/mcp.js").McpServer;
-	resourceTemplate: typeof import("@modelcontextprotocol/sdk/server/mcp.js").ResourceTemplate;
-	streamableHttpServerTransport: typeof import("@modelcontextprotocol/sdk/server/streamableHttp.js").StreamableHTTPServerTransport;
-	isInitializeRequest: typeof import("@modelcontextprotocol/sdk/types.js").isInitializeRequest;
-};
-
-type SessionEntry = {
-	transport: StreamableHTTPServerTransport;
-	server: McpServer;
-};
-
+/**
+ * Owns the MCP server's lifecycle and runs the calls it forwards.
+ *
+ * The HTTP listener, the sessions and the handshake run in a worker thread
+ * (`mcpWorker.ts` → `McpHttpServer`), because this extension host shares one JS thread with
+ * every other extension: when one of them blocks it, a listener here cannot even answer
+ * `initialize`, the client's connect times out, and the client drops the server for the whole
+ * session. Tool calls and resource reads still need the Redux store and VS Code APIs, so the
+ * worker forwards them over the bridge (`mcpBridge.ts`) and this class answers them.
+ */
 export default class McpServerHost implements vscode.Disposable {
-	// Cap concurrent sessions so a client that initializes repeatedly without a
-	// clean DELETE cannot grow the map unbounded. When exceeded, the
-	// least-recently-used session is evicted and its server closed.
-	private static readonly MAX_SESSIONS = 50;
 	// Upper bound on the serialized text block of a tool/resource response. Set
 	// very high so realistic payloads (including long Markdown notes) pass
 	// untouched; it only guards against a pathological scope flooding the client.
@@ -51,11 +50,35 @@ export default class McpServerHost implements vscode.Disposable {
 	// measured on compact per-item JSON, so the pretty-printed, enveloped response is
 	// somewhat larger; CHARACTER_LIMIT remains the final backstop on that payload.
 	private static readonly LIST_ITEMS_MAX_CHARS = 100_000;
+	// How long the worker waits for this thread to answer a forwarded call. Stalls caused by
+	// other extensions have lasted up to two minutes; past this the call fails with a
+	// "host busy" error instead of hanging, and the session stays usable.
+	private static readonly CALL_TIMEOUT_MS = 60_000;
+	// Listing file resources is part of resources/list, which a client may send while it
+	// connects, so it gives up quickly and lists none rather than failing the list.
+	private static readonly LIST_TIMEOUT_MS = 5_000;
+	// How long a stop waits for the worker to close its sessions before terminating it.
+	private static readonly STOP_TIMEOUT_MS = 3_000;
+	// After a crash the worker is restarted with an exponential backoff: 1 s, 2 s, 4 s, 8 s,
+	// 16 s. A worker that ran for RESTART_RESET_MS before crashing starts the count again; the
+	// crash after MAX_RESTARTS restarts in a row makes the host give up and say so.
+	private static readonly RESTART_BASE_DELAY_MS = 1_000;
+	private static readonly RESTART_RESET_MS = 60_000;
+	private static readonly MAX_RESTARTS = 5;
 	private readonly host = "127.0.0.1";
-	private server: http.Server | null = null;
-	private sessions = new Map<string, SessionEntry>();
+	private worker: Worker | null = null;
+	// The config the running worker was started with; `config` is the one last asked for.
+	private runningConfig: McpConfig | null = null;
+	private workerStartedAt = 0;
+	private consecutiveCrashes = 0;
+	private restartTimer: ReturnType<typeof setTimeout> | null = null;
+	private restartGeneration = 0;
+	private disposed = false;
+	// Every start, stop and config change runs through this chain, one at a time, and each
+	// compares what is wanted with what is running. Run concurrently, a change that arrived
+	// while a worker was still starting was lost, and overlapping stops raced a restart.
+	private queue: Promise<unknown> = Promise.resolve();
 	private config: McpConfig | null = null;
-	private sdk: McpSdk | null = null;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly todoService: TodoService;
 	private readonly statusEmitter = new vscode.EventEmitter<McpStatus>();
@@ -101,6 +124,8 @@ export default class McpServerHost implements vscode.Disposable {
 	}
 
 	public dispose(): void {
+		this.disposed = true;
+		this.cancelRestart();
 		void this.stopServer();
 		while (this.disposables.length > 0) {
 			this.disposables.pop()?.dispose();
@@ -108,40 +133,59 @@ export default class McpServerHost implements vscode.Disposable {
 		this.statusEmitter.dispose();
 	}
 
-	private async applyConfig(): Promise<void> {
-		const previous = this.config;
-		const config = this.readConfig();
-		this.todoService.updateAccess(config.readOnly, config.allowedScopes);
+	private enqueue<T>(task: () => Promise<T>): Promise<T> {
+		const run = this.queue.then(task);
+		this.queue = run.catch((error) => {
+			McpLogChannel.log(`[MCP] Lifecycle error: ${String(error)}`);
+		});
+		return run;
+	}
 
-		if (!config.enabled || !vscode.workspace.isTrusted) {
-			this.config = config;
-			await this.stopServer();
-			this.refreshStatus();
-			return;
-		}
+	private applyConfig(): Promise<void> {
+		return this.enqueue(async () => {
+			const config = this.readConfig();
+			this.todoService.updateAccess(config.readOnly, config.allowedScopes);
+			await this.reconcile(config);
+		});
+	}
 
-		if (!this.server) {
-			this.config = config;
-			await this.startWithConfig(config);
-			this.refreshStatus();
-			return;
-		}
+	/** Test seam and restart path: run the server with this config, whatever the settings say. */
+	private startWithConfig(config: McpConfig): Promise<void> {
+		return this.enqueue(() => this.reconcile(config));
+	}
 
-		if (
-			previous &&
-			(previous.port !== config.port ||
-				previous.token !== config.token ||
-				previous.transport !== config.transport)
-		) {
-			this.config = config;
-			await this.stopServer();
-			await this.startWithConfig(config);
-			this.refreshStatus();
-			return;
-		}
+	private stopServer(): Promise<void> {
+		return this.enqueue(async () => {
+			this.cancelRestart();
+			await this.stopWorker();
+		});
+	}
 
+	// Only ever called from inside the queue.
+	private async reconcile(config: McpConfig): Promise<void> {
+		// Whatever this pass decides replaces a restart still waiting on its backoff.
+		this.cancelRestart();
 		this.config = config;
+		if (!config.enabled || !vscode.workspace.isTrusted || this.disposed) {
+			await this.stopWorker();
+			this.refreshStatus();
+			return;
+		}
+		if (this.worker && this.runningConfig && !this.needsRestart(this.runningConfig, config)) {
+			this.refreshStatus();
+			return;
+		}
+		await this.stopWorker();
+		await this.startWorker(config);
 		this.refreshStatus();
+	}
+
+	private needsRestart(running: McpConfig, wanted: McpConfig): boolean {
+		return (
+			running.port !== wanted.port ||
+			running.token !== wanted.token ||
+			running.transport !== wanted.transport
+		);
 	}
 
 	private readConfig(): McpConfig {
@@ -164,10 +208,8 @@ export default class McpServerHost implements vscode.Disposable {
 		};
 	}
 
-	private async startWithConfig(config: McpConfig): Promise<void> {
-		if (this.server) {
-			return;
-		}
+	// Only ever called from inside the queue, with no worker running.
+	private async startWorker(config: McpConfig): Promise<void> {
 		this.lastPort = null;
 
 		if (!this.isNodeVersionSupported()) {
@@ -181,617 +223,233 @@ export default class McpServerHost implements vscode.Disposable {
 			return;
 		}
 
-		const sdk = await this.loadSdk();
-		this.server = http.createServer((req, res) => {
-			void this.handleRequest(req, res, sdk, config);
-		});
+		const workerData: McpWorkerData = {
+			host: this.host,
+			port: config.port,
+			token: config.token,
+			version: this.context.extension.packageJSON.version ?? "0.0.0",
+			callTimeoutMs: McpServerHost.CALL_TIMEOUT_MS,
+			listTimeoutMs: McpServerHost.LIST_TIMEOUT_MS,
+		};
 
+		let worker: Worker;
+		let port: number;
 		try {
-			await new Promise<void>((resolve, reject) => {
-				this.server?.once("error", reject);
-				this.server?.listen(config.port, this.host, () => resolve());
+			worker = new Worker(path.join(__dirname, "mcpWorker.js"), { workerData });
+			worker.on("message", (message: WorkerToHostMessage) => {
+				this.onWorkerMessage(worker, message);
 			});
+			port = await this.waitForListening(worker);
 		} catch (error) {
 			this.notifyServerStartFailed(error);
-			this.server = null;
 			return;
 		}
 
-		const address = this.server.address();
-		const port = typeof address === "object" && address ? address.port : config.port;
-		this.lastPort = typeof port === "number" ? port : null;
-		this.config = config;
+		worker.on("error", (error) => {
+			McpLogChannel.log(`[MCP] Worker error: ${String(error)}`);
+			if (error.stack) {
+				McpLogChannel.log(error.stack);
+			}
+		});
+		worker.on("exit", (code) => {
+			// A stop clears this.worker first, so only an unexpected exit gets here.
+			if (this.worker === worker) {
+				this.onWorkerCrashed(code);
+			}
+		});
+
+		this.worker = worker;
+		this.runningConfig = config;
+		this.workerStartedAt = Date.now();
+		this.lastPort = port;
 		this.notifyServerStarted(port);
 	}
 
-	private async stopServer(): Promise<void> {
-		if (!this.server) {
+	private onWorkerCrashed(code: number): void {
+		this.worker = null;
+		this.runningConfig = null;
+		this.lastPort = null;
+		this.refreshStatus();
+		McpLogChannel.log(`[MCP] Worker exited unexpectedly with code ${code}.`);
+		if (this.disposed) {
 			return;
 		}
 
-		for (const entry of this.sessions.values()) {
-			try {
-				await entry.server.close();
-			} catch (error) {
-				McpLogChannel.log(`[MCP] Error closing session: ${String(error)}`);
-			}
+		if (Date.now() - this.workerStartedAt >= McpServerHost.RESTART_RESET_MS) {
+			this.consecutiveCrashes = 0;
 		}
-		this.sessions.clear();
+		this.consecutiveCrashes++;
+		if (this.consecutiveCrashes > McpServerHost.MAX_RESTARTS) {
+			const message =
+				`MCP server crashed ${McpServerHost.MAX_RESTARTS + 1} times in a row and was not ` +
+				"restarted. Run the start command to try again; see output for details.";
+			McpLogChannel.log(`[MCP] ${message}`);
+			void vscode.window.showErrorMessage(message);
+			this.consecutiveCrashes = 0;
+			return;
+		}
+
+		const delay = McpServerHost.RESTART_BASE_DELAY_MS * 2 ** (this.consecutiveCrashes - 1);
+		McpLogChannel.log(`[MCP] Restarting the MCP server in ${delay} ms.`);
+		this.cancelRestart();
+		const generation = this.restartGeneration;
+		this.restartTimer = setTimeout(() => {
+			this.restartTimer = null;
+			// The config is read when the task runs, not when the timer fires: a change already
+			// queued ahead of it — a disable, a stop — has to win over the restart.
+			void this.enqueue(async () => {
+				if (
+					generation === this.restartGeneration &&
+					this.config &&
+					!this.disposed &&
+					!this.worker
+				) {
+					await this.reconcile(this.config);
+				}
+			});
+		}, delay);
+	}
+
+	// Cancels a pending restart: its timer if it has not fired, and — through the generation —
+	// its queued task if it has, which may be sitting behind the very stop cancelling it.
+	private cancelRestart(): void {
+		this.restartGeneration++;
+		if (this.restartTimer) {
+			clearTimeout(this.restartTimer);
+			this.restartTimer = null;
+		}
+	}
+
+	private waitForListening(worker: Worker): Promise<number> {
+		return new Promise<number>((resolve, reject) => {
+			const fail = (error: Error) => {
+				cleanup();
+				void worker.terminate();
+				reject(error);
+			};
+			const onMessage = (message: WorkerToHostMessage) => {
+				if (message.type === "listening") {
+					cleanup();
+					resolve(message.port);
+				} else if (message.type === "startFailed") {
+					fail(this.toError(message.error));
+				}
+			};
+			const onExit = (code: number) => {
+				fail(new Error(`The MCP worker exited with code ${code} before it started listening`));
+			};
+			const cleanup = () => {
+				worker.off("message", onMessage);
+				worker.off("error", fail);
+				worker.off("exit", onExit);
+			};
+			worker.on("message", onMessage);
+			worker.on("error", fail);
+			worker.on("exit", onExit);
+		});
+	}
+
+	// Only ever called from inside the queue.
+	private async stopWorker(): Promise<void> {
+		const worker = this.worker;
+		if (!worker) {
+			return;
+		}
+		this.worker = null;
+		this.runningConfig = null;
 
 		await new Promise<void>((resolve) => {
-			this.server?.close(() => resolve());
+			const done = () => {
+				clearTimeout(timer);
+				worker.off("message", onMessage);
+				worker.off("exit", done);
+				resolve();
+			};
+			const onMessage = (message: WorkerToHostMessage) => {
+				if (message.type === "stopped") {
+					done();
+				}
+			};
+			const timer = setTimeout(() => {
+				McpLogChannel.log("[MCP] Worker did not stop in time; terminating it.");
+				done();
+			}, McpServerHost.STOP_TIMEOUT_MS);
+			worker.on("message", onMessage);
+			worker.on("exit", done);
+			worker.postMessage({ type: "stop" });
 		});
-		this.server = null;
+		await worker.terminate();
+
 		this.lastPort = null;
 		this.notifyServerStopped();
 		this.refreshStatus();
 	}
 
-	private async handleRequest(
-		req: http.IncomingMessage,
-		res: http.ServerResponse,
-		sdk: McpSdk,
-		config: McpConfig
-	): Promise<void> {
-		if (!req.url) {
-			res.statusCode = 400;
-			res.end("Missing URL");
-			return;
+	private onWorkerMessage(worker: Worker, message: WorkerToHostMessage): void {
+		if (message.type === "log") {
+			McpLogChannel.log(message.message);
+		} else if (message.type === "call") {
+			void this.answerCall(worker, message.id, message.request);
 		}
+	}
 
-		if (!vscode.workspace.isTrusted) {
-			res.statusCode = 403;
-			res.end("Workspace not trusted");
-			return;
-		}
-
-		if (!this.isOriginAllowed(req, config)) {
-			McpLogChannel.log(
-				`[MCP] Rejected request with disallowed Origin: ${String(req.headers.origin)}`
-			);
-			res.statusCode = 403;
-			res.end("Forbidden: disallowed Origin");
-			return;
-		}
-
-		const url = new URL(req.url, `http://${this.host}`);
-		if (url.pathname !== "/mcp") {
-			res.statusCode = 404;
-			res.end("Not Found");
-			return;
-		}
-
-		if (!this.isAuthorized(req, config)) {
-			res.statusCode = 401;
-			res.end("Unauthorized");
-			return;
-		}
-
-		const sessionId = this.getSessionId(req, url);
+	private async answerCall(worker: Worker, id: number, request: BridgeRequest): Promise<void> {
+		let reply: BridgeResult;
 		try {
-			if (req.method === "POST") {
-				let body: unknown;
-				try {
-					body = await this.readBody(req);
-				} catch (error) {
-					res.statusCode = 400;
-					res.end("Invalid JSON body");
-					return;
-				}
-				if (sessionId) {
-					const entry = this.touchSession(sessionId);
-					if (entry) {
-						await entry.transport.handleRequest(req, res, body);
-						return;
-					}
-				}
-
-				if (!sessionId && (sdk.isInitializeRequest(body) || this.isInitializeLikeRequest(body))) {
-					if (!sdk.isInitializeRequest(body)) {
-						McpLogChannel.log("[MCP] Received non-standard initialize request; attempting to continue.");
-					}
-					await this.handleInitialize(req, res, body, sdk);
-					return;
-				}
-
-				res.statusCode = 400;
-				res.end("Invalid MCP request: missing session ID or initialize payload.");
-				return;
-			}
-
-			if (req.method === "GET") {
-				const entry = sessionId ? this.touchSession(sessionId) : undefined;
-				if (!entry) {
-					res.statusCode = 400;
-					res.end("Missing or invalid session ID");
-					return;
-				}
-				await entry.transport.handleRequest(req, res);
-				return;
-			}
-
-			if (req.method === "DELETE") {
-				const entry = sessionId ? this.touchSession(sessionId) : undefined;
-				if (!entry) {
-					res.statusCode = 400;
-					res.end("Missing or invalid session ID");
-					return;
-				}
-				await entry.transport.handleRequest(req, res);
-				return;
-			}
-
-			res.statusCode = 405;
-			res.end("Method Not Allowed");
+			reply = { type: "result", id, ok: true, value: await this.handleBridgeRequest(request) };
 		} catch (error) {
-			McpLogChannel.log(`[MCP] Request error: ${String(error)}`);
-			if (!res.headersSent) {
-				res.statusCode = 500;
-				res.end("Internal Server Error");
-			}
+			McpLogChannel.log(`[MCP] ${request.op} request failed: ${String(error)}`);
+			const message =
+				error instanceof Error && error.message.trim()
+					? error.message
+					: "The request failed due to an unexpected error.";
+			reply = { type: "result", id, ok: false, error: message };
+		}
+		try {
+			worker.postMessage(reply);
+		} catch (error) {
+			McpLogChannel.log(`[MCP] Could not reply to the worker: ${String(error)}`);
 		}
 	}
 
-	private async handleInitialize(
-		req: http.IncomingMessage,
-		res: http.ServerResponse,
-		body: unknown,
-		sdk: McpSdk
-	): Promise<void> {
-		const mcpServer = this.createServerInstance(sdk);
-		const transport = new sdk.streamableHttpServerTransport({
-			sessionIdGenerator: () => randomUUID(),
-			// Reply with a single JSON body rather than opening an SSE stream. This
-			// local single-user server has no server-initiated notifications, so plain
-			// JSON responses are lighter and simpler for tool-calling clients.
-			enableJsonResponse: true,
-			// The transport only assigns sessionId while handling the initialize
-			// request, so onsessioninitialized is the single source of truth for
-			// registering the session. Registering again after connect() would be
-			// a no-op (sessionId is still undefined there).
-			onsessioninitialized: (sessionId) => {
-				this.registerSession(sessionId, { transport, server: mcpServer });
-			},
-		});
-
-		transport.onclose = () => {
-			const sessionId = transport.sessionId;
-			if (sessionId && this.sessions.has(sessionId)) {
-				this.sessions.delete(sessionId);
-			}
-		};
-		transport.onerror = (error) => {
-			McpLogChannel.log(`[MCP] Transport error: ${String(error)}`);
-		};
-
-		await mcpServer.connect(transport);
-		await transport.handleRequest(req, res, body);
-	}
-
-	// Register a session, evicting the least-recently-used one first when the cap
-	// is reached. A Map iterates in insertion order, so the first key is the LRU
-	// entry (touchSession re-inserts on use to keep that ordering accurate).
-	private registerSession(sessionId: string, entry: SessionEntry): void {
-		while (this.sessions.size >= McpServerHost.MAX_SESSIONS) {
-			const oldest = this.sessions.keys().next();
-			if (oldest.done) {
-				break;
-			}
-			this.evictSession(oldest.value);
-		}
-		this.sessions.set(sessionId, entry);
-	}
-
-	private touchSession(sessionId: string): SessionEntry | undefined {
-		const entry = this.sessions.get(sessionId);
-		if (entry) {
-			this.sessions.delete(sessionId);
-			this.sessions.set(sessionId, entry);
-		}
-		return entry;
-	}
-
-	private evictSession(sessionId: string): void {
-		const entry = this.sessions.get(sessionId);
-		this.sessions.delete(sessionId);
-		if (!entry) {
-			return;
-		}
-		McpLogChannel.log(
-			`[MCP] Evicting idle session ${sessionId} (max ${McpServerHost.MAX_SESSIONS}).`
-		);
-		void entry.server.close().catch((error) => {
-			McpLogChannel.log(`[MCP] Error closing evicted session: ${String(error)}`);
-		});
-	}
-
-	private createServerInstance(sdk: McpSdk): McpServer {
-		const server = new sdk.mcpServer(
-			{
-				name: "vscode-todo-mcp",
-				version: this.context.extension.packageJSON.version ?? "0.0.0",
-			},
-			{
-				capabilities: { resources: {}, tools: {} },
-				instructions:
-					"The todo_* tools are this project's task tracker for the user's plans, todos, and " +
-					"notes. Reach for them when the task at hand actually involves tracked work — not on " +
-					"every turn:\n" +
-					"- When the user refers to tasks, todos, plans, or what's next (or you need to find " +
-					"existing tracked work), read with todo_list_items / todo_count_items ('workspace' " +
-					"scope) before searching the repo.\n" +
-					"- When you produce a multi-step plan worth keeping, save it with todo_add_items " +
-					"('workspace') and tag every step with one shared plan tag via todo_set_tags; re-read " +
-					"it with the 'tag' filter.\n" +
-					"- When you finish a tracked step, mark it with todo_set_completed (don't delete).\n" +
-					"Skip these for quick questions or one-off edits that aren't about tracked work. Each " +
-					"tool's own description covers scopes, notes, filtering, and read-only behavior. The " +
-					"todo:// resources expose read-only snapshots of the same data.",
-			}
-		);
-
-		this.registerResources(server, sdk);
-		this.registerTools(server);
-
-		return server;
-	}
-
-	private registerResources(server: McpServer, sdk: McpSdk): void {
-		server.registerResource(
-			"user-todos",
-			"todo://user",
-			{
-				title: "User Todos",
-				description: "User-scope todos and notes",
-				mimeType: "application/json",
-			},
-			async () => {
-				const data = this.todoService.listTodos(TodoScope.user);
-				return this.toResourceResult("todo://user", data.todos);
-			}
-		);
-
-		server.registerResource(
-			"workspace-todos",
-			"todo://workspace",
-			{
-				title: "Workspace Todos",
-				description: "Workspace-scope todos and notes",
-				mimeType: "application/json",
-			},
-			async () => {
-				const data = this.todoService.listTodos(TodoScope.workspace);
-				return this.toResourceResult("todo://workspace", data.todos);
-			}
-		);
-
-		server.registerResource(
-			"todo-counts",
-			"todo://counts",
-			{
-				title: "Todo Counts",
-				description: "Todo and note counts by scope",
-				mimeType: "application/json",
-			},
-			async () => {
-				return this.toResourceResult("todo://counts", this.todoService.getCounts());
-			}
-		);
-
-		server.registerResource(
-			"todo-files",
-			"todo://files",
-			{
-				title: "Files with Todos",
-				description: "List of files that have todos",
-				mimeType: "application/json",
-			},
-			async () => {
-				return this.toResourceResult("todo://files", this.todoService.listFiles());
-			}
-		);
-
-		const fileTemplate = new sdk.resourceTemplate("todo://file?path={path}", {
-			list: async () => {
-				return { resources: this.buildFileResources("todo://file") };
-			},
-		});
-		server.registerResource(
-			"file-todos",
-			fileTemplate,
-			{
-				title: "File Todos",
-				description: "File-scoped todos and notes",
-				mimeType: "application/json",
-			},
-			async (uri, variables) => {
-				const rawPath = uri.searchParams.get("path") ?? variables.path;
-				const filePath = Array.isArray(rawPath) ? rawPath[0] : rawPath;
-				if (!filePath) {
-					throw new Error("Missing file path.");
+	private async handleBridgeRequest(request: BridgeRequest): Promise<unknown> {
+		switch (request.op) {
+			case "tool":
+				return this.runTool(request.name, request.args);
+			case "resource":
+				switch (request.name) {
+					case "user-todos":
+						return this.toResourceResult(
+							request.uri,
+							this.todoService.listTodos(TodoScope.user).todos
+						);
+					case "workspace-todos":
+						return this.toResourceResult(
+							request.uri,
+							this.todoService.listTodos(TodoScope.workspace).todos
+						);
+					case "todo-counts":
+						return this.toResourceResult(request.uri, this.todoService.getCounts());
+					case "todo-files":
+						return this.toResourceResult(request.uri, this.todoService.listFiles());
 				}
-				const data = this.todoService.listTodos(TodoScope.currentFile, { filePath });
-				return this.toResourceResult(uri.toString(), data.todos);
+				throw new Error("Unknown resource.");
+			case "fileResource": {
+				const data = this.todoService.listTodos(TodoScope.currentFile, {
+					filePath: request.filePath,
+				});
+				return this.toResourceResult(request.uri, data.todos);
 			}
-		);
+			case "listFileResources":
+				return this.buildFileResources(FILE_RESOURCE.uriPrefix);
+		}
 	}
 
-	private registerTools(server: McpServer): void {
-		const scopeSchema = z
-			.enum(["user", "workspace", "currentFile"])
-			.describe(
-				"Which todo list to target: 'user' (global, shared across all projects), " +
-					"'workspace' (the current project/folder), or 'currentFile' (a specific file — " +
-					"requires filePath)."
-			);
-
-		const limitSchema = z
-			.number()
-			.int()
-			.positive()
-			.optional()
-			.describe("Maximum number of items to return. Defaults to 50, capped at 500.");
-		const offsetSchema = z
-			.number()
-			.int()
-			.nonnegative()
-			.optional()
-			.describe(
-				"Number of items to skip from the start, for paging. Defaults to 0. Use the " +
-					"next_offset from a previous response to fetch the next page."
-			);
-		const maxCharsSchema = z
-			.number()
-			.int()
-			.positive()
-			.optional()
-			.describe(
-				"Optional cap on the serialized size of a page, in characters. The page is " +
-					"trimmed to whole items to stay under this budget, so it may return fewer than " +
-					"the requested limit with has_more true. Defaults to a sane limit; item text is " +
-					"never truncated."
-			);
-
-		const todoShape = {
-			id: z.number().describe("Stable numeric identifier of the item within its scope."),
-			text: z.string().describe("The todo or note text."),
-			completed: z.boolean().describe("Whether the item is marked done. Always false for notes."),
-			creationDate: z.string().describe("ISO 8601 timestamp of when the item was created."),
-			completionDate: z
-				.string()
-				.optional()
-				.describe("ISO 8601 timestamp of when the item was completed, if completed."),
-			isMarkdown: z.boolean().describe("Whether the text is rendered as Markdown in the UI."),
-			isNote: z.boolean().describe("True for a free-text note, false for a checkable task."),
-			collapsed: z.boolean().optional().describe("Whether the item is collapsed in the UI."),
-			tags: z
-				.array(z.string())
-				.optional()
-				.describe(
-					"Tags applied to the item, used to group related items (e.g. all steps of a " +
-						"plan). Absent on untagged items. Filter by one with the 'tag' parameter of " +
-						"todo_list_items."
-				),
-		};
-		const todoSchema = z.object(todoShape);
-
-		const listItemsOutputSchema = {
-			scope: scopeSchema,
-			filePath: z.string().optional().describe("Resolved file path when scope is 'currentFile'."),
-			todos: z.array(todoSchema).describe("The page of todos/notes for this scope."),
-			total: z.number().describe("Total number of items matching the query across all pages."),
-			count: z.number().describe("Number of items returned in this page."),
-			has_more: z.boolean().describe("True when more items remain beyond this page."),
-			next_offset: z
-				.number()
-				.optional()
-				.describe(
-					"Offset to pass on the next call to fetch the following page, when has_more is true."
-				),
-		};
-
-		const fileEntrySchema = z.object({
-			filePath: z.string().describe("Path of a file that has todos."),
-			todoNumber: z.number().describe("Number of todos recorded against that file."),
-		});
-		const listFilesOutputSchema = {
-			files: z.array(fileEntrySchema).describe("The page of files that have todos."),
-			total: z.number().describe("Total number of files with todos across all pages."),
-			count: z.number().describe("Number of files returned in this page."),
-			has_more: z.boolean().describe("True when more files remain beyond this page."),
-			next_offset: z
-				.number()
-				.optional()
-				.describe(
-					"Offset to pass on the next call to fetch the following page, when has_more is true."
-				),
-		};
-
-		const positionSchema = z
-			.enum(["top", "bottom"])
-			.optional()
-			.describe(
-				"Where to insert: 'top' (newest first) or 'bottom' (append). Omit to use the " +
-					"user's createPosition setting."
-			);
-
-		// The batch tool defaults to 'bottom' (append in order) regardless of the user's
-		// single-add createPosition preference — appending a block in the given order is the
-		// natural "lay down an ordered list" behavior. The block keeps its order either way.
-		const batchPositionSchema = z
-			.enum(["top", "bottom"])
-			.optional()
-			.describe(
-				"Where to insert the whole block: 'top' or 'bottom' (default). The block keeps " +
-					"the given order either way."
-			);
-
-		const addItemOutputSchema = {
-			scope: scopeSchema,
-			filePath: z
-				.string()
-				.optional()
-				.describe("Resolved file path when the item was added to a 'currentFile' scope."),
-			todo: todoSchema.describe("The newly created todo or note."),
-		};
-
-		const addItemsOutputSchema = {
-			scope: scopeSchema,
-			filePath: z
-				.string()
-				.optional()
-				.describe("Resolved file path when the items were added to a 'currentFile' scope."),
-			todos: z.array(todoSchema).describe("The newly created items, in the order they were given."),
-			count: z.number().describe("Number of items created."),
-		};
-
-		// Per-scope count objects are "loose" (extra keys allowed) so future, more
-		// granular counts (e.g. a per-tag breakdown) can be added without a breaking
-		// schema change. z.looseObject is the Zod 4 idiom for the old .passthrough().
-		// completedCountSchema is populated only when the counts are tag-scoped (the
-		// "tag" parameter was supplied), giving a progress readout for a plan/group.
-		const completedCountSchema = z
-			.number()
-			.optional()
-			.describe(
-				"Number of completed (done) tasks among the counted items. Present only when " +
-					"'tag' was supplied; with 'todos' (open tasks) it gives tag-scoped progress."
-			);
-		const scopeCountsSchema = z.looseObject({
-			todos: z.number().describe("Number of open (incomplete) checkable tasks in the scope."),
-			notes: z.number().describe("Number of free-text notes in the scope."),
-			completed: completedCountSchema,
-		});
-		const fileCountsSchema = z.looseObject({
-			todos: z.number().describe("Number of open (incomplete) checkable tasks for the current file."),
-			notes: z.number().describe("Number of free-text notes for the current file."),
-			completed: completedCountSchema,
-			filePath: z.string().describe("Path of the current file these counts apply to."),
-		});
-		const countItemsOutputSchema = {
-			user: scopeCountsSchema.optional().describe("Counts for the user scope, if allowed."),
-			workspace: scopeCountsSchema.optional().describe("Counts for the workspace scope, if allowed."),
-			currentFile: fileCountsSchema
-				.optional()
-				.describe("Counts for the current file scope, if allowed."),
-		};
-
-		const idSchema = z
-			.number()
-			.int()
-			.describe("Numeric id of the target item (from a previous todo_list_items result).");
-		const mutateFilePathSchema = z
-			.string()
-			.optional()
-			.describe(
-				"Absolute or workspace-relative path; required when scope is 'currentFile', otherwise ignored."
-			);
-
-		// Shared by the four single-item mutators (update text, set completed/note/markdown).
-		const itemOutputSchema = {
-			scope: scopeSchema,
-			filePath: z.string().optional().describe("Resolved file path when scope is 'currentFile'."),
-			todo: todoSchema.describe("The item after the change."),
-		};
-
-		const deleteOutputSchema = {
-			scope: scopeSchema,
-			filePath: z.string().optional().describe("Resolved file path when scope is 'currentFile'."),
-			deleted: z.array(todoSchema).describe("The items that were deleted."),
-			count: z.number().describe("Number of items deleted (0 if no id matched)."),
-		};
-
-		const mutateAnnotations = {
-			readOnlyHint: false,
-			destructiveHint: false,
-			idempotentHint: true,
-			openWorldHint: false,
-		};
-
-		server.registerTool(
-			"todo_list_items",
-			{
-				title: "List Todos",
-				description:
-					"List todos and notes for a scope. 'scope' is one of 'user' (global), " +
-					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
-					"'filePath'). Optionally filter by 'kind' ('task', 'note', or 'all'), by " +
-					"'completed' (true=done, false=open), by text prefix ('textPrefix'), by a " +
-					"substring anywhere in the text ('search'), or by 'tag' (only items carrying that " +
-					"tag — use it to pull up every item in a plan/group). Optionally order results with " +
-					"'sortBy' (creationDate / " +
-					"completionDate / completed) and 'order' (asc / desc). Results are paginated: " +
-					"pass 'limit' (default 50, " +
-					"max 500) and 'offset', and read 'total' / 'has_more' / 'next_offset' from the result. " +
-					"To stay within an agent's context budget, a page is also trimmed to a character " +
-					"limit, so it may return fewer than 'limit' items with 'has_more' true — follow " +
-					"'next_offset' to fetch the rest. Item text is always returned in full, never truncated.",
-				inputSchema: {
-					scope: scopeSchema,
-					filePath: z
-						.string()
-						.optional()
-						.describe(
-							"Absolute or workspace-relative path; required when scope is 'currentFile', " +
-								"otherwise ignored."
-						),
-					kind: z
-						.enum(["task", "note", "all"])
-						.optional()
-						.describe(
-							"Restrict to 'task' (checkable items), 'note' (free-text notes), or 'all'. " +
-								"Defaults to 'all'."
-						),
-					completed: z
-						.boolean()
-						.optional()
-						.describe(
-							"Filter by completion: true for done items, false for open items. Omit to " +
-								"return both. Notes are never completed."
-						),
-					textPrefix: z
-						.string()
-						.optional()
-						.describe(
-							"When set, return only items whose text begins with this prefix " +
-								"(case-insensitive). Use 'search' to match anywhere in the text instead."
-						),
-					search: z
-						.string()
-						.optional()
-						.describe(
-							"When set, return only items whose text contains this substring " +
-								"(case-insensitive). Unlike textPrefix, it matches anywhere in the item " +
-								"text; whitespace is matched literally."
-						),
-					tag: z
-						.string()
-						.optional()
-						.describe(
-							"When set, return only items tagged with this tag (matched case-insensitively). " +
-								"Use it to fetch every item in a plan or group that shares the tag."
-						),
-					sortBy: z
-						.enum(["creationDate", "completionDate", "completed"])
-						.optional()
-						.describe(
-							"Sort the results by this field before paging. Omit to keep insertion order. " +
-								"'completionDate' groups still-open items (which have none) together — " +
-								"first in 'asc' order, last in 'desc'."
-						),
-					order: z
-						.enum(["asc", "desc"])
-						.optional()
-						.describe("Sort direction when sortBy is set. Defaults to 'asc'."),
-					limit: limitSchema,
-					offset: offsetSchema,
-					maxChars: maxCharsSchema,
-				},
-				outputSchema: listItemsOutputSchema,
-				annotations: { title: "List Todos", readOnlyHint: true, openWorldHint: false },
-			},
-			async (args) => {
-				return this.safeToolCall(() => {
+	private runTool(name: ToolName, rawArgs: unknown) {
+		return this.safeToolCall(async () => {
+			switch (name) {
+				case "todo_list_items": {
+					const args = parseToolArgs(name, rawArgs);
 					const { scope, limit, offset, maxChars, ...filters } = args;
 					const data = this.todoService.listTodosPaginated(scope as TodoScope, filters, {
 						limit,
@@ -804,88 +462,13 @@ export default class McpServerHost implements vscode.Disposable {
 						todos: data.items,
 						...this.paginationFields(data),
 					});
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_count_items",
-			{
-				title: "Count Todos",
-				description:
-					"Return todo and note counts per scope (user, workspace, currentFile) without " +
-					"fetching the items themselves. Use this for a cheap overview — 'is there " +
-					"outstanding work, and where?' — before paging through a scope with " +
-					"todo_list_items. A scope is omitted when it is not allowed or unavailable " +
-					"(e.g. currentFile with no file, or a scope excluded by allowedScopes). " +
-					"Pass 'tag' to count only items carrying that tag; each scope then also " +
-					"reports 'completed' (done tasks), so 'completed' of 'todos'+'completed' is " +
-					"the progress of that plan/group.",
-				inputSchema: {
-					tag: z
-						.string()
-						.optional()
-						.describe(
-							"When set, count only items tagged with this tag (matched case-insensitively), " +
-								"and include a 'completed' count per scope for tag-scoped progress."
-						),
-				},
-				outputSchema: countItemsOutputSchema,
-				annotations: { title: "Count Todos", readOnlyHint: true, openWorldHint: false },
-			},
-			async (args) => {
-				return this.safeToolCall(() => this.toolResult(this.todoService.getCounts(args?.tag)));
-			}
-		);
-
-		server.registerTool(
-			"todo_add_item",
-			{
-				title: "Add Todo",
-				description:
-					"Create a new todo or note in the given scope. 'scope' is one of 'user' (global), " +
-					"'workspace' (current project), or 'currentFile' (a specific file — requires " +
-					"'filePath'). Set 'isNote: true' for a free-text note instead of a checkable task. " +
-					"Set 'isMarkdown: true' to render the text as Markdown. Set 'position' to 'top' or " +
-					"'bottom' to control placement, overriding the user's createPosition setting. " +
-					"Returns the created item. Rejected when the server is in read-only mode. To create " +
-					"several items in a fixed order, prefer todo_add_items.",
-				inputSchema: {
-					scope: scopeSchema,
-					text: z.string().describe("The text of the todo or note to create."),
-					isNote: z
-						.boolean()
-						.optional()
-						.describe(
-							"When true, create a free-text note instead of a checkable task. Defaults to false."
-						),
-					isMarkdown: z
-						.boolean()
-						.optional()
-						.describe(
-							"When true, the text is rendered as Markdown in the UI. Defaults to the " +
-								"extension's createMarkdownByDefault setting."
-						),
-					filePath: z
-						.string()
-						.optional()
-						.describe(
-							"Absolute or workspace-relative path; required when scope is 'currentFile', " +
-								"otherwise ignored."
-						),
-					position: positionSchema,
-				},
-				outputSchema: addItemOutputSchema,
-				annotations: {
-					title: "Add Todo",
-					readOnlyHint: false,
-					destructiveHint: false,
-					idempotentHint: false,
-					openWorldHint: false,
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_count_items": {
+					const args = parseToolArgs(name, rawArgs);
+					return this.toolResult(this.todoService.getCounts(args.tag));
+				}
+				case "todo_add_item": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.addTodo(args.scope as TodoScope, args.text, args);
 					if (!result) {
 						throw new Error("Failed to create the todo: it was not added to the store.");
@@ -895,63 +478,9 @@ export default class McpServerHost implements vscode.Disposable {
 						...(result.filePath !== undefined ? { filePath: result.filePath } : {}),
 						todo: result.todo,
 					});
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_add_items",
-			{
-				title: "Add Todos (ordered batch)",
-				description:
-					"Create multiple todos or notes in one call, preserving the given order — the " +
-					"resulting list reflects the order of 'items'. Use this to lay down an ordered " +
-					"list (e.g. a multi-step plan) in a single call instead of repeated todo_add_item " +
-					"calls, which would reverse the order under a 'top' createPosition setting. 'scope' " +
-					"is 'user', 'workspace', or 'currentFile' (requires 'filePath'). Each item may set " +
-					"its own 'isNote'/'isMarkdown'. 'position' places the whole block at 'top' or " +
-					"'bottom' (default); the block keeps the given order either way. Returns the created " +
-					"items in order. Rejected when the server is in read-only mode.",
-				inputSchema: {
-					scope: scopeSchema,
-					items: z
-						.array(
-							z.object({
-								text: z.string().describe("The text of the todo or note to create."),
-								isNote: z
-									.boolean()
-									.optional()
-									.describe(
-										"When true, create a free-text note instead of a checkable task. Defaults to false."
-									),
-								isMarkdown: z
-									.boolean()
-									.optional()
-									.describe(
-										"When true, the text is rendered as Markdown in the UI. Defaults to the " +
-											"extension's createMarkdownByDefault setting."
-									),
-							})
-						)
-						.min(1)
-						.describe(
-							"Ordered list of items to create. The resulting list preserves this order. " +
-								"Must contain at least one item."
-						),
-					position: batchPositionSchema,
-					filePath: mutateFilePathSchema,
-				},
-				outputSchema: addItemsOutputSchema,
-				annotations: {
-					title: "Add Todos (ordered batch)",
-					readOnlyHint: false,
-					destructiveHint: false,
-					idempotentHint: false,
-					openWorldHint: false,
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_add_items": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.addTodos(args.scope as TodoScope, args.items, {
 						// Batch insert defaults to 'bottom' (append the block in order), independent
 						// of the user's single-add createPosition preference. See batchPositionSchema.
@@ -964,59 +493,20 @@ export default class McpServerHost implements vscode.Disposable {
 						todos: result.todos,
 						count: result.todos.length,
 					});
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_list_files",
-			{
-				title: "List Files with Todos",
-				description:
-					"List files in the current workspace that have file-scoped todos, with the count " +
-					"of todos per file. Results are paginated: pass 'limit' (default 50, max 500) and " +
-					"'offset', and read 'total' / 'has_more' / 'next_offset' from the result. Requires " +
-					"an open workspace folder.",
-				inputSchema: {
-					limit: limitSchema,
-					offset: offsetSchema,
-				},
-				outputSchema: listFilesOutputSchema,
-				annotations: { title: "List Files with Todos", readOnlyHint: true, openWorldHint: false },
-			},
-			async (args) => {
-				return this.safeToolCall(() => {
+				}
+				case "todo_list_files": {
+					const args = parseToolArgs(name, rawArgs);
 					const data = this.todoService.listFilesPaginated({
-						limit: args?.limit,
-						offset: args?.offset,
+						limit: args.limit,
+						offset: args.offset,
 					});
 					return this.toolResult({
 						files: data.items,
 						...this.paginationFields(data),
 					});
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_update_text",
-			{
-				title: "Update Todo Text",
-				description:
-					"Change the text of an existing todo or note. Identify the item by 'scope' and " +
-					"numeric 'id' (use todo_list_items to find ids); for 'currentFile' scope also pass " +
-					"'filePath'. Returns the updated item. Rejected when the server is in read-only mode.",
-				inputSchema: {
-					scope: scopeSchema,
-					id: idSchema,
-					newText: z.string().describe("The new text for the item."),
-					filePath: mutateFilePathSchema,
-				},
-				outputSchema: itemOutputSchema,
-				annotations: { title: "Update Todo Text", ...mutateAnnotations },
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_update_text": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.updateTodoText(
 						args.scope as TodoScope,
 						args.id,
@@ -1024,31 +514,9 @@ export default class McpServerHost implements vscode.Disposable {
 						{ filePath: args.filePath }
 					);
 					return this.toolResult(this.itemResult(result));
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_set_completed",
-			{
-				title: "Set Todo Completed",
-				description:
-					"Mark a todo as completed or not completed. Identify the item by 'scope' and numeric " +
-					"'id'; for 'currentFile' scope also pass 'filePath'. Set 'completed: true' to complete " +
-					"(records a completion date) or 'false' to reopen it. Idempotent — setting the value it " +
-					"already has is a no-op. Notes have no completion state. Returns the updated item. " +
-					"Rejected when the server is in read-only mode.",
-				inputSchema: {
-					scope: scopeSchema,
-					id: idSchema,
-					completed: z.boolean().describe("Target completion state: true to complete, false to reopen."),
-					filePath: mutateFilePathSchema,
-				},
-				outputSchema: itemOutputSchema,
-				annotations: { title: "Set Todo Completed", ...mutateAnnotations },
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_set_completed": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.setCompleted(
 						args.scope as TodoScope,
 						args.id,
@@ -1056,58 +524,16 @@ export default class McpServerHost implements vscode.Disposable {
 						{ filePath: args.filePath }
 					);
 					return this.toolResult(this.itemResult(result));
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_set_note",
-			{
-				title: "Set Todo Note Flag",
-				description:
-					"Convert an item between a checkable task and a free-text note. Identify the item by " +
-					"'scope' and numeric 'id'; for 'currentFile' scope also pass 'filePath'. Set " +
-					"'isNote: true' to make it a note, 'false' to make it a task. Idempotent. Returns the " +
-					"updated item. Rejected when the server is in read-only mode.",
-				inputSchema: {
-					scope: scopeSchema,
-					id: idSchema,
-					isNote: z.boolean().describe("True to make the item a note, false to make it a task."),
-					filePath: mutateFilePathSchema,
-				},
-				outputSchema: itemOutputSchema,
-				annotations: { title: "Set Todo Note Flag", ...mutateAnnotations },
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_set_note": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.setNote(args.scope as TodoScope, args.id, args.isNote, {
 						filePath: args.filePath,
 					});
 					return this.toolResult(this.itemResult(result));
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_set_markdown",
-			{
-				title: "Set Todo Markdown Flag",
-				description:
-					"Toggle whether an item's text is rendered as Markdown in the UI. Identify the item by " +
-					"'scope' and numeric 'id'; for 'currentFile' scope also pass 'filePath'. Set " +
-					"'isMarkdown: true' to enable Markdown rendering, 'false' to show plain text. Idempotent. " +
-					"Returns the updated item. Rejected when the server is in read-only mode.",
-				inputSchema: {
-					scope: scopeSchema,
-					id: idSchema,
-					isMarkdown: z.boolean().describe("True to render as Markdown, false for plain text."),
-					filePath: mutateFilePathSchema,
-				},
-				outputSchema: itemOutputSchema,
-				annotations: { title: "Set Todo Markdown Flag", ...mutateAnnotations },
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_set_markdown": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.setMarkdown(
 						args.scope as TodoScope,
 						args.id,
@@ -1115,75 +541,16 @@ export default class McpServerHost implements vscode.Disposable {
 						{ filePath: args.filePath }
 					);
 					return this.toolResult(this.itemResult(result));
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_set_tags",
-			{
-				title: "Set Todo Tags",
-				description:
-					"Replace the tags on an existing todo or note with the given list (replace " +
-					"semantics — the array you pass becomes the item's full set of tags). Identify the " +
-					"item by 'scope' and numeric 'id'; for 'currentFile' scope also pass 'filePath'. " +
-					"Tags are normalized: surrounding whitespace is trimmed, duplicates are removed " +
-					"case-insensitively, invalid tags are dropped, and an empty list clears all tags. " +
-					"Use tags to group related items — e.g. tag every step of a plan with the same tag, " +
-					"then read them back with the 'tag' filter of todo_list_items. Idempotent. Returns " +
-					"the updated item. Rejected when the server is in read-only mode.",
-				inputSchema: {
-					scope: scopeSchema,
-					id: idSchema,
-					tags: z
-						.array(z.string())
-						.describe(
-							"The new full list of tags for the item. Pass an empty array to clear all tags. " +
-								"Tags are normalized (trimmed, de-duplicated case-insensitively, invalid ones dropped)."
-						),
-					filePath: mutateFilePathSchema,
-				},
-				outputSchema: itemOutputSchema,
-				annotations: { title: "Set Todo Tags", ...mutateAnnotations },
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_set_tags": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.setTags(args.scope as TodoScope, args.id, args.tags, {
 						filePath: args.filePath,
 					});
 					return this.toolResult(this.itemResult(result));
-				});
-			}
-		);
-
-		server.registerTool(
-			"todo_delete_items",
-			{
-				title: "Delete Todos",
-				description:
-					"Delete one or more todos or notes from a scope. Identify items by 'scope' and an array " +
-					"of numeric 'ids' (use todo_list_items to find them); for 'currentFile' scope also pass " +
-					"'filePath'. Ids that do not match any item are ignored. Returns the deleted items and a " +
-					"'count'. This permanently removes the items. Rejected when the server is in read-only mode.",
-				inputSchema: {
-					scope: scopeSchema,
-					ids: z
-						.array(z.number().int())
-						.min(1)
-						.describe("Numeric ids of the items to delete. Must contain at least one id."),
-					filePath: mutateFilePathSchema,
-				},
-				outputSchema: deleteOutputSchema,
-				annotations: {
-					title: "Delete Todos",
-					readOnlyHint: false,
-					destructiveHint: true,
-					idempotentHint: true,
-					openWorldHint: false,
-				},
-			},
-			async (args) => {
-				return this.safeToolCall(async () => {
+				}
+				case "todo_delete_items": {
+					const args = parseToolArgs(name, rawArgs);
 					const result = await this.todoService.deleteTodos(args.scope as TodoScope, args.ids, {
 						filePath: args.filePath,
 					});
@@ -1193,9 +560,10 @@ export default class McpServerHost implements vscode.Disposable {
 						deleted: result.deleted,
 						count: result.count,
 					});
-				});
+				}
 			}
-		);
+			throw new Error(`Unknown tool: ${String(name)}`);
+		});
 	}
 
 	private itemResult(result: { scope: TodoScope; filePath?: string; todo: unknown }): {
@@ -1344,130 +712,15 @@ export default class McpServerHost implements vscode.Disposable {
 		}
 	}
 
-	private async loadSdk(): Promise<McpSdk> {
-		if (this.sdk) {
-			return this.sdk;
+	private toError(serialized: SerializedError): Error {
+		const error = new Error(serialized.message) as NodeJS.ErrnoException;
+		if (serialized.code) {
+			error.code = serialized.code;
 		}
-		const [mcpModule, transportModule, typesModule] = await Promise.all([
-			import("@modelcontextprotocol/sdk/server/mcp.js"),
-			import("@modelcontextprotocol/sdk/server/streamableHttp.js"),
-			import("@modelcontextprotocol/sdk/types.js"),
-		]);
-		this.sdk = {
-			mcpServer: mcpModule.McpServer,
-			resourceTemplate: mcpModule.ResourceTemplate,
-			streamableHttpServerTransport: transportModule.StreamableHTTPServerTransport,
-			isInitializeRequest: typesModule.isInitializeRequest,
-		};
-		return this.sdk;
-	}
-
-	private isOriginAllowed(req: http.IncomingMessage, config: McpConfig): boolean {
-		const originValue = req.headers.origin;
-		const origin = Array.isArray(originValue) ? originValue[0] : originValue;
-
-		// Non-browser MCP clients (CLI agents, the SDK) typically send no Origin
-		// header. Only browser contexts set it, so absence is treated as trusted.
-		if (!origin) {
-			return true;
+		if (serialized.stack) {
+			error.stack = serialized.stack;
 		}
-
-		let parsed: URL;
-		try {
-			parsed = new URL(origin);
-		} catch {
-			return false;
-		}
-
-		// Guard against DNS-rebinding: only loopback origins may reach the server.
-		const hostname = parsed.hostname.toLowerCase();
-		const isLoopbackHost =
-			hostname === "localhost" ||
-			hostname === "127.0.0.1" ||
-			hostname === "[::1]" ||
-			hostname === "::1";
-		if (!isLoopbackHost) {
-			return false;
-		}
-
-		// When bound to a fixed port, require the origin to target it (or be portless).
-		if (config.port && parsed.port) {
-			return (
-				parsed.port === String(config.port) || parsed.port === String(this.lastPort ?? config.port)
-			);
-		}
-
-		return true;
-	}
-
-	private isAuthorized(req: http.IncomingMessage, config: McpConfig): boolean {
-		if (!config.token) {
-			return true;
-		}
-		const authHeaderValue = req.headers.authorization;
-		const authHeader = Array.isArray(authHeaderValue) ? authHeaderValue[0] : authHeaderValue;
-		const match = (authHeader ?? "").match(/^Bearer\s+(.+)$/i);
-		if (!match) {
-			return false;
-		}
-		return this.tokensEqual(match[1].trim(), config.token.trim());
-	}
-
-	// Constant-time comparison to avoid leaking the token via response timing.
-	private tokensEqual(provided: string, expected: string): boolean {
-		const providedBuf = Buffer.from(provided, "utf8");
-		const expectedBuf = Buffer.from(expected, "utf8");
-		// timingSafeEqual requires equal-length buffers; differing lengths mean a
-		// mismatch, but still run a same-length compare so timing does not reveal it.
-		if (providedBuf.length !== expectedBuf.length) {
-			timingSafeEqual(expectedBuf, expectedBuf);
-			return false;
-		}
-		return timingSafeEqual(providedBuf, expectedBuf);
-	}
-
-	private getSessionId(req: http.IncomingMessage, url?: URL): string | undefined {
-		const querySessionId =
-			url?.searchParams.get("mcp-session-id") ??
-			url?.searchParams.get("mcpSessionId") ??
-			url?.searchParams.get("sessionId");
-		if (querySessionId) {
-			return querySessionId;
-		}
-		const header = req.headers["mcp-session-id"];
-		if (Array.isArray(header)) {
-			return header[0];
-		}
-		return header;
-	}
-
-	private isInitializeLikeRequest(body: unknown): boolean {
-		if (!body) {
-			return false;
-		}
-		if (Array.isArray(body)) {
-			return body.some((entry) => this.isInitializeLikeRequest(entry));
-		}
-		if (typeof body !== "object") {
-			return false;
-		}
-		const method = (body as { method?: unknown }).method;
-		return typeof method === "string" && method.toLowerCase() === "initialize";
-	}
-
-	private async readBody(req: http.IncomingMessage): Promise<unknown> {
-		const chunks: Buffer[] = [];
-		for await (const chunk of req) {
-			chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-		}
-		if (chunks.length === 0) {
-			return undefined;
-		}
-		const raw = Buffer.concat(chunks).toString("utf8");
-		if (!raw.trim()) {
-			return undefined;
-		}
-		return JSON.parse(raw);
+		return error;
 	}
 
 	private notifyServerStarted(port: number): void {
@@ -1540,7 +793,7 @@ export default class McpServerHost implements vscode.Disposable {
 
 	private refreshStatus(): void {
 		const config = this.readConfig();
-		const running = Boolean(this.server);
+		const running = Boolean(this.worker);
 		const port = running ? (this.lastPort ?? config.port) : null;
 		const next = this.buildStatus(config, running, port);
 		if (!this.isStatusEqual(this.status, next)) {
@@ -1559,4 +812,11 @@ export default class McpServerHost implements vscode.Disposable {
 			left.port === right.port
 		);
 	}
+}
+
+// The worker has already validated the arguments against the same shapes; parsing again
+// here types them for this side and rejects anything that did not come through the SDK.
+function parseToolArgs<N extends ToolName>(name: N, rawArgs: unknown): ToolArgs<N> {
+	const shape: z.ZodRawShape = TOOL_INPUTS[name];
+	return z.object(shape).parse(rawArgs ?? {}) as ToolArgs<N>;
 }
