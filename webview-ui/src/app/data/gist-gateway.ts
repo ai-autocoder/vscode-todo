@@ -39,6 +39,7 @@ import {
 	SYNC_GIST_DESCRIPTION,
 	DefaultFileNames,
 	GIST_ID_REGEX,
+	gistCacheKey,
 	isEqual,
 	SyncConstants,
 	SyncErrorType,
@@ -103,6 +104,65 @@ import {
 } from "../pwa/conflicts/conflict-types";
 import { ViewPreferencesStore } from "../pwa/view-preferences.store";
 
+/**
+ * Where {@link GistGateway}'s carried-over lists are kept in the sync cache store. Outside the
+ * engine's `gistCache_<scope>_<file>` keys, so no file name can collide with it.
+ */
+const CARRIED_OVER_KEY = "carriedOver";
+
+/**
+ * Lists a gist switch brought along from a gist that could not take them. One record, so both
+ * scopes and where they came from are written together.
+ */
+interface CarriedOver {
+	/** The gist they were taken from. See `GistGateway.restoreCarriedOver`. */
+	fromGistId: string;
+	/**
+	 * The files they were taken from, kept only until the switch has cleared the cache: until then
+	 * those files' cache entries may still be the lists' other copy. See
+	 * `GistGateway.putBackCarriedOver`.
+	 */
+	fromUserFile?: string;
+	fromWorkspaceFile?: string;
+	user?: GlobalGistData;
+	workspace?: WorkspaceGistData;
+}
+
+/** A carried-over record without its source files, for once the cache is cleared. */
+function withoutSources(carried: CarriedOver): CarriedOver {
+	const copy = { ...carried };
+	delete copy.fromUserFile;
+	delete copy.fromWorkspaceFile;
+	return copy;
+}
+
+/** What settling the gist being left decided. See `GistGateway.settleBeforeGistSwitch`. */
+interface GistSwitchSettlement {
+	/** Something is still owed to the old gist and could still reach it: do not switch. */
+	refused: boolean;
+	/** Scopes whose lists the old gist cannot take, to bring to the new one. */
+	carry: Array<TodoScope.user | TodoScope.workspace>;
+}
+
+/** `into`, then whichever of `from`'s todos it holds no todo with the same id for. */
+function addMissingTodos(into: Todo[], from: Todo[]): Todo[] {
+	const ids = new Set(into.map((t) => t.id));
+	return [...into, ...from.filter((t) => !ids.has(t.id))];
+}
+
+/** {@link addMissingTodos} over a whole workspace file: its list and each per-file list. */
+function addMissingWorkspace(into: WorkspaceGistData, from: WorkspaceGistData): WorkspaceGistData {
+	const filesData: TodoFilesData = { ...into.filesData };
+	for (const [path, todos] of Object.entries(from.filesData ?? {})) {
+		filesData[path] = addMissingTodos(filesData[path] ?? [], todos ?? []);
+	}
+	return {
+		workspaceTodos: addMissingTodos(into.workspaceTodos, from.workspaceTodos),
+		filesData,
+		filesDataPaths: { ...from.filesDataPaths, ...into.filesDataPaths },
+	};
+}
+
 /** Runtime configuration for the PWA's GitHub access (supplied by the PWA environment). */
 export interface GistGatewayConfig {
 	/** Public GitHub OAuth App client id (Device Flow enabled). */
@@ -151,9 +211,23 @@ export type GistConnectionState =
 			busy?: boolean;
 			message?: string;
 	  }
-	| { phase: "needs-files"; userFiles: GistFileInfo[]; workspaceFiles: GistFileInfo[] }
+	| {
+			phase: "needs-files";
+			userFiles: GistFileInfo[];
+			workspaceFiles: GistFileInfo[];
+			/**
+			 * True when lists brought over from the previous gist will be added to the files
+			 * picked here. See {@link GistGateway.chooseFiles}.
+			 */
+			carryingOver?: boolean;
+	  }
 	| { phase: "connected"; userFile: string; workspaceFile?: string }
-	| { phase: "error"; message: string };
+	| {
+			phase: "error";
+			message: string;
+			/** As on `needs-files`: carried-over lists are waiting, which Disconnect discards. */
+			carryingOver?: boolean;
+	  };
 
 /**
  * A sync that has stopped working, for the PWA to say so.
@@ -478,6 +552,28 @@ export class GistGateway implements DataGateway {
 	 */
 	private fileSwitches = 0;
 
+	/**
+	 * How many gist switches are in progress, from settling the old gist to the reset. Same job
+	 * as {@link fileSwitches}: the gist picker is on screen and covers the conflict dialog. See
+	 * {@link switchingGist}.
+	 */
+	private gistSwitches = 0;
+
+	/**
+	 * Lists a gist switch brought along because the gist being left could not take them — it
+	 * was deleted, its file cannot be read, or it rejects the write. This device then holds the
+	 * only copy, and the switch clears the sync cache, so they are kept here and in
+	 * {@link cacheStore} (under {@link CARRIED_OVER_KEY}, so a reload keeps them) until
+	 * {@link chooseFiles} adds them to the files picked in the new gist.
+	 */
+	private carriedOver: CarriedOver | undefined;
+
+	/**
+	 * A disconnect's teardown while it waits in the sync queue. The stored session is cleared at
+	 * its end, so until then it still reads as live; see {@link settledDisconnect}.
+	 */
+	private disconnecting: Promise<void> | undefined;
+
 	constructor(private readonly opts: GistGatewayConfig) {
 		this.config = { ...DEFAULT_CONFIG, ...opts.config };
 		this.reducerConfig = {
@@ -508,13 +604,18 @@ export class GistGateway implements DataGateway {
 		// observables straight from it. Loading these later would leave the app rendering one
 		// frame of the defaults and then jumping.
 		Object.assign(this.config, await this.viewPreferencesStore.load());
+		await this.settledDisconnect();
 		this.token = await this.tokenStore.getToken();
 		this.gistId = await this.tokenStore.getGistId();
 		this.userFile = await this.tokenStore.getUserFile();
 		const storedWorkspaceFile = await this.tokenStore.getWorkspaceFile();
 		this.workspaceFile = storedWorkspaceFile || undefined;
+		let interruptedSwitch = false;
 		if (this.gistId) {
 			this.engine = this.createEngine(this.gistId);
+			// Before the cache is read into the slices, since it may put lists back into it; and
+			// before the conflicts load, since finishing a cut-off switch clears them.
+			interruptedSwitch = await this.restoreCarriedOver();
 			await this.rehydrateFromCache();
 			// Conflicts belong to the gist that produced them and are cleared when it changes, so
 			// they load alongside the cache rather than on their own.
@@ -539,7 +640,13 @@ export class GistGateway implements DataGateway {
 			state = { phase: "disconnected" };
 		} else if (!this.gistId) {
 			state = { phase: "needs-gist" };
-		} else if (!this.userFile) {
+		} else if (interruptedSwitch) {
+			// Back where the switch was cut off. Not the old gist's file picker: when the gist is
+			// gone — the usual reason for carrying — listing its files fails onto the error screen,
+			// whose Retry lands here again, and whose other way out, Disconnect, drops the lists.
+			state = { phase: "change-gist", currentGistId: this.gistId, gists: [], busy: true };
+		} else if (!this.userFile || this.isCarryingOver) {
+			// Carried lists still waiting for a file mean one of the two is not picked yet.
 			state = await this.enterFileSelection();
 		} else {
 			state = { phase: "connected", userFile: this.userFile, workspaceFile: this.workspaceFile };
@@ -547,6 +654,10 @@ export class GistGateway implements DataGateway {
 		this._connection.next(state);
 		this.emitGitHubStatus();
 		this.emitSyncInfo();
+		if (interruptedSwitch) {
+			// Fills in the account's gists.
+			void this.changeGist();
+		}
 		return state;
 	}
 
@@ -626,6 +737,11 @@ export class GistGateway implements DataGateway {
 		// call sites, so a pull already on the network when the session ends cannot re-arm a timer
 		// that would reconcile against file names the gateway no longer holds.
 		if (this.pollingSuspended || !(this.token && this.gistId && this.userFile)) {
+			return;
+		}
+		// A gist switch holds the poll and re-arms it when done. A pull already running when the
+		// switch began ends in here, and would otherwise put a poll of the old gist back.
+		if (this.gistSwitches > 0) {
 			return;
 		}
 		// Floored, not just clamped to zero. `lastPullAt` is when the pull was *asked for*, so a
@@ -860,18 +976,23 @@ export class GistGateway implements DataGateway {
 	private notePersistFailure(
 		scope: TodoScope.user | TodoScope.workspace,
 		error: unknown,
-		options: { refusedSwitch?: boolean } = {}
+		options: { refusedSwitch?: boolean; carried?: boolean } = {}
 	): void {
 		const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
 		// A list switch refused for this reason has to say so, or the picker looks like it ignored
 		// the choice.
 		const consequence = options.refusedSwitch ? ", so the list was not switched" : "";
+		// Lists brought over from another gist are not "your latest change", and no sync retries
+		// their write: the file picker does, when files are picked.
+		const what = options.carried
+			? "the lists brought over from the previous gist"
+			: "your latest change";
 		this.persistFailures.set(scope, {
 			kind: "other",
 			// Retrying is worth offering: a blocked upgrade or a transient quota rejection can
 			// clear on its own, and the retry re-runs the write.
-			canRetry: true,
-			message: `This device could not save your latest change${detail}${consequence}. Keep the app open until syncing recovers.`,
+			canRetry: !options.carried,
+			message: `This device could not save ${what}${detail}${consequence}. Keep the app open until syncing recovers.`,
 		});
 		this.publishSyncFailure();
 		// A local write that failed is worse than an unpushed change, so it outranks "dirty".
@@ -1632,6 +1753,110 @@ export class GistGateway implements DataGateway {
 	}
 
 	/**
+	 * Reloads the lists a gist switch carried over (see {@link carriedOver}). True when the
+	 * switch was cut off before it saved the new gist, and the user belongs back on the picker.
+	 *
+	 * A switch writes the record, clears the file selections, clears the cache (keeping the
+	 * record), then saves the new gist id, so a reload finds one of three things:
+	 *
+	 *   - the gist they came from, with no files selected: cut off mid-switch. The reset is
+	 *     finished, and the lists wait for the gist the user picks next.
+	 *   - otherwise, per scope: one whose file is selected is dropped from the record, its file
+	 *     already holding the lists (see {@link putBackCarriedOver}). A scope with no file
+	 *     selected keeps waiting for one.
+	 */
+	private async restoreCarriedOver(): Promise<boolean> {
+		const carried = (await this.cacheStore.load<CarriedOver>(CARRIED_OVER_KEY))?.data;
+		if (!carried) {
+			return false;
+		}
+		if (carried.fromGistId === this.gistId && !this.userFile) {
+			// The source files go before the cache, whose entries for them were the lists' other
+			// copy: once those are cleared, picking a source file again finds no entry, and must
+			// not read that as the record being the file's only copy.
+			this.carriedOver = withoutSources(carried);
+			await this.saveCarriedOver();
+			await this.cacheStore.clear([CARRIED_OVER_KEY]);
+			await this.clearConflicts();
+			return true;
+		}
+		const waiting: CarriedOver = { fromGistId: carried.fromGistId };
+		if (carried.user && !(await this.putBackCarriedOver(TodoScope.user, carried))) {
+			waiting.user = carried.user;
+		}
+		if (carried.workspace && !(await this.putBackCarriedOver(TodoScope.workspace, carried))) {
+			waiting.workspace = carried.workspace;
+		}
+		this.carriedOver = waiting.user || waiting.workspace ? waiting : undefined;
+		if (waiting.user !== carried.user || waiting.workspace !== carried.workspace) {
+			// Forgotten in memory whatever the write does; a record it leaves is dropped next time.
+			await this.saveCarriedOver().catch(() => undefined);
+		}
+		return false;
+	}
+
+	/**
+	 * For {@link restoreCarriedOver}: makes sure a scope's selected file holds its carried lists.
+	 *
+	 * It does already, and nothing is written, in every case but one. A file the lists went into
+	 * got them before the selection was saved (see {@link chooseFiles}). The file they came from,
+	 * with the switch cut off before it cleared anything, never had them taken out. Any other
+	 * file is one picked since, and adding them again there would do harm whenever the record
+	 * outlived a failed removal: it would bring back todos deleted since, or put the lists in a
+	 * file they were never meant for. The one case is the file they came from, still named in the
+	 * record, with no cache entry: it never synced, the record is its only copy, and it goes back
+	 * in. False, keeping them waiting, with no file selected or when that write fails.
+	 */
+	private async putBackCarriedOver(
+		scope: TodoScope.user | TodoScope.workspace,
+		carried: CarriedOver
+	): Promise<boolean> {
+		const engine = this.engine;
+		const fileName = scope === TodoScope.user ? this.userFile : this.workspaceFile;
+		if (!engine || !fileName) {
+			return false;
+		}
+		const source = scope === TodoScope.user ? carried.fromUserFile : carried.fromWorkspaceFile;
+		if (carried.fromGistId !== this.gistId || fileName !== source) {
+			return true;
+		}
+		try {
+			const cached =
+				scope === TodoScope.user
+					? await engine.loadCachedUser(fileName)
+					: await engine.loadCachedWorkspace(fileName);
+			if (!cached) {
+				await this.writeCarriedOver(
+					scope,
+					fileName,
+					scope === TodoScope.user ? carried.user : carried.workspace
+				);
+			}
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/** Writes {@link carriedOver} to its record, or removes the record once nothing is carried. */
+	private async saveCarriedOver(): Promise<void> {
+		if (this.carriedOver) {
+			await this.cacheStore.save<CarriedOver>(CARRIED_OVER_KEY, {
+				data: this.carriedOver,
+				lastSynced: new Date(0).toISOString(),
+				isDirty: true,
+			});
+		} else {
+			await this.cacheStore.delete(CARRIED_OVER_KEY);
+		}
+	}
+
+	/** True while carried-over lists are waiting for files to be picked. */
+	private get isCarryingOver(): boolean {
+		return !!(this.carriedOver?.user || this.carriedOver?.workspace);
+	}
+
+	/**
 	 * Builds the sync engine for a gist. Always goes through here so the IndexedDB-backed
 	 * {@link cacheStore} is attached: without it the engine silently falls back to an in-memory
 	 * store, every session starts with no merge baseline, and remote changes can never be told
@@ -2072,6 +2297,7 @@ export class GistGateway implements DataGateway {
 				signal: this.connectAbort.signal,
 			});
 
+			await this.settledDisconnect();
 			this.token = token;
 			await this.tokenStore.setToken(token);
 			this.emitGitHubStatus();
@@ -2111,10 +2337,28 @@ export class GistGateway implements DataGateway {
 		await this.useGist(trimmed);
 	}
 
-	/** Persists the gist id, then moves to file selection (or straight to connected). */
-	private async useGist(gistId: string): Promise<void> {
-		if (this.gistId && this.gistId !== gistId) {
-			await this.resetForNewGist();
+	/**
+	 * Persists the gist id, then moves to file selection (or straight to connected).
+	 *
+	 * Leaving another gist settles it first (see {@link settleBeforeGistSwitch}), unless the
+	 * caller already did — `createSyncGist` settles before creating, so a refusal does not leave
+	 * an unused gist behind. A refused switch stays on the gist picker, saying why.
+	 */
+	private async useGist(gistId: string, settled?: GistSwitchSettlement): Promise<void> {
+		const leaving = this.gistId;
+		if (leaving && leaving !== gistId) {
+			const refused = await this.switchingGist(async () => {
+				const settlement = settled ?? (await this.settleBeforeGistSwitch());
+				if (settlement.refused) {
+					return true;
+				}
+				await this.resetForNewGist(leaving, settlement.carry);
+				return false;
+			});
+			if (refused) {
+				this.refuseGistSwitch();
+				return;
+			}
 		}
 		this.gistId = gistId;
 		await this.tokenStore.setGistId(gistId);
@@ -2125,12 +2369,124 @@ export class GistGateway implements DataGateway {
 	}
 
 	/**
+	 * Runs a gist switch, from settling the old gist to the reset, with no reconcile asking
+	 * anything (the gist picker covers the dialog; see {@link canPrompt}) and the poll held, so
+	 * nothing about the old gist fits in between — `createSyncGist`'s round trip included. The
+	 * poll is re-armed at the end, which does nothing once the switch has dropped the files.
+	 */
+	private async switchingGist<T>(work: () => Promise<T>): Promise<T> {
+		this.gistSwitches++;
+		this.clearPollTimer();
+		try {
+			return await work();
+		} finally {
+			this.gistSwitches--;
+			if (this.gistSwitches === 0) {
+				this.scheduleNextPoll();
+			}
+		}
+	}
+
+	/**
+	 * Makes sure a gist switch loses nothing the device owes the gist being left. Called inside
+	 * {@link switchingGist}.
+	 *
+	 * The switch clears the sync cache, so unlike a list switch ({@link settleOldFile}) there is
+	 * nowhere to park an unpushed edit for later. Each selected scope is reconciled now, against
+	 * the old gist: a push if it owes one, otherwise a pull, which is how a gist deleted since the
+	 * last pull is noticed. Prompts are suppressed, so a conflict declines and writes nothing.
+	 * If that run fails, its failure decides the switch:
+	 *
+	 *   - a failure retrying cannot fix (the gist was deleted, its file cannot be read, the token
+	 *     or the gist rejects the write) means the old gist will never take what the device holds,
+	 *     and this device has the only copy: the scope's lists are carried to the new gist (see
+	 *     {@link carriedOver}). This is the "gist not found" banner's path, whose message
+	 *     promises the todos are still here.
+	 *   - anything else — a declined conflict, a network failure a retry may clear — refuses the
+	 *     switch if a push was owed: the edit can still reach the gist it was made in, and should.
+	 *     With nothing owed, the old gist holds everything, and the switch goes ahead.
+	 *
+	 * Runs on the sync queue, behind any reconcile already queued.
+	 */
+	private async settleBeforeGistSwitch(): Promise<GistSwitchSettlement> {
+		const settlement: GistSwitchSettlement = { refused: false, carry: [] };
+		const engine = this.engine;
+		if (!engine) {
+			return settlement;
+		}
+		// Before the queue wait, as in chooseFiles: a reconcile parked on the dialog would hold the
+		// queue, and this switch behind it, for good.
+		this.abandonConflictPrompt();
+		await this.enqueue(async () => {
+			// A disconnect or another switch got there first; there is nothing left to settle.
+			if (this.engine !== engine) {
+				return;
+			}
+			for (const scope of [TodoScope.user, TodoScope.workspace] as const) {
+				const user = scope === TodoScope.user;
+				if (!(user ? this.userFile : this.workspaceFile)) {
+					continue;
+				}
+				// Only this run's failure may decide. `recordSyncFailure` does not record a
+				// transient one below its threshold, so a failure left from earlier — a file since
+				// repaired — would otherwise carry the lists off a gist a retry could still reach.
+				// Put back below if this run records nothing, so the banner stays as it was.
+				const earlier = this.syncFailures.get(scope);
+				this.syncFailures.delete(scope);
+				const owed = (): boolean => (user ? this.pendingUserPush : this.pendingWorkspacePush);
+				const owedBefore = owed();
+				await (user ? this.reconcileUser() : this.reconcileWorkspace());
+				if (!owed()) {
+					continue;
+				}
+				const failure = this.syncFailures.get(scope);
+				if (failure && !failure.canRetry) {
+					settlement.carry.push(scope);
+					continue;
+				}
+				// A failed pull marks the scope as owing a push with no edit behind it. With nothing
+				// owed going in, the old gist holds everything and is only out of reach for now:
+				// nothing is lost by switching, and refusing would blame changes that do not exist.
+				if (!owedBefore) {
+					continue;
+				}
+				settlement.refused = true;
+				if (!failure && earlier) {
+					this.syncFailures.set(scope, earlier);
+					this.settleSyncStatus(scope);
+				}
+			}
+			// The entries were taken out without telling the banner, so a scope that synced
+			// cleanly — and cleared nothing, finding nothing to clear — still has one on screen.
+			this.publishSyncFailure();
+		});
+		return settlement;
+	}
+
+	/** Tells the gist picker why it did not switch. See {@link settleBeforeGistSwitch}. */
+	private refuseGistSwitch(): void {
+		this.updateChangeGist({
+			busy: false,
+			message:
+				"Changes on this device have not reached the current gist yet, so the gist was " +
+				"not switched. Let them sync (or use Sync all now), then switch.",
+		});
+	}
+
+	/**
 	 * Drops everything tied to the previous gist before switching. Clearing `cacheStore` is not
 	 * optional: its per-file `lastCleanRemoteData` entries are the three-way-merge baselines, so
 	 * keeping them would compare one gist's baseline against another gist's content and corrupt
 	 * the merge. The file selections go too — they name files in the old gist.
+	 *
+	 * `carry` names the scopes whose lists the gist being left could not take; they are kept, not
+	 * dropped. Lists carried by an earlier switch whose files were never picked are kept too.
 	 */
-	private async resetForNewGist(): Promise<void> {
+	private async resetForNewGist(
+		leavingGistId: string,
+		carry: ReadonlyArray<TodoScope.user | TodoScope.workspace>
+	): Promise<void> {
+		const leavingFiles = { user: this.userFile, workspace: this.workspaceFile };
 		this.cancelPendingPushes();
 		// Before the queue wait below, not after: a reconcile parked on the dialog would hold the
 		// queue forever and the switch would never complete.
@@ -2145,11 +2501,63 @@ export class GistGateway implements DataGateway {
 		this.engine = undefined;
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
+		// Widened by the cast, as `outcome` in chooseFiles: assigned only inside the closure.
+		let carryFailure = undefined as { error: unknown } | undefined;
 		// Wait for any in-flight reconcile before clearing. Cache keys carry only the file name,
 		// so a late write from the old gist would otherwise land in the cleared store and be read
 		// back as the new gist's baseline — the exact corruption this reset exists to prevent.
 		await this.enqueue(async () => {
-			await this.cacheStore.clear();
+			// Taken here, once whatever was in flight has landed in the slices. Source files are
+			// named only for the scopes taken from this gist's files now.
+			const carried: CarriedOver = {
+				...(this.carriedOver && withoutSources(this.carriedOver)),
+				fromGistId: leavingGistId,
+			};
+			if (carry.includes(TodoScope.user) && this.user.todos.length > 0) {
+				carried.user = { userTodos: structuredClone(this.user.todos) };
+				carried.fromUserFile = leavingFiles.user;
+			}
+			if (
+				carry.includes(TodoScope.workspace) &&
+				(this.workspace.todos.length > 0 || Object.keys(this.filesData).length > 0)
+			) {
+				carried.workspace = structuredClone({
+					workspaceTodos: this.workspace.todos,
+					filesData: this.filesData,
+					filesDataPaths: this.filesDataPaths,
+				});
+				carried.fromWorkspaceFile = leavingFiles.workspace;
+			}
+			this.carriedOver = carried.user || carried.workspace ? carried : undefined;
+			// Written before anything is cleared, so at no point are the device's only copies in
+			// memory alone. Then the selections, then the cache: `restoreCarriedOver` says what a
+			// reload between any two of these finds. If the write fails they are still carried,
+			// from memory, and only a reload before the files are picked would lose them.
+			if (this.carriedOver) {
+				try {
+					await this.saveCarriedOver();
+				} catch (error: unknown) {
+					carryFailure = { error };
+				}
+			} else {
+				// Nothing carried, but a record whose removal failed earlier may still be stored.
+				// Gone before the selections are, or a reload between the two would find it with no
+				// files selected and offer its lists again — here, to files that already hold them.
+				await this.saveCarriedOver().catch(() => undefined);
+			}
+			await this.tokenStore.clearFileSelections();
+			// A record that did not just save is stale, and goes with the rest.
+			await this.cacheStore.clear(this.carriedOver && !carryFailure ? [CARRIED_OVER_KEY] : []);
+			// The source files' entries are gone, so the record stops naming them (see
+			// `putBackCarriedOver`). A failed write leaves them named, which only matters if the
+			// user comes back to this gist, and then only puts the lists back in the file they
+			// came from.
+			if (this.carriedOver) {
+				this.carriedOver = withoutSources(this.carriedOver);
+				if (!carryFailure) {
+					await this.saveCarriedOver().catch(() => undefined);
+				}
+			}
 			// Same queue, same reason: a reconcile still on the network would otherwise record the
 			// old gist's conflicts into the store we just cleared.
 			await this.clearConflicts();
@@ -2157,7 +2565,6 @@ export class GistGateway implements DataGateway {
 		// Again, now the queue has drained: the reconcile released above finishes on its cancel
 		// path, which marks its scope dirty for an edit belonging to the gist being left.
 		this.cancelPendingPushes();
-		await this.tokenStore.clearFileSelections();
 		// The failures and statuses described the gist we just left — a banner about a gist the
 		// user has abandoned, and "synced" against one this device has never contacted, over the
 		// list being emptied below. Reset after the queue drains, for the same reason as the
@@ -2168,6 +2575,14 @@ export class GistGateway implements DataGateway {
 		this.workspaceEverSynced = false;
 		this.setSyncStatus(TodoScope.user, "offline");
 		this.setSyncStatus(TodoScope.workspace, "offline");
+		// After the statuses, which it outranks: the carried lists are only in memory.
+		if (carryFailure) {
+			for (const scope of [TodoScope.user, TodoScope.workspace] as const) {
+				if (scope === TodoScope.user ? this.carriedOver?.user : this.carriedOver?.workspace) {
+					this.notePersistFailure(scope, carryFailure.error, { carried: true });
+				}
+			}
+		}
 		this.user = newUserSlice();
 		this.workspace = newWorkspaceSlice();
 		this.filesData = {};
@@ -2307,20 +2722,29 @@ export class GistGateway implements DataGateway {
 	 */
 	async createSyncGist(): Promise<void> {
 		this.updateChangeGist({ busy: true, message: undefined });
-		const seed: GlobalGistData = { userTodos: [] };
-		const created = await this.client.createGist(
-			SYNC_GIST_DESCRIPTION,
-			{ [DefaultFileNames.user]: JSON.stringify(seed, null, 2) },
-			false
-		);
-		if (!created.success || !created.data) {
-			this.updateChangeGist({
-				busy: false,
-				message: created.error?.message ?? "Could not create the gist.",
-			});
-			return;
-		}
-		await this.useGist(created.data.id);
+		// Held across the create too, so no poll or dialog about the old gist fits in its round trip.
+		await this.switchingGist(async () => {
+			// Before creating, so a refused switch does not leave an empty gist behind.
+			const settlement = this.gistId ? await this.settleBeforeGistSwitch() : undefined;
+			if (settlement?.refused) {
+				this.refuseGistSwitch();
+				return;
+			}
+			const seed: GlobalGistData = { userTodos: [] };
+			const created = await this.client.createGist(
+				SYNC_GIST_DESCRIPTION,
+				{ [DefaultFileNames.user]: JSON.stringify(seed, null, 2) },
+				false
+			);
+			if (!created.success || !created.data) {
+				this.updateChangeGist({
+					busy: false,
+					message: created.error?.message ?? "Could not create the gist.",
+				});
+				return;
+			}
+			await this.useGist(created.data.id, settlement);
+		});
 	}
 
 	/** Patches the current change-gist state; ignored if the user has already moved on. */
@@ -2349,6 +2773,7 @@ export class GistGateway implements DataGateway {
 			return {
 				phase: "error",
 				message: userFiles.error?.message ?? workspaceFiles.error?.message ?? "Failed to list gist files.",
+				...(this.isCarryingOver ? { carryingOver: true } : {}),
 			};
 		}
 		const users = userFiles.data ?? [];
@@ -2363,7 +2788,12 @@ export class GistGateway implements DataGateway {
 		if (userFileValid && workspaceFileValid) {
 			return { phase: "connected", userFile: this.userFile!, workspaceFile: this.workspaceFile };
 		}
-		return { phase: "needs-files", userFiles: users, workspaceFiles: workspaces };
+		return {
+			phase: "needs-files",
+			userFiles: users,
+			workspaceFiles: workspaces,
+			...(this.isCarryingOver ? { carryingOver: true } : {}),
+		};
 	}
 
 	/**
@@ -2420,6 +2850,26 @@ export class GistGateway implements DataGateway {
 					outcome = "refused";
 					return;
 				}
+				// Lists carried from the previous gist join the files picked here. Written as an
+				// unsynced entry with no baseline, so the file's first reconcile bootstraps: it merges
+				// them with what the file holds against an empty base, and neither side is deleted.
+				// The entry is then what the slice is loaded from below. Before the selection is
+				// saved, which is how `restoreCarriedOver` tells a leftover record from a waiting one.
+				const carriedUser = userChanged ? this.carriedOver?.user : undefined;
+				const carriedWorkspace = workspaceChanged ? this.carriedOver?.workspace : undefined;
+				let undoUser: (() => Promise<void>) | undefined;
+				try {
+					undoUser = await this.writeCarriedOver(TodoScope.user, nextUserFile, carriedUser);
+					await this.writeCarriedOver(TodoScope.workspace, nextWorkspaceFile, carriedWorkspace);
+				} catch (error: unknown) {
+					// The user half taken back, so the lists are not left in a file the user did not
+					// end up with, to be added a second time when that file is picked.
+					await undoUser?.().catch(() => undefined);
+					const failed = undoUser ? TodoScope.workspace : TodoScope.user;
+					this.notePersistFailure(failed, error, { refusedSwitch: true, carried: true });
+					outcome = "refused";
+					return;
+				}
 				const cachedUser = userChanged ? await engine.loadCachedUser(nextUserFile) : undefined;
 				const cachedWorkspace = workspaceChanged
 					? await engine.loadCachedWorkspace(nextWorkspaceFile)
@@ -2454,11 +2904,34 @@ export class GistGateway implements DataGateway {
 					this.filesDataPaths = cachedWorkspace?.filesDataPaths ?? {};
 					this.currentFile = newCurrentFileSlice();
 				}
+				// Owed to the gist from the start, so a first pull that fails leaves them marked.
+				if (carriedUser) {
+					this.markDirty(TodoScope.user);
+				}
+				if (carriedWorkspace) {
+					this.markDirty(TodoScope.workspace);
+				}
+				// Forgotten here, inside the swap, so a failed write below cannot leave them to be
+				// added to the next file picked as well.
+				const consumed = !!(carriedUser || carriedWorkspace);
+				if (consumed && this.carriedOver) {
+					const rest: CarriedOver = {
+						...this.carriedOver,
+						user: carriedUser ? undefined : this.carriedOver.user,
+						workspace: carriedWorkspace ? undefined : this.carriedOver.workspace,
+					};
+					this.carriedOver = rest.user || rest.workspace ? rest : undefined;
+				}
 				// The review screen shows only the records made against the files now selected, so
 				// the old file's go out of view with it — kept, for when it is picked again.
 				this.publishConflicts();
 				await this.tokenStore.setUserFile(nextUserFile);
 				await this.tokenStore.setWorkspaceFile(nextWorkspaceFile);
+				if (consumed) {
+					// A record the write leaves behind is dropped at the next startup: the selection
+					// is saved by then, and its files hold the lists.
+					await this.saveCarriedOver().catch(() => undefined);
+				}
 			});
 		} finally {
 			this.fileSwitches--;
@@ -2542,6 +3015,48 @@ export class GistGateway implements DataGateway {
 			this.notePersistFailure(scope, error, { refusedSwitch: true });
 			return false;
 		}
+	}
+
+	/**
+	 * Adds carried-over lists (see {@link carriedOver}) to the cache entry of the file picked for
+	 * them. With no entry — the usual case, the switch having cleared the cache — they are written
+	 * as an unsynced entry with no baseline, which the file's first reconcile bootstraps from. An
+	 * entry already there keeps its data and its baseline and gains only the carried todos it
+	 * holds no todo with the same id for: written over it, the carried lists would be the whole
+	 * list, and the reconcile would read every todo missing from them as deleted on this device.
+	 *
+	 * Returns how to undo the write. Throws when it fails.
+	 */
+	private async writeCarriedOver(
+		scope: TodoScope.user | TodoScope.workspace,
+		fileName: string,
+		data: GlobalGistData | WorkspaceGistData | undefined
+	): Promise<() => Promise<void>> {
+		const engine = this.engine;
+		if (!engine || !data) {
+			return async () => undefined;
+		}
+		const user = scope === TodoScope.user;
+		const key = gistCacheKey(user ? "global" : "workspace", fileName);
+		const existing = await this.cacheStore.load<GlobalGistData & WorkspaceGistData>(key);
+		if (user) {
+			const carried = data as GlobalGistData;
+			await engine.persistUnsyncedUser(
+				fileName,
+				existing
+					? { userTodos: addMissingTodos(existing.data.userTodos, carried.userTodos) }
+					: carried
+			);
+		} else {
+			const carried = data as WorkspaceGistData;
+			await engine.persistUnsyncedWorkspace(
+				fileName,
+				existing ? addMissingWorkspace(existing.data, carried) : carried
+			);
+		}
+		return existing
+			? () => this.cacheStore.save(key, existing)
+			: () => this.cacheStore.delete(key);
 	}
 
 	/**
@@ -2642,14 +3157,28 @@ export class GistGateway implements DataGateway {
 		this.userFile = undefined;
 		this.workspaceFile = undefined;
 		this.engine = undefined;
-		await this.tokenStore.clear();
 		// Same ordering hazard as resetForNewGist: let any in-flight reconcile finish first.
-		await this.enqueue(async () => {
+		const teardown = this.enqueue(async () => {
+			// The session they were waiting for has ended; the clear below takes their record.
+			this.carriedOver = undefined;
 			await this.cacheStore.clear();
 			// Same queue, same reason: a reconcile still on the network would otherwise record the
 			// old gist's conflicts into the store we just cleared.
 			await this.clearConflicts();
+			// The session itself goes last. The wait above can take seconds, and a reload inside it
+			// must find either the whole session, which resumes, or none of it — not an ended
+			// session over the old cache, whose entries and carried lists the next connection
+			// would take up as its own.
+			await this.tokenStore.clear();
 		});
+		this.disconnecting = teardown;
+		try {
+			await teardown;
+		} finally {
+			if (this.disconnecting === teardown) {
+				this.disconnecting = undefined;
+			}
+		}
 		// Again, now that the queue has drained. The reconcile that just finished settled its
 		// scope and may have recorded a failure — both of which describe the session we have
 		// already torn down, and the first reset above ran before it could. Its cancel path also
@@ -2671,6 +3200,16 @@ export class GistGateway implements DataGateway {
 		this.emitReload();
 		this.emitGitHubStatus();
 		this.emitSyncInfo();
+	}
+
+	/**
+	 * Waits out a disconnect still in the sync queue. Anything that reads or writes the stored
+	 * session goes through here first: before the teardown ends the session still reads as live,
+	 * so the error screen's Retry would restore it, and then have it cleared from under an edit;
+	 * a new sign-in's token would be cleared along with the old one.
+	 */
+	private async settledDisconnect(): Promise<void> {
+		await this.disconnecting?.catch(() => undefined);
 	}
 
 	/**
@@ -2704,6 +3243,7 @@ export class GistGateway implements DataGateway {
 				phase: "error",
 				message:
 					userFiles.error?.message ?? workspaceFiles.error?.message ?? "Failed to list gist files.",
+				...(this.isCarryingOver ? { carryingOver: true } : {}),
 			});
 			return;
 		}
@@ -2711,6 +3251,7 @@ export class GistGateway implements DataGateway {
 			phase: "needs-files",
 			userFiles: userFiles.data ?? [],
 			workspaceFiles: workspaceFiles.data ?? [],
+			...(this.isCarryingOver ? { carryingOver: true } : {}),
 		});
 	}
 	openGistIdSettings(): void {
@@ -2805,12 +3346,13 @@ export class GistGateway implements DataGateway {
 	 * this and holds the sync queue, so failing closed leaves the scope visibly dirty while
 	 * failing open would hang every later sync with nothing on screen to explain it.
 	 *
-	 * A list switch in progress counts as "cannot ask" for the same reason: the file picker is
-	 * covering the dialog. See {@link fileSwitches}.
+	 * A list or gist switch in progress counts as "cannot ask" for the same reason: the picker is
+	 * covering the dialog. See {@link fileSwitches} and {@link gistSwitches}.
 	 */
 	private canPrompt(): boolean {
 		return (
 			this.fileSwitches === 0 &&
+			this.gistSwitches === 0 &&
 			typeof document !== "undefined" &&
 			document.visibilityState !== "hidden"
 		);

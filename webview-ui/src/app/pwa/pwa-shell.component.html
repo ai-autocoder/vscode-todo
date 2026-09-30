@@ -177,6 +177,10 @@
 				<button (click)="changeGist()" [disabled]="switchingFiles">Change gist</button>
 			</div>
 			<ng-container *ngIf="state.phase === 'needs-files'">
+				<p class="hint" *ngIf="state.carryingOver">
+					The previous gist could not take the lists on this device, so they will be added to
+					the lists you choose here. Disconnecting discards them.
+				</p>
 				<label for="user-file">User list</label>
 				<select id="user-file" [(ngModel)]="userFileChoice">
 					<option *ngFor="let file of state.userFiles" [value]="file.fullPath">
@@ -244,6 +248,10 @@
 
 		<ng-container *ngSwitchCase="'error'">
 			<p class="error" *ngIf="state.phase === 'error'">{{ state.message }}</p>
+			<p class="hint" *ngIf="state.phase === 'error' && state.carryingOver">
+				The lists brought over from the previous gist are still on this device. Disconnecting
+				discards them.
+			</p>
 			<div class="row">
 				<button class="primary" (click)="retry()">Retry</button>
 				<button (click)="disconnect()">Disconnect</button>

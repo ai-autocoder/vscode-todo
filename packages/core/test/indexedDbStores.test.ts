@@ -97,6 +97,35 @@ describe("IndexedDbCacheStore", () => {
 		expect(await store.load("gistCache_workspace_workspace-x.json")).toBeUndefined();
 	});
 
+	it("clear() keeps the keys it is told to keep", async () => {
+		const store = new IndexedDbCacheStore(env);
+		const c: GistCache<GlobalGistData> = {
+			data: { userTodos: [] },
+			lastSynced: "2020-01-01T00:00:00.000Z",
+			isDirty: false,
+		};
+		await store.save("gistCache_global_user-todos.json", c);
+		await store.save("kept", c);
+		await store.clear(["kept"]);
+		expect(await store.load("gistCache_global_user-todos.json")).toBeUndefined();
+		expect(await store.load("kept")).toEqual(c);
+	});
+
+	it("delete() removes one entry and leaves the others", async () => {
+		const store = new IndexedDbCacheStore(env);
+		const c: GistCache<GlobalGistData> = {
+			data: { userTodos: [] },
+			lastSynced: "2020-01-01T00:00:00.000Z",
+			isDirty: false,
+		};
+		await store.save("gistCache_global_user-todos.json", c);
+		await store.save("gistCache_workspace_workspace-x.json", c);
+		await store.delete("gistCache_global_user-todos.json");
+		await store.delete("never-stored");
+		expect(await store.load("gistCache_global_user-todos.json")).toBeUndefined();
+		expect(await store.load("gistCache_workspace_workspace-x.json")).toEqual(c);
+	});
+
 	it("works as the CacheStore for GistSyncEngine and persists the baseline across reloads", async () => {
 		// A fake gist shared across two engine "sessions" backed by the same IndexedDB.
 		class FakeGist implements GistFileIO {

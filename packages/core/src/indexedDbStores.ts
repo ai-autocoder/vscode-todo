@@ -43,10 +43,18 @@ export class IndexedDbCacheStore implements CacheStore {
 		await this.kv.set<GistCache<T>>(key, cache);
 	}
 
-	/** Removes every cached file (used when disconnecting or switching gists). */
-	async clear(): Promise<void> {
+	/** Removes one entry; a key that is not stored is ignored. */
+	async delete(key: string): Promise<void> {
+		await this.kv.delete(key);
+	}
+
+	/**
+	 * Removes every cached file (used when disconnecting or switching gists), except the keys in
+	 * `keep` — for an entry that must survive the clear without a window in which it is gone.
+	 */
+	async clear(keep: readonly string[] = []): Promise<void> {
 		const keys = await this.kv.keys();
-		await Promise.all(keys.map((k) => this.kv.delete(k)));
+		await Promise.all(keys.filter((k) => !keep.includes(k)).map((k) => this.kv.delete(k)));
 	}
 }
 

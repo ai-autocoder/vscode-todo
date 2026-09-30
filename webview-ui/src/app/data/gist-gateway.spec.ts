@@ -1447,7 +1447,7 @@ describe("GistGateway prompt and the sync queue", () => {
 		reconcileUser(): Promise<void>;
 		reconcileWorkspace(): Promise<void>;
 		pullAll(): Promise<void>;
-		resetForNewGist(): Promise<void>;
+		resetForNewGist(leavingGistId: string, carry: readonly string[]): Promise<void>;
 	}
 
 	const userFile = "user-todos.json";
@@ -1636,7 +1636,7 @@ describe("GistGateway prompt and the sync queue", () => {
 		expect(seen.length).toBe(1);
 
 		const switched = await Promise.race([
-			internals.resetForNewGist().then(() => "done"),
+			internals.resetForNewGist("stub-gist", []).then(() => "done"),
 			new Promise((resolve) => setTimeout(() => resolve("timed out"), 3000)),
 		]);
 
@@ -1652,7 +1652,7 @@ describe("GistGateway prompt and the sync queue", () => {
 
 	it("drops the engine before waiting on the queue, so no leg can re-park it", async () => {
 		answerWith(() => null);
-		await internals.resetForNewGist();
+		await internals.resetForNewGist("stub-gist", []);
 
 		expect(internals.engine).toBeUndefined();
 		expect(internals.userFile).toBeUndefined();

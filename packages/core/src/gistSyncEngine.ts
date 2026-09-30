@@ -205,7 +205,7 @@ export class GistSyncEngine {
 	}
 
 	private cacheKey(scope: "global" | "workspace", fileName: string): string {
-		return `gistCache_${scope}_${fileName}`;
+		return gistCacheKey(scope, fileName);
 	}
 
 	/**
@@ -955,6 +955,14 @@ export class GistSyncEngine {
 		);
 		return { success: true, data: result };
 	}
+}
+
+/**
+ * The {@link CacheStore} key {@link GistSyncEngine} keeps a file's cache entry under. Exported
+ * for a caller that has to remove an entry itself, which the engine never does.
+ */
+export function gistCacheKey(scope: "global" | "workspace", fileName: string): string {
+	return `gistCache_${scope}_${fileName}`;
 }
 
 /** Serializes gist data exactly as the extension does (pretty-printed, 2-space). */

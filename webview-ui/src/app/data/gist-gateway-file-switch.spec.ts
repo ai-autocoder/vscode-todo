@@ -66,6 +66,7 @@ interface Internals {
 	workspacePushTimer: ReturnType<typeof setTimeout> | undefined;
 	pendingUserPush: boolean;
 	pendingWorkspacePush: boolean;
+	pollTimer: ReturnType<typeof setTimeout> | undefined;
 	workspaceStatus: SyncStatusValue;
 	createEngine(gistId: string): unknown;
 	enqueue(work: () => Promise<void>): Promise<void>;
@@ -259,9 +260,18 @@ class CopyingCacheStore implements CacheStore {
 		this.map.set(key, structuredClone(cache) as GistCache<unknown>);
 	}
 
-	/** What a disconnect calls on the real store. */
-	async clear(): Promise<void> {
-		this.map.clear();
+	async delete(key: string): Promise<void> {
+		await this.delay();
+		this.map.delete(key);
+	}
+
+	/** What a disconnect or a gist switch calls on the real store. */
+	async clear(keep: readonly string[] = []): Promise<void> {
+		for (const key of [...this.map.keys()]) {
+			if (!keep.includes(key)) {
+				this.map.delete(key);
+			}
+		}
 	}
 }
 
@@ -1693,18 +1703,14 @@ describe("GistGateway list switching, model-based", () => {
 });
 
 /**
- * Switching to another GIST, found by the September 2026 audit.
+ * Switching to another GIST.
  *
  * A list switch settles what the old file is owed first (push it, save it, or refuse). A gist
- * switch does none of that: `resetForNewGist` cancels the owed pushes, clears the whole sync
- * cache and empties the slices. So an edit made in the debounce window before "Change gist" is
- * gone from this device and never reached the gist it was made in. The "gist not found" banner's
- * "Choose a gist" leads down the same path with everything the device holds.
- *
- * The known-bug case states the correct behaviour and passes only while the code still fails it;
- * when it starts failing the defect is fixed — turn it into a plain `it`.
+ * switch used to do none of that: `resetForNewGist` cancelled the owed pushes, cleared the whole
+ * sync cache and emptied the slices. So an edit made in the debounce window before "Change gist"
+ * was gone from this device and never reached the gist it was made in.
  */
-describe("GistGateway switching gists (audit)", () => {
+describe("GistGateway switching gists", () => {
 	const CURRENT_GIST = "a".repeat(32);
 	const OTHER_GIST = "c".repeat(32);
 
@@ -1716,20 +1722,6 @@ describe("GistGateway switching gists (audit)", () => {
 		async listFiles() {
 			return { success: true as const, data: [] };
 		}
-	}
-
-	function itKnownBug(name: string, check: () => Promise<void>): void {
-		it(`KNOWN BUG — ${name}`, async () => {
-			let failure: unknown;
-			try {
-				await check();
-			} catch (error) {
-				failure = error;
-			}
-			expect(failure)
-				.withContext("This defect appears to be fixed: turn this case into a plain it().")
-				.toBeDefined();
-		});
 	}
 
 	let gist: PickerGist;
@@ -1761,13 +1753,761 @@ describe("GistGateway switching gists (audit)", () => {
 		expect(internals.pendingUserPush).toBe(true);
 	});
 
-	itKnownBug("an edit made just before switching gists reaches the gist it was made in", async () => {
+	it("an edit made just before switching gists reaches the gist it was made in", async () => {
 		gateway.addTodo(TodoScope.user, { text: "added right before switching gists" });
 
 		await gateway.selectGist(OTHER_GIST);
 
-		if (!gist.texts(USER_A).includes("added right before switching gists")) {
-			throw new Error(`the old gist's user file holds ${JSON.stringify(gist.texts(USER_A))}`);
+		expect(gist.texts(USER_A)).toContain("added right before switching gists");
+		expect(internals.gistId).toBe(OTHER_GIST);
+	});
+});
+
+/**
+ * A gist switch when the gist being left cannot take what the device holds.
+ *
+ * The "gist not found" banner says the todos are still on this device and offers "Choose a gist",
+ * which used to lead straight into the reset above: the lists were emptied, the cache cleared,
+ * and the device's only copy was gone — through "Create new" too. Now a gist that can never take
+ * them (deleted, unreadable, rejecting) has its lists carried over and added to the files picked
+ * in the new gist. A gist that still could — a dropped connection — refuses the switch instead,
+ * so the edit reaches the gist it was made in.
+ *
+ * Over an account of several gists: the single-gist fake above cannot tell one gist's files from
+ * another's, so it cannot show which gist a list ended up in.
+ */
+describe("GistGateway switching away from a gist that cannot take the lists", () => {
+	const GIST_A = "a".repeat(32);
+	const GIST_B = "b".repeat(32);
+	const CREATED_GIST = "d".repeat(32);
+	const CARRIED = "carriedOver";
+
+	class GistAccount {
+		readonly gists = new Map<string, Record<string, string>>();
+		/** Gists whose reads and writes fail as a dropped connection would. */
+		readonly down = new Set<string>();
+		created = 0;
+		failCreate = false;
+		private gate: Promise<void> | undefined;
+
+		/** Parks every read and write until the returned function is called. */
+		hold(): () => void {
+			let release!: () => void;
+			this.gate = new Promise<void>((resolve) => (release = resolve));
+			return () => {
+				this.gate = undefined;
+				release();
+			};
 		}
+
+		private reach(gistId: string): { files: Record<string, string> } | { failed: SyncResult<never> } {
+			if (this.down.has(gistId)) {
+				return { failed: failure(SyncErrorType.NetworkError, "unreachable", true) };
+			}
+			const files = this.gists.get(gistId);
+			return files
+				? { files }
+				: { failed: failure(SyncErrorType.NotFoundError, "gist not found", false) };
+		}
+
+		async readFile(gistId: string, name: string): Promise<SyncResult<string>> {
+			await macrotask();
+			await this.gate;
+			const reached = this.reach(gistId);
+			if ("failed" in reached) {
+				return reached.failed;
+			}
+			const { files } = reached;
+			if (!(name in files)) {
+				return failure(SyncErrorType.FileNotFoundError, `${name} not found`, false);
+			}
+			return { success: true, data: files[name] };
+		}
+
+		async writeFile(gistId: string, name: string, content: string): Promise<SyncResult<unknown>> {
+			await macrotask();
+			const reached = this.reach(gistId);
+			if ("failed" in reached) {
+				return reached.failed;
+			}
+			reached.files[name] = content;
+			return { success: true, data: {} };
+		}
+
+		async fetchGist(id: string) {
+			return this.gists.has(id)
+				? { success: true as const, data: { id, files: {} } }
+				: failure(SyncErrorType.NotFoundError, "gist not found", false);
+		}
+
+		async listFiles(gistId: string, kind: "user" | "workspace") {
+			if (!this.gists.has(gistId)) {
+				return failure(SyncErrorType.NotFoundError, "gist not found", false);
+			}
+			const names = Object.keys(this.gists.get(gistId) ?? {}).filter((n) =>
+				n.startsWith(`${kind}-`)
+			);
+			return {
+				success: true as const,
+				data: names.map((fullPath) => ({ fullPath, displayName: fullPath, size: 0 })),
+			};
+		}
+
+		async listGists() {
+			return { success: true as const, data: [] };
+		}
+
+		async createGist(_description: string, files: Record<string, string>) {
+			if (this.failCreate) {
+				return failure(SyncErrorType.NetworkError, "could not create", true);
+			}
+			this.created++;
+			this.gists.set(CREATED_GIST, { ...files });
+			return { success: true as const, data: { id: CREATED_GIST } };
+		}
+
+		private parse(gistId: string, name: string): Partial<GlobalGistData & WorkspaceGistData> {
+			return JSON.parse(this.gists.get(gistId)?.[name] ?? "{}") as Partial<
+				GlobalGistData & WorkspaceGistData
+			>;
+		}
+
+		/** The todo texts a file holds — empty for a file that is not there. */
+		texts(gistId: string, name: string): string[] {
+			const parsed = this.parse(gistId, name);
+			return (parsed.userTodos ?? parsed.workspaceTodos ?? []).map((t) => t.text);
+		}
+
+		filesDataOf(gistId: string, name: string): TodoFilesData {
+			return this.parse(gistId, name).filesData ?? {};
+		}
+	}
+
+	/** Keeps what it is given, as IndexedDB does, so a second gateway can restore from it. */
+	class SessionStore {
+		constructor(public stored: Record<string, string | undefined>) {}
+		async getToken() {
+			return this.stored["token"];
+		}
+		async getGistId() {
+			return this.stored["gistId"];
+		}
+		async getUserFile() {
+			return this.stored["userFile"];
+		}
+		async getWorkspaceFile() {
+			return this.stored["workspaceFile"];
+		}
+		async setGistId(id: string) {
+			this.stored["gistId"] = id;
+		}
+		async setUserFile(name: string) {
+			this.stored["userFile"] = name;
+		}
+		async setWorkspaceFile(name: string) {
+			this.stored["workspaceFile"] = name;
+		}
+		async clearFileSelections() {
+			delete this.stored["userFile"];
+			delete this.stored["workspaceFile"];
+		}
+		async clear() {
+			this.stored = {};
+		}
+	}
+
+	let account: GistAccount;
+	let cacheStore: CopyingCacheStore;
+	let session: SessionStore;
+	let gateway: GistGateway;
+	let internals: Internals;
+
+	/** A gateway over the shared account and storage — a second call is a reload. */
+	function open(): { gateway: GistGateway; internals: Internals } {
+		const opened = createGateway(account as unknown as FakeGist, cacheStore);
+		opened.internals.gistId = GIST_A;
+		opened.internals.engine = opened.internals.createEngine(GIST_A);
+		opened.internals.tokenStore = session;
+		opened.internals.viewPreferencesStore = {
+			load: async () => ({}),
+			save: async () => undefined,
+		};
+		return opened;
+	}
+
+	/** Closes the gateway and opens another over the same storage, as a reload does. */
+	async function reload(): Promise<GistConnectionState> {
+		teardown(gateway);
+		({ gateway, internals } = open());
+		return gateway.restoreSession();
+	}
+
+	const connection = (): GistConnectionState =>
+		(gateway as unknown as { _connection: { value: GistConnectionState } })._connection.value;
+	const syncFailure = (): SyncFailureState =>
+		(gateway as unknown as { _syncFailure: { value: SyncFailureState } })._syncFailure.value;
+
+	/** A carried-over record as a switch writes it; `sources` are the files it names. */
+	const carriedRecord = (
+		from: string,
+		carried: Partial<GlobalGistData & WorkspaceGistData>,
+		sources: { user?: string; workspace?: string } = {}
+	) => ({
+		data: {
+			fromGistId: from,
+			fromUserFile: sources.user,
+			fromWorkspaceFile: sources.workspace,
+			user: carried.userTodos ? { userTodos: carried.userTodos } : undefined,
+			workspace: carried.workspaceTodos
+				? { workspaceTodos: carried.workspaceTodos, filesData: {}, filesDataPaths: {} }
+				: undefined,
+		},
+		lastSynced: new Date(0).toISOString(),
+		isDirty: true,
+	});
+
+	beforeEach(async () => {
+		account = new GistAccount();
+		account.gists.set(GIST_A, {
+			[USER_A]: userFile(todo(11, "user A one")),
+			[WS_A]: workspaceFile([todo(31, "ws A one")], { "src/a.ts": [todo(41, "file a one")] }),
+		});
+		account.gists.set(GIST_B, { [USER_B]: userFile(todo(21, "user B one")) });
+		cacheStore = new CopyingCacheStore();
+		session = new SessionStore({ token: "stub-token", gistId: GIST_A });
+		({ gateway, internals } = open());
+		await gateway.chooseFiles(USER_A, WS_A);
+	});
+
+	afterEach(() => teardown(gateway));
+
+	/** Gist A disappears, and this device finds out on its next pull. */
+	async function deleteGistA(): Promise<void> {
+		account.gists.delete(GIST_A);
+		await internals.pullAll();
+	}
+
+	it("brings a deleted gist's lists, and the edit it never took, to the files picked in the next gist", async () => {
+		account.gists.delete(GIST_A);
+		gateway.addTodo(TodoScope.user, { text: "added after the gist was deleted" });
+		await internals.pullAll();
+
+		await gateway.selectGist(GIST_B);
+		expect(connection()).toEqual(
+			jasmine.objectContaining({ phase: "needs-files", carryingOver: true })
+		);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents([
+				"user B one",
+				"user A one",
+				"added after the gist was deleted",
+			])
+		);
+		expect(account.texts(GIST_B, WS_B)).toEqual(["ws A one"]);
+		expect(Object.keys(account.filesDataOf(GIST_B, WS_B))).toEqual(["src/a.ts"]);
+		expect(internals.pendingUserPush).toBe(false);
+		expect(internals.pendingWorkspacePush).toBe(false);
+	});
+
+	it("notices a gist deleted since the last pull, with nothing owed to it", async () => {
+		account.gists.delete(GIST_A);
+
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents(["user B one", "user A one"])
+		);
+		expect(account.texts(GIST_B, WS_B)).toEqual(["ws A one"]);
+	});
+
+	it("carries only the scope whose file cannot be read", async () => {
+		account.gists.get(GIST_A)![USER_A] = "{ not json";
+		await internals.pullAll();
+
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents(["user B one", "user A one"])
+		);
+		// The workspace file was readable and holds its list; nothing of it is brought along.
+		expect(account.texts(GIST_B, WS_B)).toEqual([]);
+	});
+
+	it("carries them into a gist made with Create new", async () => {
+		await deleteGistA();
+		await gateway.changeGist();
+
+		await gateway.createSyncGist();
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(internals.gistId).toBe(CREATED_GIST);
+		expect(account.texts(CREATED_GIST, USER_B)).toEqual(["user A one"]);
+		expect(account.texts(CREATED_GIST, WS_B)).toEqual(["ws A one"]);
+	});
+
+	it("keeps the lists when Create new fails, for the next attempt", async () => {
+		await deleteGistA();
+		await gateway.changeGist();
+		account.failCreate = true;
+
+		await gateway.createSyncGist();
+
+		expect(internals.gistId).toBe(GIST_A);
+		expect(texts(internals.user.todos)).toEqual(["user A one"]);
+		expect(connection()).toEqual(
+			jasmine.objectContaining({ phase: "change-gist", busy: false, message: "could not create" })
+		);
+
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+		expect(account.texts(GIST_B, WS_B)).toEqual(["ws A one"]);
+	});
+
+	it("keeps the carried lists across a reload in the file picker", async () => {
+		await deleteGistA();
+		await gateway.selectGist(GIST_B);
+
+		const restored = await reload();
+		expect(restored).toEqual(
+			jasmine.objectContaining({ phase: "needs-files", carryingOver: true })
+		);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents(["user B one", "user A one"])
+		);
+		expect(account.texts(GIST_B, WS_B)).toEqual(["ws A one"]);
+	});
+
+	it("adds the carried lists once, to the first files picked", async () => {
+		await deleteGistA();
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		await gateway.chooseFiles(USER_B, WS_C);
+
+		expect(texts(internals.workspace.todos)).toEqual([]);
+		expect(account.texts(GIST_B, WS_C)).toEqual([]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("drops a carried record left behind once files were picked, rather than adding it again", async () => {
+		await deleteGistA();
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+		// As if the app was closed between saving the selection and removing the record.
+		await cacheStore.save(CARRIED, carriedRecord(GIST_A, { workspaceTodos: [todo(31, "ws A one")] }));
+
+		await reload();
+		await gateway.chooseFiles(USER_B, WS_C);
+
+		expect(account.texts(GIST_B, WS_C)).toEqual([]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("keeps the part of a record whose file was not saved yet", async () => {
+		// Closed between saving the user file and the workspace file: the user part is in USER_B's
+		// cache entry, written there before either was saved, as chooseFiles does.
+		session.stored = { token: "stub-token", gistId: GIST_B, userFile: USER_B };
+		await cacheStore.save(`gistCache_global_${USER_B}`, {
+			data: { userTodos: [todo(11, "user A one")] },
+			lastSynced: new Date(0).toISOString(),
+			isDirty: true,
+		});
+		await cacheStore.save(
+			CARRIED,
+			carriedRecord(GIST_A, {
+				userTodos: [todo(11, "user A one")],
+				workspaceTodos: [todo(31, "ws A one")],
+			})
+		);
+
+		const restored = await reload();
+		expect(restored).toEqual(
+			jasmine.objectContaining({ phase: "needs-files", carryingOver: true })
+		);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		// The user part had gone into its file before the selection was saved; it is there once.
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents(["user B one", "user A one"])
+		);
+		expect(account.texts(GIST_B, WS_B)).toEqual(["ws A one"]);
+	});
+
+	it("drops a record from a switch cut off before it cleared anything", async () => {
+		await cacheStore.save(CARRIED, carriedRecord(GIST_A, { userTodos: [todo(11, "user A one")] }));
+
+		const restored = await reload();
+
+		expect(restored).toEqual(jasmine.objectContaining({ phase: "connected", userFile: USER_A }));
+		expect(texts(internals.user.todos)).toEqual(["user A one"]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("finishes a switch cut off after it dropped the files, back on the gist picker", async () => {
+		await deleteGistA();
+		// Closed after the record was written and the selection cleared, before the new gist
+		// was saved — the old gist's cache entries may or may not have gone yet.
+		await cacheStore.save(
+			CARRIED,
+			carriedRecord(GIST_A, {
+				userTodos: [todo(11, "user A one")],
+				workspaceTodos: [todo(31, "ws A one")],
+			})
+		);
+		await session.clearFileSelections();
+
+		const restored = await reload();
+		expect(restored).toEqual(jasmine.objectContaining({ phase: "change-gist" }));
+		expect(await cacheStore.load(`gistCache_global_${USER_A}`)).toBeUndefined();
+		await until(() => !(connection() as { busy?: boolean }).busy, "the gist list to load");
+
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents(["user B one", "user A one"])
+		);
+		expect(account.texts(GIST_B, WS_B)).toEqual(["ws A one"]);
+	});
+
+	it("still carries the lists when their record cannot be written, and says so", async () => {
+		await deleteGistA();
+		cacheStore.failingSaves.add(CARRIED);
+
+		await gateway.selectGist(GIST_B);
+
+		expect(syncFailure()).toEqual(
+			jasmine.objectContaining({
+				phase: "failing",
+				message: jasmine.stringContaining("brought over from the previous gist"),
+			})
+		);
+		await gateway.chooseFiles(USER_B, WS_B);
+		expect(account.texts(GIST_B, WS_B)).toEqual(["ws A one"]);
+	});
+
+	it("does not switch lists when the carried ones cannot be written to the file picked", async () => {
+		await deleteGistA();
+		await gateway.selectGist(GIST_B);
+		cacheStore.failingSaves.add(`gistCache_global_${USER_B}`);
+
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(internals.userFile).toBeUndefined();
+		expect(connection()).toEqual(
+			jasmine.objectContaining({ phase: "needs-files", carryingOver: true })
+		);
+		expect(syncFailure()).toEqual(
+			jasmine.objectContaining({ message: jasmine.stringContaining("not switched") })
+		);
+
+		cacheStore.failingSaves.clear();
+		await gateway.chooseFiles(USER_B, WS_B);
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents(["user B one", "user A one"])
+		);
+	});
+
+	it("takes the user lists back out when only the workspace ones fail to be written", async () => {
+		await deleteGistA();
+		await gateway.selectGist(GIST_B);
+		cacheStore.failingSaves.add(`gistCache_workspace_${WS_B}`);
+
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(internals.userFile).toBeUndefined();
+		expect(await cacheStore.load(`gistCache_global_${USER_B}`)).toBeUndefined();
+
+		// A different user file on the next try, and the first one never gets the lists.
+		cacheStore.failingSaves.clear();
+		await gateway.chooseFiles(USER_A, WS_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+		expect(account.texts(GIST_B, USER_B)).toEqual(["user B one"]);
+	});
+
+	it("does not add a leftover record's lists again to a file that has synced since", async () => {
+		await deleteGistA();
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+		gateway.deleteTodo(TodoScope.user, { id: 11 });
+		await internals.pullAll();
+		// The record outlived its lists going into USER_B, its removal having failed.
+		await cacheStore.save(CARRIED, carriedRecord(GIST_A, { userTodos: [todo(11, "user A one")] }));
+
+		await reload();
+		await internals.pullAll();
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(["user B one"]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("adds carried lists to a picked file that already synced, without deleting what it holds", async () => {
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+		// Lists still waiting for a user file, and USER_B picked for them has a baseline.
+		await cacheStore.save(CARRIED, carriedRecord(GIST_A, { userTodos: [todo(11, "user A one")] }));
+		delete session.stored["userFile"];
+
+		expect(await reload()).toEqual(
+			jasmine.objectContaining({ phase: "needs-files", carryingOver: true })
+		);
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(
+			jasmine.arrayWithExactContents(["user B one", "user A one"])
+		);
+	});
+
+	it("does not write a leftover record into a file picked since, which never synced", async () => {
+		// The lists went into USER_B; the record outlived that, and a new user file has been picked
+		// whose first pull never got through, so it has no cache entry.
+		session.stored = {
+			token: "stub-token",
+			gistId: GIST_B,
+			userFile: "user-c.json",
+			workspaceFile: WS_B,
+		};
+		await cacheStore.save(CARRIED, carriedRecord(GIST_A, { userTodos: [todo(11, "user A one")] }));
+
+		await reload();
+		await internals.pullAll();
+
+		expect(texts(internals.user.todos)).toEqual([]);
+		expect(account.texts(GIST_B, "user-c.json")).toEqual([]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("puts the lists back in a file that never synced, when the record is their only copy", async () => {
+		// A file with no cache entry, as one picked new and never pushed has.
+		await cacheStore.delete(`gistCache_global_${USER_A}`);
+		await cacheStore.save(
+			CARRIED,
+			carriedRecord(
+				GIST_A,
+				{ userTodos: [todo(11, "user A one"), todo(12, "only in the record")] },
+				{ user: USER_A }
+			)
+		);
+
+		await reload();
+
+		expect(texts(internals.user.todos)).toEqual(["user A one", "only in the record"]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("puts a leftover record back only in the file it came from", async () => {
+		// Cut off before anything was cleared, the record's removal then failed, and a new user
+		// file has been picked on the same gist whose first pull never got through.
+		session.stored = {
+			token: "stub-token",
+			gistId: GIST_A,
+			userFile: "user-v.json",
+			workspaceFile: WS_A,
+		};
+		await cacheStore.save(
+			CARRIED,
+			carriedRecord(GIST_A, { userTodos: [todo(11, "user A one")] }, { user: USER_A })
+		);
+
+		await reload();
+		await internals.pullAll();
+
+		expect(texts(internals.user.todos)).toEqual([]);
+		expect(account.texts(GIST_A, "user-v.json")).toEqual([]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("removes a leftover record before a switch that carries nothing clears the selections", async () => {
+		const GIST_C = "c".repeat(32);
+		account.gists.set(GIST_C, {});
+		await gateway.selectGist(GIST_B);
+		await gateway.chooseFiles(USER_B, WS_B);
+		// Its lists went into USER_B, but its removal failed.
+		await cacheStore.save(CARRIED, carriedRecord(GIST_A, { userTodos: [todo(11, "user A one")] }));
+		let recordWhenCleared: unknown = "never cleared";
+		const clearFileSelections = session.clearFileSelections.bind(session);
+		session.clearFileSelections = async () => {
+			recordWhenCleared = await cacheStore.load(CARRIED);
+			return clearFileSelections();
+		};
+
+		await gateway.selectGist(GIST_C);
+
+		expect(recordWhenCleared).toBeUndefined();
+	});
+
+	it("does not restore a session that a disconnect waiting in the queue is ending", async () => {
+		const release = account.hold();
+		const inFlight = internals.pullAll();
+		await tick();
+		const disconnecting = gateway.disconnectGitHub();
+		// The error screen's Retry, pressed while the disconnect waits behind the pull.
+		const restoring = gateway.restoreSession();
+		await tick();
+
+		release();
+		await Promise.all([inFlight, disconnecting]);
+
+		expect((await restoring).phase).toBe("disconnected");
+		expect(internals.token).toBeUndefined();
+		expect(internals.pollTimer).toBeUndefined();
+	});
+
+	it("ends the stored session only once a disconnect has cleared its cache", async () => {
+		// Otherwise a reload in between finds no session over the old cache and carried lists,
+		// and the next connection takes them up as its own.
+		await deleteGistA();
+		await gateway.selectGist(GIST_B);
+		const order: string[] = [];
+		const clearCache = cacheStore.clear.bind(cacheStore);
+		cacheStore.clear = async (keep) => {
+			order.push("cache");
+			return clearCache(keep);
+		};
+		const clearSession = session.clear.bind(session);
+		session.clear = async () => {
+			order.push("session");
+			return clearSession();
+		};
+
+		await gateway.disconnectGitHub();
+
+		expect(order).toEqual(["cache", "session"]);
+		expect(await cacheStore.load(CARRIED)).toBeUndefined();
+	});
+
+	it("names the files the lists came from only until the cache is cleared", async () => {
+		const saved: Array<{ fromUserFile?: string; fromWorkspaceFile?: string }> = [];
+		const save = cacheStore.save.bind(cacheStore);
+		cacheStore.save = async (key, cache) => {
+			if (key === CARRIED) {
+				saved.push(structuredClone(cache.data) as { fromUserFile?: string });
+			}
+			return save(key, cache);
+		};
+		await deleteGistA();
+
+		await gateway.selectGist(GIST_B);
+
+		expect(saved[0]).toEqual(
+			jasmine.objectContaining({ fromUserFile: USER_A, fromWorkspaceFile: WS_A })
+		);
+		const stored = (await cacheStore.load<{ fromUserFile?: string }>(CARRIED))?.data;
+		expect(stored).toBeDefined();
+		expect(stored?.fromUserFile).toBeUndefined();
+	});
+
+	it("control: leaving a gist that holds everything carries nothing", async () => {
+		await gateway.selectGist(GIST_B);
+		expect(connection()).toEqual(jasmine.objectContaining({ phase: "needs-files" }));
+		expect((connection() as { carryingOver?: boolean }).carryingOver).toBeUndefined();
+		await gateway.chooseFiles(USER_B, WS_B);
+
+		expect(account.texts(GIST_B, USER_B)).toEqual(["user B one"]);
+		expect(account.texts(GIST_B, WS_B)).toEqual([]);
+	});
+
+	it("refuses to switch while an edit could still reach the gist it was made in", async () => {
+		account.down.add(GIST_A);
+		gateway.addTodo(TodoScope.user, { text: "made while offline" });
+		await gateway.changeGist();
+
+		await gateway.selectGist(GIST_B);
+
+		expect(internals.gistId).toBe(GIST_A);
+		expect(internals.userFile).toBe(USER_A);
+		expect(texts(internals.user.todos)).toContain("made while offline");
+		expect(connection()).toEqual(
+			jasmine.objectContaining({
+				phase: "change-gist",
+				busy: false,
+				message: jasmine.stringContaining("not switched"),
+			})
+		);
+		// The session goes on, and so does its poll.
+		expect(internals.pollTimer).toBeDefined();
+
+		// Once gist A answers again, the same switch pushes the edit there first.
+		account.down.delete(GIST_A);
+		await gateway.selectGist(GIST_B);
+
+		expect(account.texts(GIST_A, USER_A)).toContain("made while offline");
+		expect(internals.gistId).toBe(GIST_B);
+		// No files are picked in gist B yet, so there is nothing to poll.
+		expect(internals.pollTimer).toBeUndefined();
+	});
+
+	it("switches when the old gist is out of reach but owed nothing", async () => {
+		account.down.add(GIST_A);
+		await gateway.changeGist();
+
+		await gateway.selectGist(GIST_B);
+
+		expect(internals.gistId).toBe(GIST_B);
+		expect(connection()).toEqual(jasmine.objectContaining({ phase: "needs-files" }));
+		expect((connection() as { carryingOver?: boolean }).carryingOver).toBeUndefined();
+	});
+
+	it("declines a conflict found while settling, rather than asking behind the gist picker", async () => {
+		// Visible, so only the switch in progress keeps the dialog shut.
+		const original = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+		Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+		const asked: unknown[] = [];
+		const sub = gateway.conflictPrompt.subscribe((request) => request && asked.push(request));
+		try {
+			gateway.editTodo(TodoScope.user, { id: 11, newText: "edited on this device" });
+			account.gists.get(GIST_A)![USER_A] = userFile(todo(11, "edited on the other device"));
+			await gateway.changeGist();
+
+			expect(await settles(gateway.selectGist(GIST_B))).toBe("done");
+
+			expect(asked).toEqual([]);
+			expect(internals.gistId).toBe(GIST_A);
+			expect(connection()).toEqual(
+				jasmine.objectContaining({ message: jasmine.stringContaining("not switched") })
+			);
+		} finally {
+			sub.unsubscribe();
+			delete (document as unknown as Record<string, unknown>)["visibilityState"];
+			if (original) {
+				Object.defineProperty(Document.prototype, "visibilityState", original);
+			}
+		}
+	});
+
+	it("refuses on a dropped connection even after an earlier failure no retry could fix", async () => {
+		// A damaged file, reported, then repaired on github.com.
+		const good = account.gists.get(GIST_A)![USER_A];
+		account.gists.get(GIST_A)![USER_A] = "{ not json";
+		await internals.pullAll();
+		expect(syncFailure()).toEqual(jasmine.objectContaining({ kind: "data" }));
+		account.gists.get(GIST_A)![USER_A] = good;
+		account.down.add(GIST_A);
+		await gateway.changeGist();
+
+		await gateway.selectGist(GIST_B);
+
+		expect(internals.gistId).toBe(GIST_A);
+		expect(connection()).toEqual(
+			jasmine.objectContaining({ message: jasmine.stringContaining("not switched") })
+		);
+	});
+
+	it("does not create a gist for a switch it refuses", async () => {
+		account.down.add(GIST_A);
+		gateway.addTodo(TodoScope.user, { text: "made while offline" });
+		await gateway.changeGist();
+
+		await gateway.createSyncGist();
+
+		expect(account.created).toBe(0);
+		expect(internals.gistId).toBe(GIST_A);
+		expect(texts(internals.user.todos)).toContain("made while offline");
 	});
 });

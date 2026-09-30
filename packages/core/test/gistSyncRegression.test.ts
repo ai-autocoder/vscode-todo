@@ -20,6 +20,7 @@ import {
 	serialize,
 	isEqual,
 	Todo,
+	gistCacheKey,
 } from "../src/index";
 
 const GIST_ID = "0123456789abcdef0123456789abcdef";
@@ -497,6 +498,20 @@ describe("warm cache + cold in-memory state (the reload wipe)", () => {
 		await newEngine(gist, store).reconcileUser(USER_FILE, { userTodos: [] });
 
 		expect(gist.user().userTodos).toHaveLength(0);
+	});
+
+	it("keeps each file's entry under the key gistCacheKey names", async () => {
+		const gist = new FakeGist();
+		gist.seed(USER_FILE, { userTodos: [todo(1, "a")] });
+		gist.seed(WS_FILE, { workspaceTodos: [todo(2, "b")], filesData: {}, filesDataPaths: {} });
+		const store = new PersistentCacheStore();
+		const engine = newEngine(gist, store);
+
+		await engine.reconcileUser(USER_FILE, { userTodos: [] });
+		await engine.reconcileWorkspace(WS_FILE, { workspaceTodos: [], filesData: {}, filesDataPaths: {} });
+
+		expect(await store.load(gistCacheKey("global", USER_FILE))).toBeDefined();
+		expect(await store.load(gistCacheKey("workspace", WS_FILE))).toBeDefined();
 	});
 
 	it("preserves the user file when the caller rehydrates from the cache", async () => {
