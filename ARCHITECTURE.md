@@ -512,8 +512,10 @@ Still duplicated outside core:
 
 - [`GitHubApiClient`](src/sync/GitHubApiClient.ts) and [`GistClient`](packages/core/src/gistClient.ts)
 - the reducers in [`store.ts`](src/todo/store.ts) and [`todoReducers.ts`](packages/core/src/todoReducers.ts)
-- [`importer.ts`](src/todo/importer.ts) and [`exporter.ts`](src/todo/exporter.ts) versus [`importExport.ts`](packages/core/src/importExport.ts)
+- [`exporter.ts`](src/todo/exporter.ts) versus the export half of [`importExport.ts`](packages/core/src/importExport.ts)
 - [`tagUtils.ts`](src/todo/tagUtils.ts), byte-identical in both places
+
+The importer has moved: [`importer.ts`](src/todo/importer.ts) runs core's parsing and merge and keeps only the VS Code pickers and state writes. The merge normalizes only the imported items and overlays each onto the stored todo with its id, applying just the fields the file carries. A todo the file does not name comes back unchanged, so an import cannot turn it into an `edit-edit` conflict on the next sync. It used to re-normalize the whole merged list, which gave untouched todos fields like `collapsed: false` that then read as local edits.
 
 ## 14. MCP server
 
@@ -551,12 +553,12 @@ Four suites on four runners guard four layers. CI runs them all, plus both Angul
 
 | Suite | Runner | Cases | Protects |
 | --- | --- | --- | --- |
-| [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 384 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export; the gist client and device flow |
+| [`packages/core/test`](packages/core/test/gistSyncEngine.test.ts) | Vitest | 393 | Merge rules; every engine path (seed, bootstrap, verified write, edits during a sync, resolver); IndexedDB stores; reducers; import/export; the gist client and device flow |
 | `webview-ui/src/**/*.spec.ts` | Karma + Jasmine, headless Chrome | 320 | Shared components, `GistGateway` (including list switching and mid-sync edits over the real engine), the conflict prompt and review, PWA shell, which window may send the app messages, what a diagram's `click` lines can do |
 | [`src/test`](src/test/sync/syncManagerConcurrency.test.ts) | Mocha in real VS Code (`@vscode/test`) | 239 | `SyncManager` concurrency and status, overlapping storage writes, cache-key compatibility, cross-peer equality, truncation, MCP request gates, the MCP handshake while the extension host thread is blocked, MCP worker restarts and overlapping config changes, polling visibility |
 | [`worker/test`](worker/test/index.test.ts) | Node's built-in `node:test` (Node 22.18+) | 18 | The CORS proxy's method, path, origin and client-id gates, and what it forwards |
 
-Counts are declared test cases (`it(`/`test(` call sites, including `it.fails` and the known-bug helpers; none skipped) as of 28 Sep 2026. Some call sites run more than once: the webview's model-based walk declares one case per seed, 24 in all, so Karma reports 343; four `it.each` tables in core expand to 398 Vitest cases. The `auditFindings` suites (and the `it.fails`/`KNOWN BUG` cases elsewhere) reproduce defects from the September 2026 audit, which are tracked in the workspace todo list under the tag `audit-2026-09`. Each open defect's case passes while the defect is present and fails once it is fixed, which is the cue to turn it into a plain regression test; the suites keep those regression tests alongside the open cases. The worker's 18 call sites run 26 cases (two loop over methods and paths), three of them `todo`s for known gaps in its client-id allowlist.
+Counts are declared test cases (`it(`/`test(` call sites, including `it.fails` and the known-bug helpers; none skipped) as of 30 Sep 2026. Some call sites run more than once: the webview's model-based walk declares one case per seed, 24 in all, so Karma reports 343; four `it.each` tables in core expand to 407 Vitest cases. The `auditFindings` suites (and the `it.fails`/`KNOWN BUG` cases elsewhere) reproduce defects from the September 2026 audit, which are tracked in the workspace todo list under the tag `audit-2026-09`. Each open defect's case passes while the defect is present and fails once it is fixed, which is the cue to turn it into a plain regression test; the suites keep those regression tests alongside the open cases. The worker's 18 call sites run 26 cases (two loop over methods and paths), three of them `todo`s for known gaps in its client-id allowlist.
 
 **Regression tests follow the bugs.**
 

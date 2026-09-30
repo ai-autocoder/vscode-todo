@@ -46,5 +46,5 @@ npm test         # vitest
 > content read as modified and raised conflicts whose "remote" side was the unchanged local
 > value. Do not reintroduce a host-local copy.
 >
-> Still duplicated, and worth consolidating next: `importExport.ts` (peer of the extension's
-> `src/todo/exporter.ts` / `importer.ts`).
+> Still duplicated, and worth consolidating next: the export half of `importExport.ts` (peer
+> of the extension's `src/todo/exporter.ts`). The extension's importer already runs this one.

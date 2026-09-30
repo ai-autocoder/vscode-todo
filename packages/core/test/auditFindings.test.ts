@@ -28,6 +28,7 @@ import {
 	mergeImport,
 	parseMarkdownImport,
 	serialize,
+	threeWayMerge,
 	todoMutations,
 	TodoSliceState,
 } from "../src/index";
@@ -168,12 +169,13 @@ describe("AUDIT: baseline must be what was written, not what the caller's object
 
 describe("AUDIT: import normalizes the whole merged list, not just the imported items", () => {
 	/**
-	 * `processAndMergeTodos` runs `initMissingTodoProperties` over every todo after the merge, so
-	 * existing todos gain `collapsed: false` (neither reducer's `addTodo` sets it), have their text
-	 * re-trimmed, and so on. The sync merge compares with the canonical `isEqual`, so each such
-	 * todo reads as a local edit: an unrelated import turns every todo the other device changed
-	 * into an `edit-edit` conflict, and a declined or policy-settled one reverts that change.
-	 * The extension's copy in src/todo/importer.ts has the same code.
+	 * Regression tests for an import rewriting todos it did not name. `processAndMergeTodos` ran
+	 * `initMissingTodoProperties` over every todo after the merge, so existing todos gained
+	 * `collapsed: false` (neither reducer's `addTodo` sets it), had their text re-trimmed, and so
+	 * on. The sync merge compares with the canonical `isEqual`, so each such todo read as a local
+	 * edit: an unrelated import turned every todo the other device changed into an `edit-edit`
+	 * conflict, and a declined or policy-settled one reverted that change. Only the imported items
+	 * are normalized now, and the extension's importer runs this same code.
 	 */
 	const fromReducers = (): Todo[] => {
 		const state: TodoSliceState = { todos: [], lastActionType: "", numberOfTodos: 0, numberOfNotes: 0 };
@@ -184,7 +186,7 @@ describe("AUDIT: import normalizes the whole merged list, not just the imported 
 	};
 	const stateWith = (userTodos: Todo[]) => ({ userTodos, workspaceTodos: [], filesData: {}, filesDataPaths: {} });
 
-	it.fails("re-importing the app's own export changes nothing", () => {
+	it("re-importing the app's own export changes nothing", () => {
 		const existing = fromReducers();
 		const exported = JSON.parse(JSON.stringify({ user: existing }));
 
@@ -193,12 +195,39 @@ describe("AUDIT: import normalizes the whole merged list, not just the imported 
 		expect(result.changed.user).toBe(false);
 	});
 
-	it.fails("importing one new todo leaves the existing ones byte-identical", () => {
+	it("importing one new todo leaves the existing ones byte-identical", () => {
 		const existing = fromReducers();
 
 		const result = mergeImport({ user: [{ text: "brand new" }] }, stateWith(existing));
 
-		expect(result.userTodos.slice(0, 2)).toEqual(existing);
+		expect(serialize(result.userTodos.slice(0, 2))).toBe(serialize(existing));
+		expect(JSON.stringify(result.userTodos.slice(0, 2))).toBe(JSON.stringify(existing));
+	});
+
+	it("leaves a file's other todos byte-identical when the import adds to that file", () => {
+		const existing = fromReducers();
+		const state = {
+			userTodos: [],
+			workspaceTodos: [],
+			filesData: { "/a.ts": existing },
+			filesDataPaths: {},
+		};
+
+		const result = mergeImport({ files: { "/a.ts": [{ text: "brand new" }] } }, state);
+
+		expect(result.filesData["/a.ts"]).toHaveLength(3);
+		expect(JSON.stringify(result.filesData["/a.ts"].slice(0, 2))).toBe(JSON.stringify(existing));
+	});
+
+	it("an import does not turn the other device's edit into a conflict", () => {
+		const base = fromReducers();
+		const local = mergeImport({ user: [{ text: "brand new" }] }, stateWith(base)).userTodos;
+		const remote = base.map((t, i) => (i === 0 ? { ...t, text: "one, edited elsewhere" } : t));
+
+		const { conflicts, autoMerged } = threeWayMerge(base, local, remote);
+
+		expect(conflicts).toEqual([]);
+		expect(autoMerged.map((t) => t.text)).toEqual(["one, edited elsewhere", "two", "brand new"]);
 	});
 
 	/**
@@ -225,7 +254,7 @@ describe("AUDIT: the markdown task matcher is not anchored", () => {
 	/**
 	 * `\s*\d+. \[[ xX]\] ` has no `^` and an unescaped `.`, so a note that merely contains a
 	 * digit, any character, a space and a checkbox is read as a task and the match is cut out of
-	 * its text. Same regex in src/todo/importer.ts.
+	 * its text.
 	 */
 	it.fails("keeps a line that only mentions a checkbox as a note", () => {
 		const parsed = parseMarkdownImport("Pay 5€ [ ] later", "User", "");

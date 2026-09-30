@@ -1,14 +1,12 @@
 /**
- * NOTE: the pure half of this file (markdown formatting/parsing, shape validation, and the
- * id-keyed merge) is duplicated in `packages/core/src/importExport.ts`, which the standalone
- * PWA runs — it has no VS Code host for the dialogs and `fs` calls below. An import must
- * produce the same result on both surfaces, so a change to the logic here needs the same
- * change there. `packages/core/test/importExport.test.ts` mirrors
- * `src/test/suite/todo/importer.test.ts` so a divergence fails visibly.
+ * NOTE: the pure half of this file (building the export object and formatting markdown) is
+ * duplicated in `packages/core/src/importExport.ts`, which the standalone PWA runs — it has no
+ * VS Code host for the dialogs and `fs` calls below. An export must produce the same result on
+ * both surfaces, so a change to the logic here needs the same change there.
  *
- * The sync half of the codebase no longer works this way — it was consolidated into
- * packages/core, which the extension now compiles in (see `src/core.ts`). Import/export is the
- * remaining duplicated pair and should follow.
+ * The sync half of the codebase and the importer no longer work this way — they run
+ * packages/core, which the extension compiles in (see `src/core.ts`). The exporter should
+ * follow.
  */
 import path = require("node:path");
 import fs = require("fs");

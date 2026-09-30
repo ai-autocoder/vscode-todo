@@ -1001,7 +1001,7 @@ type ParseResult<T> = { ok: true; data: T } | { ok: false; reason: string };
  *
  * The model says `id: number`, but for years the import path replaced only a *falsy* id, so a
  * string in a hand-written import file survived onto the gist. Files written by those builds are
- * still out there, which is what makes the tolerance necessary — `initMissingTodoProperties` no
+ * still out there, which is what makes the tolerance necessary — the import merge no
  * longer mints them, but it cannot go back and fix the ones already written. A string keys a
  * `Map` perfectly well and both peers read it the same way, whereas rejecting one would kill the
  * sync permanently, with no recovery — the offending todo is in local state too, so restoring

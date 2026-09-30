@@ -1,14 +1,8 @@
 /**
- * NOTE: the pure half of this file (markdown formatting/parsing, shape validation, and the
- * id-keyed merge) is duplicated in `packages/core/src/importExport.ts`, which the standalone
- * PWA runs — it has no VS Code host for the dialogs and `fs` calls below. An import must
- * produce the same result on both surfaces, so a change to the logic here needs the same
- * change there. `packages/core/test/importExport.test.ts` mirrors
- * `src/test/suite/todo/importer.test.ts` so a divergence fails visibly.
- *
- * The sync half of the codebase no longer works this way — it was consolidated into
- * packages/core, which the extension now compiles in (see `src/core.ts`). Import/export is the
- * remaining duplicated pair and should follow.
+ * The VS Code half of import: the file and scope pickers, reading the file, and writing the
+ * result into the store and the workspace memento. Parsing, shape validation and the id-keyed
+ * merge are `packages/core/src/importExport.ts`, the same code the PWA runs, so an import
+ * produces the same result on both surfaces.
  */
 import path = require("node:path");
 import fs = require("fs/promises");
@@ -16,6 +10,18 @@ import { EnhancedStore } from "@reduxjs/toolkit";
 import * as vscode from "vscode";
 import { ExtensionContext } from "vscode";
 import LogChannel from "../utilities/LogChannel";
+import {
+	filterValidFilesData,
+	initMissingTodoProperties,
+	isImportObject as isImportObjectShape,
+	isTodoFilesDataPartialInput,
+	isTodoFilesDataPathsInput,
+	isTodoPartialInput,
+	mergeImportedFilesDataPaths,
+	parseMarkdownImport,
+	processAndMergeFilesData,
+	processAndMergeTodos,
+} from "../core";
 import {
 	currentFileActions,
 	editorFocusAndRecordsActions,
@@ -27,24 +33,18 @@ import {
 	ImportObject,
 	MarkdownImportScopes,
 	StoreState,
-	Todo,
 	TodoFilesData,
 	TodoFilesDataPartialInput,
 	TodoFilesDataPaths,
-	TodoPartialInput,
 } from "./todoTypes";
 import {
 	ensureFilesDataPaths,
-	generateUniqueId,
 	getWorkspacePath,
 	getWorkspaceFilesWithRecords,
 	isEqual,
-	normalizeAbsolutePath,
-	normalizeRelativePath,
 	resolveFilesDataKey,
 	sortByFileName,
 } from "./todoUtils";
-import { normalizeTags } from "./tagUtils";
 
 async function importCommand(
 	context: ExtensionContext,
@@ -114,7 +114,7 @@ async function importCommand(
 		let filesDataPaths = ensureFilesDataPaths(sortedResult, previousPaths, getWorkspacePath());
 
 		if (hasFilesDataPaths) {
-			filesDataPaths = mergeFilesDataPaths(
+			filesDataPaths = mergeImportedFilesDataPaths(
 				filesDataPaths,
 				rawImportData.filesDataPaths as TodoFilesDataPaths
 			);
@@ -231,306 +231,20 @@ function parseData({
 		case ImportFormats.JSON:
 			return JSON.parse(data);
 		case ImportFormats.MARKDOWN:
-			return parseMarkdown(data, scope as MarkdownImportScopes, state);
+			return parseMarkdownImport(data, scope as MarkdownImportScopes, state.currentFile.filePath);
 		default:
 			return undefined;
 	}
 }
 
-function isTodoPartialInput(array: any): array is TodoPartialInput[] {
-	return Array.isArray(array) && array.some(isTodo);
-}
-
-function isTodo(todo: any): todo is TodoPartialInput {
-	return todo && typeof todo === "object" && "text" in todo;
-}
-
-function isTodoFilesDataPartialInput(files: any): files is TodoFilesDataPartialInput {
-	if (typeof files !== "object" || files === null) {
-		return false;
-	}
-	return Object.entries(files).some(
-		([key, value]) => key.trim() !== "" && isTodoPartialInput(value)
-	);
-}
-
-function isTodoFilesDataPathsInput(paths: any): paths is TodoFilesDataPaths {
-	if (typeof paths !== "object" || paths === null) {
-		return false;
-	}
-
-	return Object.entries(paths).some(([key, value]) => {
-		if (key.trim() === "" || typeof value !== "object" || value === null) {
-			return false;
-		}
-
-		const entry = value as { absPaths?: unknown; relPaths?: unknown };
-		const absPaths = Array.isArray(entry.absPaths)
-			? entry.absPaths.filter((item) => typeof item === "string" && item.trim())
-			: [];
-		const relPaths = Array.isArray(entry.relPaths)
-			? entry.relPaths.filter((item) => typeof item === "string" && item.trim())
-			: [];
-
-		return absPaths.length > 0 || relPaths.length > 0;
-	});
-}
-
-function mergeFilesDataPaths(
-	current: TodoFilesDataPaths,
-	incoming: TodoFilesDataPaths
-): TodoFilesDataPaths {
-	const merged: TodoFilesDataPaths = { ...current };
-	const addUniquePath = (
-		list: string[],
-		value: string,
-		normalize: (value: string) => string
-	) => {
-		const normalizedValue = normalize(value);
-		if (list.some((item) => normalize(item) === normalizedValue)) {
-			return;
-		}
-		list.push(value);
-	};
-
-	for (const [primaryKey, entry] of Object.entries(incoming)) {
-		if (!entry || typeof entry !== "object") {
-			continue;
-		}
-
-		const absPaths = Array.isArray(entry.absPaths) ? entry.absPaths : [];
-		const relPaths = Array.isArray(entry.relPaths) ? entry.relPaths : [];
-		const existing = merged[primaryKey];
-		const nextEntry = {
-			absPaths: existing?.absPaths ? [...existing.absPaths] : [],
-			relPaths: existing?.relPaths ? [...existing.relPaths] : [],
-		};
-
-		for (const absPath of absPaths) {
-			if (typeof absPath === "string" && absPath.trim()) {
-				addUniquePath(nextEntry.absPaths, absPath, normalizeAbsolutePath);
-			}
-		}
-
-		for (const relPath of relPaths) {
-			if (typeof relPath === "string" && relPath.trim()) {
-				addUniquePath(nextEntry.relPaths, relPath, normalizeRelativePath);
-			}
-		}
-
-		merged[primaryKey] = nextEntry;
-	}
-
-	return merged;
-}
-
-function isImportObject(parsedData: any): parsedData is ImportObject {
+/** Core's shape check, plus the error the extension has always shown for a non-object. */
+function isImportObject(parsedData: unknown): parsedData is ImportObject {
 	if (typeof parsedData !== "object" || parsedData === null) {
 		vscode.window.showErrorMessage("Imported data is not in the correct format");
 		LogChannel.log("Imported data is not in the correct format");
 		return false;
 	}
-	return (
-		(parsedData.user !== undefined && isTodoPartialInput(parsedData.user)) ||
-		(parsedData.workspace !== undefined && isTodoPartialInput(parsedData.workspace)) ||
-		(parsedData.files !== undefined && isTodoFilesDataPartialInput(parsedData.files)) ||
-		(parsedData.filesDataPaths !== undefined &&
-			isTodoFilesDataPathsInput(parsedData.filesDataPaths))
-	);
-}
-
-function filterValidTodos(todos: TodoPartialInput[]): TodoPartialInput[] {
-	return todos.filter((todo) => todo?.text?.trim());
-}
-
-function initMissingTodoProperties(validImportData: TodoPartialInput[]): Todo[] {
-    return validImportData.map((todo) => {
-        // Sanitize any imported tags through the shared rules. `tags` is set last so it
-        // always overrides whatever `...todo` spread in: a valid normalized array, or
-        // undefined when nothing valid remains (which JSON.stringify then omits) — never
-        // the raw, unsanitized input.
-        const tags = normalizeTags(todo.tags);
-        return {
-            ...todo,
-            // Replaced unless it is genuinely a number. Only a *falsy* id used to be replaced, so a
-            // string id in a hand-written import file survived all the way onto the gist — where the
-            // model, the gist schema and the MCP tools all declare `id: number`, and the MCP output
-            // schema then rejects the whole page rather than the one item. Kept in step with the
-            // sibling copy in packages/core/src/importExport.ts.
-            id: typeof todo.id === "number" && Number.isFinite(todo.id)
-                ? todo.id
-                : generateUniqueId(validImportData),
-            text: todo.text.trim(),
-            completed: todo.completed ?? false,
-            isMarkdown: todo.isMarkdown ?? false,
-            isNote: todo.isNote ?? false,
-            collapsed: todo.collapsed ?? false,
-            creationDate: todo.creationDate ?? new Date().toISOString(),
-            completionDate: todo.completed ? (todo.completionDate ?? new Date().toISOString()) : undefined,
-            tags: tags.length > 0 ? tags : undefined,
-        };
-    });
-}
-
-function mergeTodoArrays(
-	previousTodos: Todo[],
-	importedTodos: TodoPartialInput[]
-): TodoPartialInput[] {
-	const lookupMap = new Map<number, Todo>();
-	previousTodos.forEach((todo) => {
-		lookupMap.set(todo.id, { ...todo });
-	});
-	importedTodos.forEach((todo) => {
-		// Check if the ID is present in the imported todo
-		if (!todo.id) {
-			todo.id = generateUniqueId(Array.from(lookupMap.values()));
-		}
-		if (lookupMap.has(todo.id)) {
-			const existingTodo = lookupMap.get(todo.id)!;
-			// If the ID exists in the lookup map, merge properties
-			lookupMap.set(todo.id, { ...existingTodo, ...todo });
-		} else {
-			// If the ID does not exist, add the new todo object
-			lookupMap.set(todo.id, { ...(todo as Todo) });
-		}
-	});
-	return Array.from(lookupMap.values());
-}
-
-function mergeTodoFilesData(
-	previousData: TodoFilesData,
-	validImportData: TodoFilesDataPartialInput
-): TodoFilesData {
-	const lookupMap = new Map<string, Todo[]>();
-	for (const filePath in previousData) {
-		lookupMap.set(filePath, [...previousData[filePath]]);
-	}
-
-	for (const filePath in validImportData) {
-		if (
-			lookupMap.has(filePath) &&
-			Array.isArray(lookupMap.get(filePath)) &&
-			lookupMap.get(filePath)!.length > 0
-		) {
-			// If a todos record for the file path exists in the lookup map, merge the todo arrays
-			const previousTodos = lookupMap.get(filePath);
-			const validImportTodos = validImportData[filePath];
-			const mergedTodos = mergeTodoArrays(previousTodos!, validImportTodos);
-			lookupMap.set(filePath, [...initMissingTodoProperties(mergedTodos)]);
-		} else {
-			// If a record for the file path does not exists, add it
-			lookupMap.set(filePath, [...initMissingTodoProperties(validImportData[filePath])]);
-		}
-	}
-	return Object.fromEntries(lookupMap);
-}
-
-function processAndMergeTodos(previousData: Todo[], rawImportData: TodoPartialInput[]): Todo[] {
-	const validImportData: TodoPartialInput[] = filterValidTodos(rawImportData);
-	const mergedTodos: TodoPartialInput[] = mergeTodoArrays(previousData, validImportData);
-	return initMissingTodoProperties(mergedTodos) as Todo[];
-}
-
-function processAndMergeFilesData(
-	previousData: TodoFilesData,
-	rawImportData: TodoFilesDataPartialInput
-): TodoFilesData {
-	const validImportData = filterValidFilesData(rawImportData);
-	return mergeTodoFilesData(previousData, validImportData);
-}
-
-function filterValidFilesData(rawImportData: TodoFilesDataPartialInput): TodoFilesDataPartialInput {
-	const filteredData: TodoFilesDataPartialInput = {};
-
-	for (const filePath in rawImportData) {
-		if (typeof filePath === "string" && filePath.trim()) {
-			const validTodos = filterValidTodos(rawImportData[filePath]);
-			if (validTodos.length > 0) {
-				filteredData[filePath] = validTodos;
-			}
-		}
-	}
-
-	return filteredData;
-}
-
-/**
- * Parses a Markdown string and returns an object containing todos based on the given scope.
- *
- * @param data - The Markdown string to parse.
- * @param scope - The scope of the todos to return.
- * @param state - The current state of the store.
- * @return An object containing todos based on the given scope.
- */
-function parseMarkdown(data: string, scope: MarkdownImportScopes, state: StoreState): ImportObject {
-	const lines = data.split("\n");
-	const records = [];
-	let currentRecord = null;
-	const filePath = state.currentFile.filePath;
-	const isTodo = (line: string) => /^\s*[-+*] \[[ xX]\] |\s*\d+. \[[ xX]\] /gm.test(line);
-	const isCompleted = (line: string) => /^\s*[-+*] \[[xX]\] |\s*\d+. \[[xX]\] /gm.test(line);
-	const getText = (line: string) => line.replace(/^\s*[-+*] \[[ xX]\] |\s*\d+. \[[ xX]\] /gm, "");
-
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-
-		if (line.trim() === "") {
-			if (currentRecord !== null) {
-				records.push(currentRecord);
-				currentRecord = null;
-			}
-			continue;
-		}
-
-		if (isTodo(line)) {
-			if (currentRecord !== null) {
-				records.push(currentRecord);
-			}
-			currentRecord = {
-				text: getText(line),
-				isNote: false,
-				completed: isCompleted(line),
-				isMarkdown: true,
-			};
-		} else {
-			if (currentRecord === null) {
-				currentRecord = { text: line, isNote: true, completed: false, isMarkdown: true };
-			} else {
-				currentRecord.text += "\n" + line;
-			}
-		}
-	}
-
-	if (currentRecord !== null) {
-		records.push(currentRecord);
-	}
-
-	return buildImportObject(records as TodoPartialInput[], scope, filePath);
-}
-
-function buildImportObject(
-	records: TodoPartialInput[],
-	scope: MarkdownImportScopes,
-	filePath: string
-): ImportObject {
-	if (scope === MarkdownImportScopes.user) {
-		return {
-			user: records,
-		};
-	}
-	if (scope === MarkdownImportScopes.workspace) {
-		return {
-			workspace: records,
-		};
-	}
-	if (scope === MarkdownImportScopes.currentFile) {
-		return {
-			files: {
-				[filePath]: records,
-			},
-		};
-	}
-	return {};
+	return isImportObjectShape(parsedData);
 }
 
 async function getImportScope(state: StoreState) {

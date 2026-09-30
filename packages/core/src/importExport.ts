@@ -2,8 +2,7 @@
  * Import/export as pure data transforms, so the standalone PWA can offer both without a
  * VS Code host.
  *
- * The extension's `src/todo/exporter.ts` and `src/todo/importer.ts` interleave three
- * separable concerns:
+ * Import and export each involve three separable concerns:
  *
  *   1. pure data logic — markdown formatting/parsing, shape validation, and the id-keyed merge
  *   2. host I/O — `fs.writeFileSync` / `fs.readFile`, `path`, `getWorkspacePath()`
@@ -13,24 +12,15 @@
  * the extension keeps using VS Code's dialogs, the PWA builds its own with a file input and a
  * blob download.
  *
- * Kept in step with `src/todo/exporter.ts` and `src/todo/importer.ts` — the PWA runs this copy
- * and the extension runs those, and an import must produce the same result on both.
- * `test/importExport.test.ts` mirrors the extension's own import/export tests so a change to
- * either copy fails visibly.
+ * The import half is the only copy: `src/todo/importer.ts` parses and merges with the functions
+ * below and keeps only the VS Code dialogs and state writes, so an import produces the same
+ * result on both surfaces. The export half is still mirrored by `src/todo/exporter.ts` — keep
+ * the two in step.
  *
- * This duplication is now avoidable and should be removed: the extension host DOES consume this
- * package (it compiles `packages/core/src` into its own build — see `src/core.ts`), which is
- * what the sync half was consolidated onto. Import/export was left as peers only because it was
- * out of scope for that change, not because it has to be.
- *
- * Two behavioural notes where this copy is deliberately *not* a transcription:
- *
- *   - `mergeTodoArrays` here copies each incoming item instead of assigning `id` onto the
- *     caller's object. The output is identical; it just does not mutate its input.
- *   - `ensureFilesDataPaths` is not applied. It derives absolute/relative path pairs from a
- *     workspace root, and the PWA has no workspace. Incoming `filesDataPaths` are merged and
- *     preserved (the PWA round-trips them through the gist so the extension's mappings
- *     survive), but none are synthesized.
+ * `ensureFilesDataPaths` is not applied here. It derives absolute/relative path pairs from a
+ * workspace root, and the PWA has no workspace. Incoming `filesDataPaths` are merged and
+ * preserved (the PWA round-trips them through the gist so the extension's mappings survive),
+ * but none are synthesized; the extension applies it itself after the merge.
  */
 
 import { normalizeTags } from "./tagUtils";
@@ -417,65 +407,128 @@ export function filterValidFilesData(input: TodoFilesDataPartialInput): TodoFile
 	return filtered;
 }
 
+const clockIso = () => new Date().toISOString();
+
 /**
- * Fills in everything a partial import leaves out. `tags` is assigned last so it always
- * overrides whatever the spread brought in: a normalized array, or `undefined` when nothing
- * valid remains — never the raw input.
+ * An imported id is kept only when it is genuinely a number. Only a *falsy* id used to be
+ * replaced, so a string id in a hand-written import file survived all the way onto the gist —
+ * where the model, the gist schema and the MCP tools all declare `id: number`, and the MCP
+ * output schema then rejects the whole page rather than the one item.
+ */
+function isNumericId(id: unknown): id is number {
+	return typeof id === "number" && Number.isFinite(id);
+}
+
+/**
+ * Builds a new todo from an imported item, filling in everything the item leaves out. `tags`
+ * is assigned last so it always overrides whatever the spread brought in: a normalized array,
+ * or `undefined` when nothing valid remains — never the raw input.
+ */
+function completeImportedTodo(todo: TodoPartialInput, id: number, nowIso: () => string): Todo {
+	const tags = normalizeTags(todo.tags);
+	return {
+		...todo,
+		id,
+		text: todo.text.trim(),
+		completed: todo.completed ?? false,
+		isMarkdown: todo.isMarkdown ?? false,
+		isNote: todo.isNote ?? false,
+		collapsed: todo.collapsed ?? false,
+		creationDate: todo.creationDate ?? nowIso(),
+		completionDate: todo.completed ? (todo.completionDate ?? nowIso()) : undefined,
+		tags: tags.length > 0 ? tags : undefined,
+	};
+}
+
+/**
+ * Applies an imported item to the stored todo with its id. Only the fields the item carries are
+ * applied and nothing is defaulted, so a field the file leaves out keeps its stored value, and
+ * re-importing an unchanged todo gives back the same todo. Text is compared trimmed, so a padded
+ * copy of the stored text does not rewrite it either.
+ *
+ * Filling in defaults here would give an untouched todo fields it never had (`collapsed: false`,
+ * say). The sync merge compares canonically, so each such todo would read as a local edit, and
+ * every todo the other device changed meanwhile would come back as an `edit-edit` conflict.
+ */
+function overlayImportedTodo(
+	existing: Todo,
+	incoming: TodoPartialInput,
+	nowIso: () => string
+): Todo {
+	// A null counts as absent too: the app never writes one, and the stored value beats it.
+	const provided = Object.fromEntries(
+		Object.entries(incoming).filter(([, value]) => value !== undefined && value !== null)
+	) as Partial<Todo>;
+	const next: Todo = { ...existing, ...provided, id: existing.id };
+
+	const text = incoming.text.trim();
+	next.text =
+		typeof existing.text === "string" && existing.text.trim() === text ? existing.text : text;
+
+	if (provided.tags !== undefined) {
+		const tags = normalizeTags(provided.tags);
+		next.tags = tags.length > 0 ? tags : undefined;
+	}
+	if (provided.completed !== undefined || provided.completionDate !== undefined) {
+		next.completionDate = next.completed ? (next.completionDate ?? nowIso()) : undefined;
+	}
+	return next;
+}
+
+/**
+ * Turns imported items into complete todos, keeping each numeric id and minting the rest.
+ *
+ * Not called by any import path: `mergeTodoArrays` builds new items itself, minting ids against
+ * the stored todos too. Kept for the tests of the defaults it shares with that path, here and in
+ * the extension's importer suite.
  *
  * `nowIso` is injectable only so tests can pin the timestamps; it defaults to the clock.
  */
 export function initMissingTodoProperties(
 	input: TodoPartialInput[],
-	nowIso: () => string = () => new Date().toISOString()
+	nowIso: () => string = clockIso
 ): Todo[] {
-	return input.map((todo) => {
-		const tags = normalizeTags(todo.tags);
-		return {
-			...todo,
-			// Replaced unless it is genuinely a number. Only a *falsy* id used to be replaced, so a
-			// string id in a hand-written import file survived all the way onto the gist — where the
-			// model, the gist schema and the MCP tools all declare `id: number`, and the MCP output
-			// schema then rejects the whole page rather than the one item.
-			id: typeof todo.id === "number" && Number.isFinite(todo.id)
-				? todo.id
-				: generateUniqueId(input as Array<{ id: number }>),
-			text: todo.text.trim(),
-			completed: todo.completed ?? false,
-			isMarkdown: todo.isMarkdown ?? false,
-			isNote: todo.isNote ?? false,
-			collapsed: todo.collapsed ?? false,
-			creationDate: todo.creationDate ?? nowIso(),
-			completionDate: todo.completed ? (todo.completionDate ?? nowIso()) : undefined,
-			tags: tags.length > 0 ? tags : undefined,
-		};
-	});
+	return input.map((todo) =>
+		completeImportedTodo(
+			todo,
+			isNumericId(todo.id) ? todo.id : generateUniqueId(input as Array<{ id: number }>),
+			nowIso
+		)
+	);
 }
 
 /**
- * Merges imported todos into existing ones **by id**: a matching id has its fields overlaid,
- * an unknown id is appended. Import is therefore additive, never destructive — nothing already
- * present is dropped because it was missing from the file.
+ * Merges imported todos into existing ones **by id**: a matching id has the fields the item
+ * carries overlaid, an unknown id is appended as a new todo. Import is therefore additive,
+ * never destructive — nothing already present is dropped because it was missing from the file.
+ *
+ * Only the imported items are normalized. A stored todo the file does not name is passed
+ * through as it is, so the import cannot turn it into a change the sync merge has to settle.
  */
 export function mergeTodoArrays(
 	previousTodos: Todo[],
-	importedTodos: TodoPartialInput[]
-): TodoPartialInput[] {
-	const lookupMap = new Map<number, TodoPartialInput>();
-	previousTodos.forEach((todo) => {
-		lookupMap.set(todo.id, { ...todo });
-	});
+	importedTodos: TodoPartialInput[],
+	nowIso: () => string = clockIso
+): Todo[] {
+	const byId = new Map<number, Todo>();
+	for (const todo of previousTodos) {
+		byId.set(todo.id, todo);
+	}
 
-	importedTodos.forEach((incoming) => {
-		// Copy before assigning an id, so the caller's array is left alone.
-		const todo: TodoPartialInput = { ...incoming };
-		if (!todo.id) {
-			todo.id = generateUniqueId(Array.from(lookupMap.values()) as Array<{ id: number }>);
+	for (const incoming of importedTodos) {
+		const existing = incoming.id !== undefined ? byId.get(incoming.id) : undefined;
+		if (existing) {
+			byId.set(existing.id, overlayImportedTodo(existing, incoming, nowIso));
+			continue;
 		}
-		const existing = lookupMap.get(todo.id);
-		lookupMap.set(todo.id, existing ? { ...existing, ...todo } : todo);
-	});
+		const id =
+			incoming.id && isNumericId(incoming.id)
+				? incoming.id
+				: generateUniqueId(Array.from(byId.values()));
+		byId.set(id, completeImportedTodo(incoming, id, nowIso));
+	}
 
-	return Array.from(lookupMap.values());
+	return Array.from(byId.values());
 }
 
 function mergeTodoFilesData(
@@ -489,13 +542,10 @@ function mergeTodoFilesData(
 	}
 
 	for (const filePath in validImportData) {
-		const previousTodos = lookupMap.get(filePath);
-		if (previousTodos && previousTodos.length > 0) {
-			const merged = mergeTodoArrays(previousTodos, validImportData[filePath]);
-			lookupMap.set(filePath, initMissingTodoProperties(merged, nowIso));
-		} else {
-			lookupMap.set(filePath, initMissingTodoProperties(validImportData[filePath], nowIso));
-		}
+		lookupMap.set(
+			filePath,
+			mergeTodoArrays(lookupMap.get(filePath) ?? [], validImportData[filePath], nowIso)
+		);
 	}
 
 	return Object.fromEntries(lookupMap);
@@ -506,9 +556,7 @@ export function processAndMergeTodos(
 	rawImportData: TodoPartialInput[],
 	nowIso?: () => string
 ): Todo[] {
-	const validImportData = filterValidTodos(rawImportData);
-	const merged = mergeTodoArrays(previousData, validImportData);
-	return initMissingTodoProperties(merged, nowIso);
+	return mergeTodoArrays(previousData, filterValidTodos(rawImportData), nowIso);
 }
 
 export function processAndMergeFilesData(
@@ -525,7 +573,7 @@ export function processAndMergeFilesData(
  *
  * Distinct from `threeWayMerge.ts`'s `mergeFilesDataPaths`, which reconciles base/local/remote
  * for sync and rebuilds the map with sorted keys. This one is the two-way import merge: it
- * starts from `current` and so preserves its key order, matching `src/todo/importer.ts`.
+ * starts from `current` and so preserves its key order.
  */
 export function mergeImportedFilesDataPaths(
 	current: TodoFilesDataPaths,

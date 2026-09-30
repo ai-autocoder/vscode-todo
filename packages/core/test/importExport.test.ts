@@ -28,14 +28,13 @@ import {
 } from "../src/index";
 
 /**
- * Mirrors `src/test/suite/todo/importer.test.ts`, which covers the extension's own copy of this
- * logic in `src/todo/importer.ts`. The two copies must agree — see the "Kept in step with"
- * note at the top of `src/importExport.ts` — so the first block below asserts the same
- * behaviours case for case, with the fixtures condensed. A change to either copy should fail
- * here or there.
+ * The first block mirrors `src/test/suite/todo/importer.test.ts` case for case, with the
+ * fixtures condensed. The extension's importer now runs these same functions, so both suites
+ * exercise one implementation; the mirror is kept so the extension's expectations stay pinned
+ * here too.
  *
  * The blocks after it cover ground the extension has no tests for (markdown formatting, the
- * parse-failure taxonomy, and `mergeImport`), which the PWA depends on directly.
+ * parse-failure taxonomy, the merge's overlay rules, and `mergeImport`).
  */
 
 const fixedNow = () => "2026-08-31T18:46:18.000Z";
@@ -279,6 +278,82 @@ describe("mergeTodoArrays", () => {
 	it("is additive — nothing already present is dropped", () => {
 		const previous = [todo({ id: 1, text: "keep me" })];
 		expect(mergeTodoArrays(previous, []).map((t) => t.id)).toEqual([1]);
+	});
+
+	it("passes a todo the import does not name through as the same object", () => {
+		const untouched = { id: 2, text: "  padded, no collapsed  ", completed: false } as Todo;
+		const merged = mergeTodoArrays([untouched], [{ text: "new" }], fixedNow);
+		expect(merged[0]).toBe(untouched);
+	});
+
+	it("keeps the stored value of every field the imported item leaves out", () => {
+		const stored = todo({ id: 1, text: "stored", tags: ["keep"], isMarkdown: true });
+		delete (stored as Partial<Todo>).collapsed;
+
+		const [merged] = processAndMergeTodos([stored], [{ id: 1, text: "stored" }], fixedNow);
+
+		expect(merged).toEqual(stored);
+		expect("collapsed" in merged).toBe(false);
+	});
+
+	it("treats a null field in the imported item as absent", () => {
+		const stored = todo({ id: 1, text: "t", completed: true, completionDate: fixedNow() });
+		const [merged] = mergeTodoArrays(
+			[stored],
+			[{ id: 1, text: "t", completed: null, collapsed: null } as never],
+			fixedNow
+		);
+		expect(merged).toEqual(stored);
+	});
+
+	it("does not rewrite stored text that differs from the import only by padding", () => {
+		const stored = todo({ id: 1, text: "stored  " });
+		const [same] = mergeTodoArrays([stored], [{ id: 1, text: "  stored" }], fixedNow);
+		expect(same.text).toBe("stored  ");
+
+		const [edited] = mergeTodoArrays([stored], [{ id: 1, text: "  edited  " }], fixedNow);
+		expect(edited.text).toBe("edited");
+	});
+
+	it("normalizes tags the import carries, and clears them for an empty list", () => {
+		const stored = todo({ id: 1, text: "t", tags: ["old"] });
+		const [tagged] = mergeTodoArrays(
+			[stored],
+			[{ id: 1, text: "t", tags: [" Bug ", "bug"] }],
+			fixedNow
+		);
+		expect(tagged.tags).toEqual(["Bug"]);
+
+		const [cleared] = mergeTodoArrays([stored], [{ id: 1, text: "t", tags: [] }], fixedNow);
+		expect(cleared.tags).toBeUndefined();
+	});
+
+	it("keeps completionDate in step with a completed flag the import changes", () => {
+		const open = todo({ id: 1, text: "t" });
+		const [done] = mergeTodoArrays([open], [{ id: 1, text: "t", completed: true }], fixedNow);
+		expect(done.completionDate).toBe(fixedNow());
+
+		const closed = todo({
+			id: 1,
+			text: "t",
+			completed: true,
+			completionDate: "2026-01-01T00:00:00.000Z",
+		});
+		const [kept] = mergeTodoArrays([closed], [{ id: 1, text: "t", completed: true }], fixedNow);
+		expect(kept.completionDate).toBe("2026-01-01T00:00:00.000Z");
+
+		const [reopened] = mergeTodoArrays([closed], [{ id: 1, text: "t", completed: false }], fixedNow);
+		expect(reopened.completionDate).toBeUndefined();
+	});
+
+	it("fills defaults on a new item and mints an id unused by the stored todos", () => {
+		const stored = [todo({ id: 5, text: "stored" })];
+		const merged = mergeTodoArrays(stored, [{ text: " new ", id: "5" as never }], fixedNow);
+
+		expect(merged).toHaveLength(2);
+		expect(merged[1]).toMatchObject({ text: "new", collapsed: false, creationDate: fixedNow() });
+		expect(typeof merged[1].id).toBe("number");
+		expect(merged[1].id).not.toBe(5);
 	});
 });
 
