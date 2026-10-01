@@ -9,7 +9,7 @@
  */
 
 import { RootState } from "./store";
-import { TodoFilesDataPaths } from "../core";
+import { TodoFilesData, TodoFilesDataPaths } from "../core";
 
 export {
 	TodoScope,
@@ -52,6 +52,24 @@ export interface EditorFocusAndRecordsSlice {
 }
 
 export interface StoreState extends RootState {}
+
+/** The per-file lists and their path aliases. */
+export interface TodoFilesState {
+	filesData: TodoFilesData;
+	filesDataPaths: TodoFilesDataPaths;
+}
+
+/**
+ * A change to the per-file lists, as `StorageSyncManager.updateFiles` applies it. It returns
+ * new lists and leaves its argument untouched, and it must give the same result each time it
+ * is applied to the same lists: it is applied to more than one copy.
+ */
+export type TodoFilesChange = (files: TodoFilesState) => TodoFilesState;
+
+/** Where the per-file lists are stored: `StorageSyncManager`. */
+export interface TodoFilesStorage {
+	updateFiles(change: TodoFilesChange): Promise<void>;
+}
 
 // Middleware
 export interface ActionTrackerState {

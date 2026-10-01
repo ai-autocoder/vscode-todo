@@ -20,11 +20,13 @@ import {
 	mergeImportedFilesDataPaths,
 	mergeTodoArrays,
 	parseImport,
+	processAndMergeFilesData,
 	processAndMergeTodos,
 	serializeExport,
 	sortFilesDataByFileName,
 	Todo,
 	TodoPartialInput,
+	withImportedIds,
 } from "../src/index";
 
 /**
@@ -705,5 +707,85 @@ describe("isTodoFilesDataPathsInput", () => {
 		expect(isTodoFilesDataPathsInput({ "a.ts": { absPaths: [], relPaths: [] } })).toBe(false);
 		expect(isTodoFilesDataPathsInput({ "": { absPaths: ["/r/a.ts"], relPaths: [] } })).toBe(false);
 		expect(isTodoFilesDataPathsInput(null)).toBe(false);
+	});
+});
+
+describe("withImportedIds", () => {
+	const stored = (id: number, text: string): Todo => ({
+		id,
+		text,
+		completed: false,
+		isMarkdown: false,
+		isNote: false,
+		creationDate: "2026-01-01T00:00:00.000Z",
+	});
+	const now = () => "2026-09-30T00:00:00.000Z";
+
+	it("gives the same todos when one import is merged into two copies of the lists", () => {
+		const previous = { "/r/a.ts": [stored(1, "one")], "/r/b.ts": [stored(7, "seven")] };
+		const input = withImportedIds(previous, {
+			"/r/a.ts": [
+				{ text: "new a" },
+				{ id: 0, text: "zero" },
+				{ id: "x" as unknown as number, text: "string id" },
+			],
+			"/r/b.ts": [{ text: "new b" }],
+			"/r/c.ts": [{ text: "new c" }, { text: "another c" }],
+		});
+
+		const first = processAndMergeFilesData(structuredClone(previous), input, now);
+		const second = processAndMergeFilesData(structuredClone(previous), input, now);
+
+		expect(second).toEqual(first);
+		const ids = first["/r/c.ts"].map((todo) => todo.id);
+		expect(new Set(ids).size).toBe(2);
+		expect(first["/r/a.ts"].map((todo) => todo.text)).toEqual(["one", "new a", "zero", "string id"]);
+		expect(first["/r/a.ts"].every((todo) => typeof todo.id === "number" && todo.id !== 0)).toBe(true);
+	});
+
+	it("keeps the ids the merge keeps: a stored id overlays, a new numeric id is kept", () => {
+		const previous = { "/r/a.ts": [stored(1, "one")] };
+		const input = withImportedIds(previous, {
+			"/r/a.ts": [
+				{ id: 1, text: "one edited" },
+				{ id: 42, text: "forty-two" },
+				{ id: 42, text: "again" },
+			],
+		});
+
+		expect(input["/r/a.ts"].map((todo) => todo.id)).toEqual([1, 42, 42]);
+		const merged = processAndMergeFilesData(previous, input, now);
+		expect(merged["/r/a.ts"].map((todo) => [todo.id, todo.text])).toEqual([
+			[1, "one edited"],
+			[42, "again"],
+		]);
+	});
+
+	it("mints for a stored id of 0 only when the list has no todo with it", () => {
+		const input = withImportedIds({ "/r/a.ts": [stored(0, "zero")] }, {
+			"/r/a.ts": [{ id: 0, text: "zero edited" }],
+			"/r/b.ts": [{ id: 0, text: "zero elsewhere" }],
+		});
+
+		expect(input["/r/a.ts"][0].id).toBe(0);
+		expect(input["/r/b.ts"][0].id).not.toBe(0);
+	});
+
+	it("leaves the input untouched, and non-array and non-object entries as they are", () => {
+		const raw = {
+			"/r/a.ts": [{ text: "a" }, null as unknown as TodoPartialInput],
+			"/r/b.ts": null as unknown as TodoPartialInput[],
+		};
+		const input = withImportedIds({}, raw);
+
+		expect(raw["/r/a.ts"][0]).toEqual({ text: "a" });
+		expect(input["/r/a.ts"][1]).toBeNull();
+		expect(input["/r/b.ts"]).toBeNull();
+	});
+
+	it("does not read a file named like an Object.prototype member as a stored list", () => {
+		const input = withImportedIds({}, { constructor: [{ text: "c" }] });
+
+		expect(typeof input["constructor"][0].id).toBe("number");
 	});
 });

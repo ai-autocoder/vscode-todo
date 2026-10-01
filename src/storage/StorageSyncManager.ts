@@ -12,8 +12,10 @@ import {
 	CurrentFileSlice,
 	StoreState,
 	Todo,
+	TodoFilesChange,
 	TodoFilesData,
 	TodoFilesDataPaths,
+	TodoFilesState,
 	TodoScope,
 	TodoSlice,
 } from "../todo/todoTypes";
@@ -40,11 +42,6 @@ type GlobalPersistedData = {
 	userTodos: Todo[];
 };
 
-type FilesState = {
-	filesData: TodoFilesData;
-	filesDataPaths: TodoFilesDataPaths;
-};
-
 /**
  * The two storages persists write to. The workspace scope and the per-file lists share one: both
  * write `workspaceData.json`, each carrying the other's half from `cachedWorkspaceData`, and in
@@ -56,7 +53,7 @@ type PersistStorage = "user" | "workspace";
  * `files` with `fileState`'s list stored under the file's key, or removed when the list is
  * empty, and the file's path aliases recorded. Returns new maps and leaves `files` untouched.
  */
-function withFileTodos(files: FilesState, fileState: CurrentFileSlice): FilesState {
+function withFileTodos(files: TodoFilesState, fileState: CurrentFileSlice): TodoFilesState {
 	const filesData = { ...files.filesData };
 	const filesDataPaths = ensureFilesDataPaths(filesData, files.filesDataPaths, getWorkspacePath());
 	const resolved = resolveFilesDataKey({
@@ -100,8 +97,16 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		user: Promise.resolve(),
 		workspace: Promise.resolve(),
 	};
-	/** Per-file persists accepted but not yet started, oldest first; see {@link persistSlice}. */
-	private readonly queuedFileWrites: CurrentFileSlice[] = [];
+	/** Per-file changes accepted but not yet started, oldest first; see {@link updateFiles}. */
+	private readonly queuedFilesChanges: TodoFilesChange[] = [];
+	private readonly filesUpdated = new vscode.EventEmitter<void>();
+	/**
+	 * Fires when a change from {@link updateFiles} has changed the stored lists. A slice persist
+	 * does not fire it. For a store edit the store subscriber schedules the push itself; an MCP
+	 * write to a file that is not shown persists a slice outside the store, and nothing
+	 * schedules its push.
+	 */
+	public readonly onDidUpdateFiles = this.filesUpdated.event;
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -184,12 +189,7 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	 * wait for its persist, and concurrent MCP calls each wait only for their own. When two
 	 * overlapped, both read the same state and the later write dropped the earlier one's change.
 	 * Two agent calls that added to `x.ts` and `y.ts` both reported success, and only `y.ts` was
-	 * stored.
-	 *
-	 * Waiting its turn must not make a per-file write invisible, so the `TodoFilesData` memento
-	 * is updated at the call, before anything is awaited. A tab switch and the MCP tools read
-	 * that memento and write back what they read: a tab switch that read the old list while the
-	 * new one waited would persist the old list after it.
+	 * stored. A per-file slice is stored through {@link updateFiles}.
 	 */
 	public async persistSlice(state: TodoSlice | CurrentFileSlice): Promise<void> {
 		if (this.suppressedScopes.has(state.scope)) {
@@ -205,30 +205,151 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 
 		if (state.scope === TodoScope.currentFile) {
 			const fileState = state as CurrentFileSlice;
-			try {
-				this.showFiles(withFileTodos(this.shownFiles(), fileState)).catch(
-					(error: unknown) => this.logShowFilesFailure(error)
-				);
-				// Only once its list is shown: queued writes are replayed over each memento write.
-				this.queuedFileWrites.push(fileState);
-			} catch (error) {
-				this.logShowFilesFailure(error);
-			}
+			return this.queueFilesChange(
+				(files) => withFileTodos(files, fileState),
+				config,
+				workspaceSyncMode
+			);
 		}
 
-		return this.exclusive(state.scope === TodoScope.user ? "user" : "workspace", () => {
-			if (state.scope === TodoScope.currentFile) {
-				const index = this.queuedFileWrites.indexOf(state as CurrentFileSlice);
-				if (index !== -1) {
-					this.queuedFileWrites.splice(index, 1);
-				}
+		return this.exclusive(state.scope === TodoScope.user ? "user" : "workspace", () =>
+			this.writeSlice(state, config, userSyncMode, workspaceSyncMode)
+		);
+	}
+
+	/**
+	 * Applies `change` to the per-file lists and stores the result. Resolves when the write has
+	 * finished or failed (a failure is logged, never thrown). Every change to the per-file lists
+	 * goes through here: a slice persist, and a file rename, delete or import.
+	 *
+	 * The lists are kept in more than one place: the `TodoFilesData` memento, which the rest of
+	 * the extension reads, and the storage this writes (`workspaceData.json` and its cache, or
+	 * in GitHub mode the gist cache). A write rebuilds the lists from the storage, not the
+	 * memento, so a change made only to the memento was undone by the next per-file persist.
+	 * Renaming the open file therefore deleted its list, left it under the old name or kept it
+	 * under both, depending on which file the next persist was for.
+	 *
+	 * `change` is applied twice. At the call it is applied to the memento, before anything is
+	 * awaited, because a tab switch and the MCP tools read the memento and write back what they
+	 * read: a tab switch that read the old list while the change waited its turn would persist
+	 * the old list after it. In its turn in the write queue it is applied to the storage.
+	 */
+	public updateFiles(change: TodoFilesChange): Promise<void> {
+		return this.queueFilesChange(
+			change,
+			vscode.workspace.getConfiguration("vscodeTodo.sync"),
+			this.context.workspaceState.get<string>("syncMode", "local"),
+			() => this.filesUpdated.fire()
+		);
+	}
+
+	private queueFilesChange(
+		change: TodoFilesChange,
+		config: vscode.WorkspaceConfiguration,
+		workspaceSyncMode: string,
+		onStored?: () => void
+	): Promise<void> {
+		try {
+			this.showFiles(change(this.shownFiles())).catch((error: unknown) =>
+				this.logShowFilesFailure(error)
+			);
+			// Only once its result is shown: queued changes are replayed over each memento write.
+			this.queuedFilesChanges.push(change);
+		} catch (error) {
+			this.logShowFilesFailure(error);
+		}
+
+		return this.exclusive("workspace", async () => {
+			const index = this.queuedFilesChanges.indexOf(change);
+			if (index !== -1) {
+				this.queuedFilesChanges.splice(index, 1);
 			}
-			return this.writeSlice(state, config, userSyncMode, workspaceSyncMode);
+			if (await this.writeFiles(change, config, workspaceSyncMode)) {
+				onStored?.();
+			}
 		});
 	}
 
+	/**
+	 * Returns whether the change altered the stored lists, including when storing them then
+	 * failed part way: the gist cache may already hold half of it.
+	 */
+	private async writeFiles(
+		change: TodoFilesChange,
+		config: vscode.WorkspaceConfiguration,
+		workspaceSyncMode: string
+	): Promise<boolean> {
+		let changed = false;
+		try {
+			const workspaceMode = WorkspaceSyncMode.GitHub;
+			const workspaceName = vscode.workspace.name || "default";
+			const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
+			// In GitHub mode the gist cache is the base, not the memento: a pull writes the cache
+			// first and the memento only once the store reloads. `SyncStorageManager` returns
+			// copies, so a sync holding the cache's data as its snapshot is not affected.
+			const base: TodoFilesState =
+				workspaceSyncMode === "github"
+					? {
+							filesData: await this.syncStorageManager.getFilesData(workspaceMode, fileName),
+							filesDataPaths: await this.syncStorageManager.getFilesDataPaths(
+								workspaceMode,
+								fileName
+							),
+						}
+					: {
+							filesData: this.cachedWorkspaceData.filesData,
+							filesDataPaths: this.cachedWorkspaceData.filesDataPaths,
+						};
+			const stored = change(base);
+
+			this.updateWorkspaceCache({
+				workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
+				...stored,
+			});
+			// Changes still queued behind this one have already put their results in the memento
+			// (see queueFilesChange); writing only this one's result would hide them until their
+			// turn.
+			await this.showFiles(
+				this.queuedFilesChanges.reduce((files, queued) => queued(files), stored)
+			);
+
+			// A change that left the lists as they were has nothing to store. Renaming a file
+			// that has no list must not rewrite the storage, nor, in GitHub mode, leave the gist
+			// cache marked as owing a push.
+			if (
+				isEqual(base.filesData, stored.filesData) &&
+				isEqual(base.filesDataPaths, stored.filesDataPaths)
+			) {
+				return false;
+			}
+			changed = true;
+
+			if (workspaceSyncMode === "github") {
+				// Write to gist cache
+				await this.syncStorageManager.setFilesData(workspaceMode, stored.filesData, fileName);
+				await this.syncStorageManager.setFilesDataPaths(
+					workspaceMode,
+					stored.filesDataPaths,
+					fileName
+				);
+			} else {
+				// Write to local file
+				await this.writeWorkspaceData({
+					workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
+					...stored,
+				});
+			}
+			return true;
+		} catch (error) {
+			LogChannel.log(
+				`[StorageSync] Failed to persist the per-file lists: ${this.describeError(error)}`
+			);
+			return changed;
+		}
+	}
+
 	private async writeSlice(
-		state: TodoSlice | CurrentFileSlice,
+		state: TodoSlice,
 		config: vscode.WorkspaceConfiguration,
 		userSyncMode: string,
 		workspaceSyncMode: string
@@ -264,60 +385,6 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 							workspaceTodos: state.todos,
 							filesData: this.cachedWorkspaceData.filesData,
 							filesDataPaths: this.cachedWorkspaceData.filesDataPaths,
-						});
-					}
-					break;
-				}
-				case TodoScope.currentFile: {
-					const currentFileState = state as CurrentFileSlice;
-					let stored: FilesState;
-
-					if (workspaceSyncMode === "github") {
-						// The gist cache is the base, not the memento: a pull writes the cache first
-						// and the memento only once the store reloads. `SyncStorageManager` returns
-						// copies, so a sync holding the cache's data as its snapshot is not affected.
-						const workspaceMode = WorkspaceSyncMode.GitHub;
-						const workspaceName = vscode.workspace.name || "default";
-						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
-						stored = withFileTodos(
-							{
-								filesData: await this.syncStorageManager.getFilesData(workspaceMode, fileName),
-								filesDataPaths: await this.syncStorageManager.getFilesDataPaths(
-									workspaceMode,
-									fileName
-								),
-							},
-							currentFileState
-						);
-					} else {
-						stored = withFileTodos(this.cachedWorkspaceData, currentFileState);
-					}
-
-					this.updateWorkspaceCache({
-						workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
-						...stored,
-					});
-					// Persists still queued behind this one have already put their lists in the
-					// memento (see persistSlice); writing only this one's result would hide them
-					// until their turn.
-					await this.showFiles(this.queuedFileWrites.reduce(withFileTodos, stored));
-
-					if (workspaceSyncMode === "github") {
-						// Write to gist cache
-						const workspaceMode = WorkspaceSyncMode.GitHub;
-						const workspaceName = vscode.workspace.name || "default";
-						const fileName = config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
-						await this.syncStorageManager.setFilesData(workspaceMode, stored.filesData, fileName);
-						await this.syncStorageManager.setFilesDataPaths(
-							workspaceMode,
-							stored.filesDataPaths,
-							fileName
-						);
-					} else {
-						// Write to local file
-						await this.writeWorkspaceData({
-							workspaceTodos: this.cachedWorkspaceData.workspaceTodos,
-							...stored,
 						});
 					}
 					break;
@@ -366,7 +433,7 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	}
 
 	/** The per-file lists as the rest of the extension reads them: the memento. */
-	private shownFiles(): FilesState {
+	private shownFiles(): TodoFilesState {
 		return {
 			filesData: this.context.workspaceState.get<TodoFilesData>("TodoFilesData") ?? {},
 			filesDataPaths:
@@ -379,7 +446,7 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	 * `update` is called, so readers see it at once; the promise resolves when VS Code's storage
 	 * has accepted it. Not `async`, so a value `update` refuses throws at the call.
 	 */
-	private showFiles(files: FilesState): Promise<unknown> {
+	private showFiles(files: TodoFilesState): Promise<unknown> {
 		return Promise.all([
 			this.context.workspaceState.update("TodoFilesData", files.filesData),
 			this.context.workspaceState.update("TodoFilesDataPaths", files.filesDataPaths),

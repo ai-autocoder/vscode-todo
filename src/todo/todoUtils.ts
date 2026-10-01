@@ -15,6 +15,8 @@ import {
 	TodoFilesData,
 	TodoFilesDataPaths,
 	TodoFilesDataPathsEntry,
+	TodoFilesState,
+	TodoFilesStorage,
 	TodoPartialInput,
 	TodoScope,
 	TodoSlice,
@@ -427,27 +429,95 @@ export function getWorkspacePath() {
  */
 export { isEqual } from "../core";
 
+/** The per-file lists as the rest of the extension reads them: the memento. */
+function shownFiles(context: ExtensionContext): TodoFilesState {
+	return {
+		filesData: (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {},
+		filesDataPaths: (context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {},
+	};
+}
+
+/**
+ * Hands the store the per-file lists the memento holds now, after a change to them, and
+ * reloads the list of the file the current-file slice shows. `showInstead` names the file to
+ * show instead of the slice's own, or returns null to keep it.
+ */
+export function showChangedFiles(
+	context: ExtensionContext,
+	store: EnhancedStore,
+	showInstead: (shownPath: string) => string | null = () => null
+): void {
+	const { filesData, filesDataPaths } = shownFiles(context);
+	store.dispatch(
+		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords({
+			workspaceFilesWithRecords: getWorkspaceFilesWithRecords(filesData),
+			filesDataPaths,
+		})
+	);
+	const state: StoreState = store.getState();
+	const shownPath = state.currentFile.filePath || state.editorFocusAndRecords.editorFocusedFilePath;
+	if (!shownPath) {
+		return;
+	}
+	const filePath = showInstead(shownPath) ?? shownPath;
+	const resolved = resolveFilesDataKey({ filePath, filesData, filesDataPaths });
+	store.dispatch(
+		currentFileActions.loadData({
+			filePath,
+			data: resolved.key ? filesData[resolved.key] ?? [] : [],
+		})
+	);
+}
+
+function isSameAbsolutePath(a: string, b: string): boolean {
+	return normalizeAbsolutePath(a) === normalizeAbsolutePath(b);
+}
+
+/**
+ * Moves a renamed file's list to its new path. The change goes through `storage`, the one
+ * writer of the per-file lists: written to the memento alone, it was undone by the next
+ * per-file persist, which rebuilds the lists from the storage.
+ */
 export function updateDataForRenamedFile({
 	context,
 	oldPath,
 	newPath,
 	store,
+	storage,
 }: {
 	context: ExtensionContext;
 	oldPath: string;
 	newPath: string;
 	store: EnhancedStore;
+	storage: TodoFilesStorage;
 }) {
-	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
-	const previousPaths =
-		(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {};
+	const shown = shownFiles(context);
+	const hadList = resolveFilesDataKey({ filePath: oldPath, ...shown }).key !== null;
+	// Queued even when the memento has no list for the file: the storage can hold one the
+	// memento does not show yet, after a pull. A change that finds nothing writes nothing.
+	void storage.updateFiles((files) => renameFileInFiles(files, oldPath, newPath));
+	if (hadList) {
+		showChangedFiles(context, store, (shownPath) =>
+			isSameAbsolutePath(shownPath, oldPath) ? newPath : null
+		);
+	}
+}
+
+/** `files` with `oldPath`'s list moved to `newPath`; `files` itself when `oldPath` has none. */
+export function renameFileInFiles(
+	files: TodoFilesState,
+	oldPath: string,
+	newPath: string
+): TodoFilesState {
+	const previousData = files.filesData;
+	const previousPaths = files.filesDataPaths;
 	const resolved = resolveFilesDataKey({
 		filePath: oldPath,
 		filesData: previousData,
 		filesDataPaths: previousPaths,
 	});
 	if (!resolved.key) {
-		return;
+		return files;
 	}
 
 	const oldRelPath = getRelativePathIfInsideWorkspace(oldPath);
@@ -488,50 +558,43 @@ export function updateDataForRenamedFile({
 
 	const sortedNewData = sortByFileName(newData);
 	newPaths = ensureFilesDataPaths(sortedNewData, newPaths, getWorkspacePath());
-	context.workspaceState.update("TodoFilesData", sortedNewData);
-	context.workspaceState.update("TodoFilesDataPaths", newPaths);
-	store.dispatch(
-		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-			{
-				workspaceFilesWithRecords: getWorkspaceFilesWithRecords(sortedNewData || {}),
-				filesDataPaths: newPaths,
-			}
-		)
-	);
-	const state = store.getState();
-	const targetFilePath = state.editorFocusAndRecords.editorFocusedFilePath;
-	const targetResolved = resolveFilesDataKey({
-		filePath: targetFilePath,
-		filesData: sortedNewData,
-		filesDataPaths: newPaths,
-	});
-	store.dispatch(
-		currentFileActions.loadData({
-			filePath: targetFilePath,
-			data: targetResolved.key ? sortedNewData[targetResolved.key] ?? [] : [],
-		})
-	);
+	return { filesData: sortedNewData, filesDataPaths: newPaths };
 }
 
+/** Drops a deleted file's list, through `storage` for the reason given at the rename. */
 export function removeDataForDeletedFile({
 	filePath,
 	context,
 	store,
+	storage,
 }: {
 	filePath: string;
 	context: ExtensionContext;
 	store: EnhancedStore;
+	storage: TodoFilesStorage;
 }) {
-	const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
-	const previousPaths =
-		(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {};
+	const shown = shownFiles(context);
+	const hadList = resolveFilesDataKey({ filePath, ...shown }).key !== null;
+	void storage.updateFiles((files) => removeFileFromFiles(files, filePath));
+	if (hadList) {
+		const { editorFocusedFilePath } = (store.getState() as StoreState).editorFocusAndRecords;
+		showChangedFiles(context, store, (shownPath) =>
+			isSameAbsolutePath(shownPath, filePath) ? editorFocusedFilePath : null
+		);
+	}
+}
+
+/** `files` without `filePath`'s list; `files` itself when `filePath` has none. */
+export function removeFileFromFiles(files: TodoFilesState, filePath: string): TodoFilesState {
+	const previousData = files.filesData;
+	const previousPaths = files.filesDataPaths;
 	const resolved = resolveFilesDataKey({
 		filePath,
 		filesData: previousData,
 		filesDataPaths: previousPaths,
 	});
 	if (!resolved.key) {
-		return;
+		return files;
 	}
 
 	const relPath = resolved.relPath ?? getRelativePathIfInsideWorkspace(filePath);
@@ -574,31 +637,7 @@ export function removeDataForDeletedFile({
 
 	const sortedData = sortByFileName(newData);
 	newPaths = ensureFilesDataPaths(sortedData, newPaths, getWorkspacePath());
-	context.workspaceState.update("TodoFilesData", sortedData);
-	context.workspaceState.update("TodoFilesDataPaths", newPaths);
-	store.dispatch(
-		editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-			{
-				workspaceFilesWithRecords: getWorkspaceFilesWithRecords(sortedData || {}),
-				filesDataPaths: newPaths,
-			}
-		)
-	);
-	const state: StoreState = store.getState();
-	if (state.currentFile.filePath === filePath) {
-		const targetFilePath = state.editorFocusAndRecords.editorFocusedFilePath;
-		const targetResolved = resolveFilesDataKey({
-			filePath: targetFilePath,
-			filesData: sortedData,
-			filesDataPaths: newPaths,
-		});
-		store.dispatch(
-			currentFileActions.loadData({
-				filePath: targetFilePath,
-				data: targetResolved.key ? sortedData[targetResolved.key] ?? [] : [],
-			})
-		);
-	}
+	return { filesData: sortedData, filesDataPaths: newPaths };
 }
 
 export function assertNever(x: never, message?: string): never {

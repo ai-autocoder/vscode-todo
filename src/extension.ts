@@ -100,6 +100,16 @@ export async function activate(context: ExtensionContext) {
 	});
 	context.subscriptions.push(dataDownloadListener);
 
+	// A file rename, delete or import changes the per-file lists without editing a slice, so the
+	// store subscriber below never sees it as an edit: push it from here.
+	const filesUpdatedListener = storageSyncManager.onDidUpdateFiles(() => {
+		if (context.workspaceState.get<string>("syncMode", "local") === "github") {
+			syncManager.markDirty("workspace");
+			syncManager.triggerDebounceSync("workspace");
+		}
+	});
+	context.subscriptions.push(filesUpdatedListener);
+
 	if (typeof context.globalState.setKeysForSync === "function") {
 		// Enable VS Code Settings Sync for TodoData if using profile-sync mode
 		const currentSyncMode = context.globalState.get<string>("syncMode", "profile-local");
@@ -175,10 +185,10 @@ export async function activate(context: ExtensionContext) {
 			exportCommand(context, ExportFormats.MARKDOWN, store)
 		),
 		vscode.commands.registerCommand("vsc-todo.importDataFromJSON", () =>
-			importCommand(context, ImportFormats.JSON, store)
+			importCommand(context, ImportFormats.JSON, store, storageSyncManager)
 		),
 		vscode.commands.registerCommand("vsc-todo.importDataFromMarkdown", () =>
-			importCommand(context, ImportFormats.MARKDOWN, store)
+			importCommand(context, ImportFormats.MARKDOWN, store, storageSyncManager)
 		),
 		vscode.commands.registerCommand("vsc-todo.startMcpServer", async () => {
 			const status = mcpServerHost.getStatus();
@@ -290,13 +300,24 @@ export async function activate(context: ExtensionContext) {
 
 	const onDidRenameFilesSubscription = vscode.workspace.onDidRenameFiles((event) => {
 		for (const { oldUri, newUri } of event.files) {
-			updateDataForRenamedFile({ oldPath: oldUri.fsPath, newPath: newUri.fsPath, context, store });
+			updateDataForRenamedFile({
+				oldPath: oldUri.fsPath,
+				newPath: newUri.fsPath,
+				context,
+				store,
+				storage: storageSyncManager,
+			});
 		}
 	});
 
 	const onDidDeleteFilesSubscription = vscode.workspace.onDidDeleteFiles((event) => {
 		for (const deletedUri of event.files) {
-			removeDataForDeletedFile({ filePath: deletedUri.fsPath, context, store });
+			removeDataForDeletedFile({
+				filePath: deletedUri.fsPath,
+				context,
+				store,
+				storage: storageSyncManager,
+			});
 		}
 	});
 
@@ -354,10 +375,11 @@ function handleTodoChange(
 	// Reducer names arrive slice-prefixed (`user/loadData`), except `deleteCompleted`, which the
 	// reducer writes bare — so compare the last segment rather than the whole string.
 	//
-	// `loadData` is also how an import and a file rename/delete apply their changes, so those
-	// three do not light the indicator until the scheduled push starts — at most one debounce
-	// interval later, and nothing is lost, since the push itself is scheduled either way. That
-	// is the better half of the trade: eleven of the sixteen `loadData` dispatch sites are real
+	// `loadData` is also how an import applies its user and workspace lists, so those do not
+	// light the indicator until the scheduled push starts — at most one debounce interval later,
+	// and nothing is lost, since the push itself is scheduled either way. (Changes to the
+	// per-file lists from a rename, delete or import are marked by `onDidUpdateFiles` above.)
+	// That is the better half of the trade: most of the `loadData` dispatch sites are real
 	// loads (activation, an editor tab switch, a remote pull, a profile-sync change), and
 	// treating those as edits would flash "unsaved changes" — the one state that invites a
 	// pointless click — at startup and after every incoming sync.

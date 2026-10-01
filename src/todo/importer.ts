@@ -21,35 +21,33 @@ import {
 	parseMarkdownImport,
 	processAndMergeFilesData,
 	processAndMergeTodos,
+	withImportedIds,
 } from "../core";
-import {
-	currentFileActions,
-	editorFocusAndRecordsActions,
-	userActions,
-	workspaceActions,
-} from "./store";
+import { userActions, workspaceActions } from "./store";
 import {
 	ImportFormats,
 	ImportObject,
 	MarkdownImportScopes,
 	StoreState,
+	TodoFilesChange,
 	TodoFilesData,
 	TodoFilesDataPartialInput,
 	TodoFilesDataPaths,
+	TodoFilesStorage,
 } from "./todoTypes";
 import {
 	ensureFilesDataPaths,
 	getWorkspacePath,
-	getWorkspaceFilesWithRecords,
 	isEqual,
-	resolveFilesDataKey,
+	showChangedFiles,
 	sortByFileName,
 } from "./todoUtils";
 
 async function importCommand(
 	context: ExtensionContext,
 	format: ImportFormats,
-	store: EnhancedStore<StoreState>
+	store: EnhancedStore<StoreState>,
+	storage: TodoFilesStorage
 ) {
 	const rootDir = getWorkspacePath();
 	if (!rootDir) {
@@ -107,47 +105,42 @@ async function importCommand(
 		const previousData = (context.workspaceState.get("TodoFilesData") as TodoFilesData) || {};
 		const previousPaths =
 			(context.workspaceState.get("TodoFilesDataPaths") as TodoFilesDataPaths) || {};
-		const newData = hasFilesData
-			? processAndMergeFilesData(previousData, rawImportData.files as TodoFilesDataPartialInput)
-			: previousData;
-		const sortedResult = sortByFileName(newData);
-		let filesDataPaths = ensureFilesDataPaths(sortedResult, previousPaths, getWorkspacePath());
-
-		if (hasFilesDataPaths) {
-			filesDataPaths = mergeImportedFilesDataPaths(
-				filesDataPaths,
-				rawImportData.filesDataPaths as TodoFilesDataPaths
+		// The change is applied to the memento and to the storage (see `updateFiles`), so the
+		// ids and timestamps it mints are fixed here, once.
+		const importedFiles = hasFilesData
+			? withImportedIds(previousData, rawImportData.files as TodoFilesDataPartialInput)
+			: undefined;
+		const importedAt = new Date().toISOString();
+		const importFiles: TodoFilesChange = (files) => {
+			const filesData = sortByFileName(
+				importedFiles
+					? processAndMergeFilesData(files.filesData, importedFiles, () => importedAt)
+					: files.filesData
 			);
-			filesDataPaths = ensureFilesDataPaths(sortedResult, filesDataPaths, getWorkspacePath());
-		}
+			let filesDataPaths = ensureFilesDataPaths(filesData, files.filesDataPaths, getWorkspacePath());
+			if (hasFilesDataPaths) {
+				filesDataPaths = ensureFilesDataPaths(
+					filesData,
+					mergeImportedFilesDataPaths(
+						filesDataPaths,
+						rawImportData.filesDataPaths as TodoFilesDataPaths
+					),
+					getWorkspacePath()
+				);
+			}
+			return { filesData, filesDataPaths };
+		};
+		const imported = importFiles({ filesData: previousData, filesDataPaths: previousPaths });
 
-		const dataChanged = !isEqual(previousData, sortedResult);
-		const pathsChanged = !isEqual(previousPaths, filesDataPaths);
+		const dataChanged = !isEqual(previousData, imported.filesData);
+		const pathsChanged = !isEqual(previousPaths, imported.filesDataPaths);
 
 		if (dataChanged || pathsChanged) {
-			context.workspaceState.update("TodoFilesData", sortedResult);
-			context.workspaceState.update("TodoFilesDataPaths", filesDataPaths);
-			// Update the store
-			store.dispatch(
-				editorFocusAndRecordsActions.setWorkspaceFilesWithRecords(
-					{
-						workspaceFilesWithRecords: getWorkspaceFilesWithRecords(sortedResult || {}),
-						filesDataPaths,
-					}
-				)
-			);
-			const targetFilePath = state.editorFocusAndRecords.editorFocusedFilePath;
-			const resolved = resolveFilesDataKey({
-				filePath: targetFilePath,
-				filesData: sortedResult,
-				filesDataPaths,
-			});
-			store.dispatch(
-				currentFileActions.loadData({
-					filePath: targetFilePath,
-					data: resolved.key ? sortedResult[resolved.key] ?? [] : [],
-				})
-			);
+			// Through the storage, not straight into the memento: the next per-file persist
+			// rebuilds the lists from the storage, and dropped every imported file but the one
+			// the slice was reloaded with.
+			void storage.updateFiles(importFiles);
+			showChangedFiles(context, store);
 			vscode.window.showInformationMessage("Files data imported");
 			LogChannel.log("Files data imported");
 		} else {

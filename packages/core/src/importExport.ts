@@ -531,6 +531,52 @@ export function mergeTodoArrays(
 	return Array.from(byId.values());
 }
 
+/**
+ * `input` with an id on every item that `mergeTodoArrays` would mint one for, minted against
+ * `previous`. The merge mints ids at random, so merging one import into two copies of the
+ * stored lists gave the same new todo a different id in each. Merged after this, the import
+ * gives the same todos in every copy that holds the same todos, and the merge mints nothing.
+ * The extension relies on it: it applies an import to its memento and to its storage.
+ *
+ * The id decisions follow `mergeTodoArrays`: an id already in the file's list is an overlay,
+ * a new non-zero numeric id is kept, and anything else gets a fresh one. Pin the clock too,
+ * by passing the same `nowIso` to each merge.
+ */
+export function withImportedIds(
+	previous: TodoFilesData,
+	input: TodoFilesDataPartialInput
+): TodoFilesDataPartialInput {
+	const result: TodoFilesDataPartialInput = {};
+	for (const filePath in input) {
+		const items = input[filePath];
+		if (!Array.isArray(items)) {
+			result[filePath] = items;
+			continue;
+		}
+		const stored = Object.prototype.hasOwnProperty.call(previous, filePath)
+			? previous[filePath]
+			: undefined;
+		const taken: Array<{ id: number }> = Array.isArray(stored) ? [...stored] : [];
+		result[filePath] = items.map((incoming) => {
+			if (typeof incoming !== "object" || incoming === null) {
+				return incoming;
+			}
+			const id = incoming.id;
+			if (id !== undefined && taken.some((todo) => todo.id === id)) {
+				return incoming;
+			}
+			if (id && isNumericId(id)) {
+				taken.push({ id });
+				return incoming;
+			}
+			const minted = generateUniqueId(taken);
+			taken.push({ id: minted });
+			return { ...incoming, id: minted };
+		});
+	}
+	return result;
+}
+
 function mergeTodoFilesData(
 	previousData: TodoFilesData,
 	validImportData: TodoFilesDataPartialInput,
