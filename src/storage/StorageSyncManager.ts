@@ -49,6 +49,17 @@ type GlobalPersistedData = {
  */
 type PersistStorage = "user" | "workspace";
 
+/** The `globalState` keys VS Code Settings Sync carries in Profile Sync mode. */
+const PROFILE_SYNC_KEYS: readonly string[] = ["TodoData"];
+
+/**
+ * How often Profile Sync mode looks for a user list that Settings Sync delivered. VS Code updates
+ * the memento in place and raises no event, so it has to be looked at. A look that finds the
+ * object this window last saw does nothing; any other object is compared by content, which is
+ * what keeps this window's own writes from being reloaded, since VS Code hands back a copy.
+ */
+const PROFILE_SYNC_CHECK_INTERVAL_MS = 2000;
+
 /**
  * `files` with `fileState`'s list stored under the file's key, or removed when the list is
  * empty, and the file's path aliases recorded. Returns new maps and leaves `files` untouched.
@@ -91,6 +102,18 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	filesDataPaths: {},
 };
 	private cachedGlobalData: GlobalPersistedData = { userTodos: [] };
+	/**
+	 * The `globalState.TodoData` value this window last wrote or loaded. A different object there
+	 * means Settings Sync or another window has replaced it; see {@link checkSyncedUserTodos}.
+	 */
+	private seenUserTodoData: unknown;
+	/** User-scope persists accepted and not yet finished; see {@link loadSyncedUserTodos}. */
+	private pendingUserPersists = 0;
+	/**
+	 * Whether this window last knew the mode as Profile Sync: from activation, the file watcher or
+	 * the last look for a changed `TodoData`.
+	 */
+	private watchedProfileSync = false;
 	private syncStorageManager: SyncStorageManager;
 	/** Tail of each storage's writes in progress; see {@link exclusive}. */
 	private readonly writeTails: Record<PersistStorage, Promise<void>> = {
@@ -116,9 +139,62 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	}
 
 	public async initialize(): Promise<void> {
+		this.updateKeysForSync();
 		await this.ensureGlobalStorageInitialized();
 		await this.ensureWorkspaceStorageInitialized();
 		this.registerWatchers();
+	}
+
+	/**
+	 * Call after the user sync mode changes. The user list is registered with Settings Sync only
+	 * while in Profile Sync mode: registered only at activation, choosing Profile Sync did nothing
+	 * until a restart, and leaving it kept uploading this machine's list over the other machines'.
+	 *
+	 * Leaving Profile Sync, the list is taken from `TodoData`, which can be ahead of this window
+	 * when Settings Sync has delivered a list the next look has not loaded yet, and
+	 * `globalData.json`, which the other modes load, is written from it: in Profile Sync a list
+	 * loaded from `TodoData` does not reach the file. Leaving another mode, the file is already
+	 * the newest copy, since a Local write reaches it before other windows' `TodoData`, and
+	 * writing this window's `TodoData` over it could undo another window's edit. Nothing is
+	 * written to `TodoData`: entering Profile Sync must not upload a list this window failed to
+	 * load.
+	 *
+	 * @param previousMode the user sync mode before the change
+	 */
+	public async userSyncModeChanged(previousMode: string): Promise<void> {
+		this.updateKeysForSync();
+		if (previousMode !== "profile-sync") {
+			return;
+		}
+		await this.exclusive("user", async () => {
+			this.takeUserTodoData();
+			const onDisk = await this.tryReadGlobalData();
+			if (!onDisk || !isEqual(onDisk.userTodos, this.cachedGlobalData.userTodos)) {
+				await this.writeGlobalData(this.cachedGlobalData);
+			}
+		});
+	}
+
+	/**
+	 * Takes the user list from `TodoData`. Returns whether that changed the list this window
+	 * held; the store and the file are left to the caller.
+	 */
+	private takeUserTodoData(): boolean {
+		const stored = this.context.globalState.get<unknown>("TodoData");
+		if (!Array.isArray(stored)) {
+			return false;
+		}
+		this.seenUserTodoData = stored;
+		const changed = !isEqual(stored, this.cachedGlobalData.userTodos);
+		this.updateGlobalCache({ userTodos: stored as Todo[] });
+		return changed;
+	}
+
+	private updateKeysForSync(): void {
+		const globalState = this.context.globalState;
+		if (typeof globalState.setKeysForSync === "function") {
+			globalState.setKeysForSync(this.isProfileSync() ? PROFILE_SYNC_KEYS : []);
+		}
 	}
 
 	public async getWorkspaceTodos(): Promise<Todo[]> {
@@ -212,9 +288,19 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 			);
 		}
 
-		return this.exclusive(state.scope === TodoScope.user ? "user" : "workspace", () =>
-			this.writeSlice(state, config, userSyncMode, workspaceSyncMode)
-		);
+		if (state.scope !== TodoScope.user) {
+			return this.exclusive("workspace", () =>
+				this.writeSlice(state, config, userSyncMode, workspaceSyncMode)
+			);
+		}
+		this.pendingUserPersists++;
+		return this.exclusive("user", async () => {
+			try {
+				await this.writeSlice(state, config, userSyncMode, workspaceSyncMode);
+			} finally {
+				this.pendingUserPersists--;
+			}
+		});
 	}
 
 	/**
@@ -357,15 +443,17 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		try {
 			switch (state.scope) {
 				case TodoScope.user: {
-					await this.context.globalState.update("TodoData", state.todos);
-
 					if (userSyncMode === "github") {
-						// Write to gist cache
+						// Write to gist cache. `TodoData` keeps the profile's own list, the one Profile
+						// Sync mode loads and uploads, so the gist list does not go there.
 						const globalMode = GlobalSyncMode.GitHub;
 						const fileName = config.get<string>("github.userFile", "user-todos.json");
 						await this.syncStorageManager.setGlobalTodos(globalMode, state.todos, fileName);
 					} else {
-						// Write to local file
+						// Write to local file. The cache takes the list first: a failed file write
+						// must not leave it behind `TodoData`, which a reload would then undo.
+						this.updateGlobalCache({ userTodos: state.todos });
+						await this.setUserTodoData(state.todos);
 						await this.writeGlobalData({ userTodos: state.todos });
 					}
 					break;
@@ -453,24 +541,49 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		]);
 	}
 
+	/**
+	 * Loads the user list. In Profile Sync mode it comes from `globalState.TodoData`, the key
+	 * Settings Sync carries, and `globalData.json` is rewritten from it. That file is this
+	 * machine's alone, so it is older whenever another machine has changed the list since this one
+	 * last ran; loading it and writing it over `TodoData` handed Settings Sync this machine's old
+	 * list to upload, and the other machine's change was lost on both. Every other mode loads the
+	 * file, as before. `TodoData` is taken before the storage directory is touched, in every
+	 * mode, so a failure there leaves the list it holds rather than an empty one for the next edit
+	 * to store, or for Profile Sync to upload.
+	 */
 	private async ensureGlobalStorageInitialized(): Promise<void> {
+		const stored = this.context.globalState.get<unknown>("TodoData");
+		if (Array.isArray(stored)) {
+			this.updateGlobalCache({ userTodos: stored as Todo[] });
+		}
+		const synced = this.syncedUserTodos();
+		this.seenUserTodoData = synced;
+		this.watchedProfileSync = synced !== undefined;
+
 		try {
 			const globalRoot = this.context.globalStorageUri;
 			await vscode.workspace.fs.createDirectory(globalRoot);
 			this.globalDataUri = vscode.Uri.joinPath(globalRoot, this.globalDataFileName);
 			const existing = await this.tryReadGlobalData();
 
+			if (synced) {
+				if (!existing || !isEqual(existing.userTodos, synced)) {
+					await this.writeGlobalData({ userTodos: synced });
+				}
+				return;
+			}
+
 			if (existing) {
 				this.updateGlobalCache(existing);
 			} else {
 				const initialData: GlobalPersistedData = {
-					userTodos: (this.context.globalState.get("TodoData") as Todo[]) ?? [],
+					userTodos: this.cachedGlobalData.userTodos,
 				};
 				this.updateGlobalCache(initialData);
 				await this.writeGlobalData(initialData);
 			}
 
-			await this.context.globalState.update("TodoData", this.cachedGlobalData.userTodos);
+			await this.setUserTodoData(this.cachedGlobalData.userTodos);
 		} catch (error) {
 			LogChannel.log(
 				`[StorageSync] Failed to prepare global storage: ${this.describeError(error)}`
@@ -662,6 +775,18 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	}
 
 	private async handleGlobalFileChange(): Promise<void> {
+		// In Profile Sync mode the list is `TodoData`, which Settings Sync carries and every
+		// persist writes before the file; the file is left alone. Loading it would put an older
+		// list in `TodoData` when another window's write lands after a newer one, and Settings
+		// Sync would upload it. Rewriting it from `TodoData` is no better: another window's
+		// change reaches this window's memento later than its file, so this window's copy can be
+		// the older one. That window's change is loaded by the next look for a changed `TodoData`,
+		// or, if that window leaves Profile Sync first, by the look that finds the mode gone.
+		if (this.isProfileSync()) {
+			this.watchedProfileSync = true;
+			return;
+		}
+
 		const data = await this.tryReadGlobalData();
 		if (!data) {
 			return;
@@ -672,9 +797,139 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 		}
 
 		this.updateGlobalCache(data);
-		await this.context.globalState.update("TodoData", this.cachedGlobalData.userTodos);
+		await this.setUserTodoData(this.cachedGlobalData.userTodos);
 		this.suppressNextPersistForScope(TodoScope.user);
 		this.store.dispatch(userActions.loadData({ data: this.cachedGlobalData.userTodos }));
+	}
+
+	private isProfileSync(): boolean {
+		return this.context.globalState.get<string>("syncMode", "profile-local") === "profile-sync";
+	}
+
+	/** `globalState.TodoData` in Profile Sync mode, where it is the user list's source of truth. */
+	private syncedUserTodos(): Todo[] | undefined {
+		if (!this.isProfileSync()) {
+			return undefined;
+		}
+		const synced = this.context.globalState.get<unknown>("TodoData");
+		return Array.isArray(synced) ? (synced as Todo[]) : undefined;
+	}
+
+	private setUserTodoData(todos: Todo[]): Thenable<void> {
+		this.seenUserTodoData = todos;
+		return this.context.globalState.update("TodoData", todos);
+	}
+
+	/**
+	 * Settings Sync writes a list another machine uploaded straight into `globalState.TodoData`,
+	 * and so does another window on this machine. Without a reload the store kept the older
+	 * list, and the next edit wrote it back over the newer one, which Settings Sync then uploaded.
+	 *
+	 * Call once the store holds the loaded lists and its subscriber is attached. A reload
+	 * dispatched before then is overwritten by the initial load, and the persist suppression it
+	 * sets is never used up, so it would drop the first edit. It looks once at the call, for a
+	 * list delivered since {@link initialize}.
+	 */
+	public watchSyncedUserTodos(): void {
+		const timer = setInterval(
+			() => void this.checkSyncedUserTodos(),
+			PROFILE_SYNC_CHECK_INTERVAL_MS
+		);
+		this.context.subscriptions.push(
+			{ dispose: () => clearInterval(timer) },
+			vscode.window.onDidChangeWindowState((state) => {
+				if (state.focused) {
+					void this.checkSyncedUserTodos();
+				}
+			})
+		);
+		// Also a mode left since `initialize` loaded the list in Profile Sync.
+		this.watchedProfileSync = this.watchedProfileSync || this.isProfileSync();
+		void this.checkSyncedUserTodos();
+	}
+
+	/**
+	 * Loads `TodoData` if it is no longer the value this window last wrote or loaded.
+	 *
+	 * The mode is shared by every window on the machine, so another window can leave Profile
+	 * Sync. The file watcher ignored that window's last write, since this window was still in
+	 * Profile Sync, and the mode change arrives with the `TodoData` of that write, which from then
+	 * on nothing loads. So once this window finds the mode gone, it takes the list from
+	 * `TodoData` a last time. Not from the file: in Profile Sync a list loaded from `TodoData` is
+	 * not written to the file, so the file can be the older copy.
+	 */
+	private checkSyncedUserTodos(): Promise<void> {
+		const profileSync = this.isProfileSync();
+		const left = this.watchedProfileSync && !profileSync;
+		this.watchedProfileSync = profileSync;
+		if (left) {
+			return this.logUserQueueFailure(
+				this.exclusive("user", async () => this.leaveProfileSync()),
+				"the user list after leaving Profile Sync"
+			);
+		}
+
+		const synced = this.syncedUserTodos();
+		if (!synced || synced === this.seenUserTodoData) {
+			return Promise.resolve();
+		}
+		return this.logUserQueueFailure(
+			this.exclusive("user", async () => this.loadSyncedUserTodos()),
+			"the synced user list"
+		);
+	}
+
+	/**
+	 * Run in the user queue. An edit queued behind it stores what the store shows, which settles
+	 * the lists by itself, so it is left to win. The store is reloaded unless the mode is now
+	 * GitHub, where it shows the gist list and the next edit would push the profile's list to the
+	 * gist. The file is not written: the window that changed the mode has written it from
+	 * `TodoData` (see {@link userSyncModeChanged}), and a later write to it in Local mode can reach
+	 * this window before its `TodoData` does, so this window's copy could be the older one.
+	 */
+	private leaveProfileSync(): void {
+		if (this.pendingUserPersists > 0) {
+			return;
+		}
+		if (
+			this.takeUserTodoData() &&
+			this.context.globalState.get<string>("syncMode", "profile-local") !== "github"
+		) {
+			this.suppressNextPersistForScope(TodoScope.user);
+			this.store.dispatch(userActions.loadData({ data: this.cachedGlobalData.userTodos }));
+		}
+	}
+
+	/** The queue's tail swallows failures to keep the queue going, so they are logged here. */
+	private logUserQueueFailure(work: Promise<void>, what: string): Promise<void> {
+		return work.catch((error: unknown) =>
+			LogChannel.log(`[StorageSync] Failed to load ${what}: ${this.describeError(error)}`)
+		);
+	}
+
+	/**
+	 * Profile Sync mode: loads `TodoData` into the store when it differs from what this window
+	 * holds. Run in the user write queue, so it reads `TodoData` after any persist in progress
+	 * has written it. `globalData.json` is not written: in this mode nothing loads it, and
+	 * activation and the next mode change write it from `TodoData`.
+	 *
+	 * An edit whose persist is still queued behind this is left to win. Loading over it showed
+	 * the delivered list while the persist then stored the edit, so the two stayed apart until the
+	 * next edit stored the shown list and dropped the first. The look after that persist finds
+	 * `TodoData` settled on the edit.
+	 */
+	private loadSyncedUserTodos(): void {
+		const synced = this.syncedUserTodos();
+		if (!synced || synced === this.seenUserTodoData || this.pendingUserPersists > 0) {
+			return;
+		}
+		this.seenUserTodoData = synced;
+		if (isEqual(synced, this.cachedGlobalData.userTodos)) {
+			return;
+		}
+		this.updateGlobalCache({ userTodos: synced });
+		this.suppressNextPersistForScope(TodoScope.user);
+		this.store.dispatch(userActions.loadData({ data: synced }));
 	}
 
 	private async handleGlobalFileDelete(): Promise<void> {

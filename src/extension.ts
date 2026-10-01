@@ -47,8 +47,6 @@ import { WebviewVisibilityCoordinator } from "./sync/WebviewVisibilityCoordinato
 import McpServerHost from "./mcp/McpServerHost";
 import McpLogChannel from "./mcp/McpLogChannel";
 
-const GLOBAL_STATE_SYNC_KEYS: readonly string[] = ["TodoData"];
-
 export async function activate(context: ExtensionContext) {
 	const store = createStore();
 	const storageSyncManager = new StorageSyncManager(context, store);
@@ -109,14 +107,6 @@ export async function activate(context: ExtensionContext) {
 		}
 	});
 	context.subscriptions.push(filesUpdatedListener);
-
-	if (typeof context.globalState.setKeysForSync === "function") {
-		// Enable VS Code Settings Sync for TodoData if using profile-sync mode
-		const currentSyncMode = context.globalState.get<string>("syncMode", "profile-local");
-		context.globalState.setKeysForSync(
-			currentSyncMode === "profile-sync" ? GLOBAL_STATE_SYNC_KEYS : []
-		);
-	}
 
 	const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
 		let reloadUser = false;
@@ -291,6 +281,7 @@ export async function activate(context: ExtensionContext) {
 				break;
 		}
 	});
+	storageSyncManager.watchSyncedUserTodos();
 
 	// Load current active editor tab and listen for changes
 	tabChangeHandler(store, context);

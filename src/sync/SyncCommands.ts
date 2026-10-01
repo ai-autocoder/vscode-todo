@@ -126,8 +126,12 @@ export class SyncCommands {
 		if (confirm === "Disconnect") {
 			await this.authManager.disconnect();
 
-			// Revert sync modes to local/profile-local
-			await this.context.globalState.update("syncMode", "profile-local");
+			// Revert the scopes on GitHub to a local mode. Profile Sync does not use GitHub, so a
+			// user scope in that mode stays in it.
+			if (this.context.globalState.get<string>("syncMode", "profile-local") === "github") {
+				await this.context.globalState.update("syncMode", "profile-local");
+				await this.storageSyncManager.userSyncModeChanged("github");
+			}
 			await this.context.workspaceState.update("syncMode", "local");
 
 			// Stop polling
@@ -446,7 +450,9 @@ export class SyncCommands {
 			}
 
 			// Enable GitHub sync via internal storage
+			const previousMode = this.context.globalState.get<string>("syncMode", "profile-local");
 			await this.context.globalState.update("syncMode", "github");
+			await this.storageSyncManager.userSyncModeChanged(previousMode);
 
 			// Reload store data from GitHub cache
 			await this.reloadStoreData("user");
@@ -470,7 +476,9 @@ export class SyncCommands {
 		}
 
 		// Switch to local or profile sync
+		const previousMode = this.context.globalState.get<string>("syncMode", "profile-local");
 		await this.context.globalState.update("syncMode", mode);
+		await this.storageSyncManager.userSyncModeChanged(previousMode);
 
 		// Reload store data from local storage
 		await this.reloadStoreData("user");
