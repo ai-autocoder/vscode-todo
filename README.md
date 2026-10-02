@@ -1,10 +1,8 @@
-<h1 align="center">
+<p align="center">
+  <img src="https://github.com/ai-autocoder/vscode-todo/blob/e044e89bdf974a6c6cbc81717be9f44f944fe12f/icon.png?raw=true" width="128" alt="Logo">
+</p>
 
-<img src="https://github.com/ai-autocoder/vscode-todo/blob/e044e89bdf974a6c6cbc81717be9f44f944fe12f/icon.png?raw=true" width="200" alt="Logo">
-
-VS Code Todo
-
-</h1>
+<h1 align="center">VS Code Todo</h1>
 
 <h3 align="center">Todos and notes your AI agent can read and update. In your editor, synced to your phone.</h3>
 
@@ -15,9 +13,14 @@ VS Code Todo
 </p>
 
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo"><img alt="VS Marketplace Installs" src="https://vsmarketplacebadges.dev/installs-short/FrancescoAnzalone.vsc-todo.png" /></a>
-  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo"><img alt="Open VSX Downloads" src="https://img.shields.io/open-vsx/dt/FrancescoAnzalone/vsc-todo" /></a>
-  <a href="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml/badge.svg?branch=master" /></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo"><img alt="VS Marketplace Installs" src="https://vsmarketplacebadges.dev/installs-short/FrancescoAnzalone.vsc-todo.svg?label=VS%20Marketplace%20installs" /></a>
+  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo"><img alt="Open VSX Downloads" src="https://img.shields.io/open-vsx/dt/FrancescoAnzalone/vsc-todo?label=Open%20VSX%20downloads" /></a>
+  <a href="https://github.com/ai-autocoder/vscode-todo/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ai-autocoder/vscode-todo/ci.yml?branch=master&label=CI&logo=github" /></a>
+  <a href="https://github.com/ai-autocoder/vscode-todo/blob/master/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg" /></a>
+</p>
+
+<p align="center">
+  <a href="https://plans-app.pages.dev"><img alt="Try it on your phone: plans-app.pages.dev" src="https://img.shields.io/badge/Try_it_on_your_phone-plans--app.pages.dev-1558B8?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI%2BPHBhdGggZD0iTTE3IDEuMDEgNyAxYy0xLjEgMC0yIC45LTIgMnYxOGMwIDEuMS45IDIgMiAyaDEwYzEuMSAwIDItLjkgMi0yVjNjMC0xLjEtLjktMS45OS0yLTEuOTl6TTE3IDE5SDdWNWgxMHYxNHoiLz48L3N2Zz4%3D" /></a>
 </p>
 
 <p align="center">
