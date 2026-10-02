@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="./assets/screenshots/UI-overview.gif" alt="VS Code Todo UI with markdown checklist" />
+  <img src="./assets/screenshots/UI-overview.gif" alt="Claude Code reviews cart.ts, files the bugs as tagged todos in VS Code Todo, then completes the next one" />
 </p>
 
 <p align="center">
