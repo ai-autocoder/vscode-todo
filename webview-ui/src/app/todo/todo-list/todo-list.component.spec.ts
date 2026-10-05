@@ -466,6 +466,45 @@ describe("TodoList revealing a newly added item", () => {
 			expect(animatedFromY(spies.get(5)!)).toBeCloseTo(-ROW_HEIGHT, 0);
 		});
 
+		it("measures every row before it animates any", async () => {
+			// Starting an animation invalidates layout, so a row measured after one forces a fresh
+			// layout of the whole list. Alternating the two cost a layout per row, and an add at the
+			// top moves every row: 268 items froze the webview for seconds on each add.
+			const calls: string[] = [];
+			fixture.nativeElement.querySelectorAll("[data-id]").forEach((el: HTMLElement) => {
+				const measure = el.getBoundingClientRect.bind(el);
+				spyOn(el, "getBoundingClientRect").and.callFake(() => {
+					calls.push("measure");
+					return measure();
+				});
+				spyOn(el, "animate").and.callFake(() => {
+					calls.push("animate");
+					return {} as Animation;
+				});
+			});
+			todos.unshift(makeTodo(6, "typed here"));
+			pendingLocalAddText = "typed here";
+			lastAction$.next("user/addTodo");
+			await nextFrame();
+
+			expect(calls.filter((call) => call === "animate").length).toBe(5);
+			expect(calls.lastIndexOf("measure")).toBeLessThan(calls.indexOf("animate"));
+		});
+
+		it("falls back to a CSS transition for rows WAAPI cannot animate", async () => {
+			const rows = [...fixture.nativeElement.querySelectorAll("[data-id]")] as HTMLElement[];
+			rows.forEach((el) => spyOn(el, "animate").and.throwError("no WAAPI"));
+			todos.unshift(makeTodo(6, "typed here"));
+			pendingLocalAddText = "typed here";
+			lastAction$.next("user/addTodo");
+			await nextFrame();
+
+			for (const el of rows) {
+				expect(el.style.transition).toBe("transform 300ms ease-out");
+				expect(el.style.transform).toMatch(/^translate\(0(px)?, 0(px)?\)$/);
+			}
+		});
+
 		it("does not slide rows when the loadData carrying the add also drops some", async () => {
 			// Prepends the add and drops the last row, so rows 1–4 really do move down — only the
 			// replacement check can stop them animating here.

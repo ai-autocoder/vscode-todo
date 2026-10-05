@@ -980,6 +980,11 @@ export class TodoList implements OnInit, AfterViewInit {
 			const isBrowserClamp = !!prevScroll && (container?.scrollHeight ?? 0) < prevScroll.height;
 			const scrolled =
 				!prevScroll || !container || isBrowserClamp ? 0 : container.scrollTop - prevScroll.top;
+			// Every row is measured before any is animated. Starting an animation invalidates
+			// layout, so measuring each row right after animating the one above it forced a layout
+			// of the whole list per row. An add at the top moves every row, so the cost grew with
+			// the square of the list's length: 268 items froze the webview for six seconds.
+			const moves: Array<{ el: HTMLElement; dx: number; dy: number }> = [];
 			this.dragItemEls.forEach((ref) => {
 				const el = ref.nativeElement;
 				const idAttr = el.getAttribute("data-id");
@@ -991,27 +996,46 @@ export class TodoList implements OnInit, AfterViewInit {
 				const dx = prev.left - next.left;
 				const dy = prev.top - next.top - scrolled;
 				if (dx === 0 && dy === 0) return;
+				moves.push({ el, dx, dy });
+			});
+
+			const unanimated: typeof moves = [];
+			for (const move of moves) {
 				try {
 					// Use WAAPI for smooth transform without layout thrash
-					el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "translate(0, 0)" }], {
-						duration: 300,
-						easing: "ease-out",
-					});
+					move.el.animate(
+						[{ transform: `translate(${move.dx}px, ${move.dy}px)` }, { transform: "translate(0, 0)" }],
+						{ duration: 300, easing: "ease-out" }
+					);
 				} catch {
-					// Fallback using CSS transition
-					el.style.transform = `translate(${dx}px, ${dy}px)`;
-					// force reflow
-					void el.getBoundingClientRect();
-					el.style.transition = "transform 300ms ease-out";
-					el.style.transform = "translate(0, 0)";
-					const clear = () => {
-						el.style.transition = "";
-						el.style.transform = "";
-						el.removeEventListener("transitionend", clear);
-					};
-					el.addEventListener("transitionend", clear);
+					unanimated.push(move);
 				}
-			});
+			}
+			this.transitionFromOffsets(unanimated);
 		});
+	}
+
+	/**
+	 * The CSS-transition fallback for rows WAAPI could not animate. Every row gets its starting
+	 * offset before the one reflow that commits them all, for the same reason
+	 * {@link animateReorder} measures before it animates.
+	 */
+	private transitionFromOffsets(moves: Array<{ el: HTMLElement; dx: number; dy: number }>): void {
+		if (moves.length === 0) return;
+		for (const { el, dx, dy } of moves) {
+			el.style.transform = `translate(${dx}px, ${dy}px)`;
+		}
+		// force reflow
+		void moves[0].el.getBoundingClientRect();
+		for (const { el } of moves) {
+			el.style.transition = "transform 300ms ease-out";
+			el.style.transform = "translate(0, 0)";
+			const clear = () => {
+				el.style.transition = "";
+				el.style.transform = "";
+				el.removeEventListener("transitionend", clear);
+			};
+			el.addEventListener("transitionend", clear);
+		}
 	}
 }
