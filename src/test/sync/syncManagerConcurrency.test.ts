@@ -373,6 +373,49 @@ suite("SyncManager concurrency", () => {
 	});
 
 	/**
+	 * The last stretch of a sync that pulled something: the manager writes the merged list into
+	 * the cache, `persistLocalUser` writes it again, and the store is reloaded from the cache.
+	 * None of that waits for `StorageSyncManager`'s write queue, and nothing reads the cache again
+	 * after it. An add the user makes meanwhile persists the list the store still shows, which is
+	 * the pre-sync list plus the add. If that lands before `persistLocalUser`, the add is
+	 * overwritten and the reload removes it from the screen. If it lands after, the cache keeps
+	 * the add but loses what was pulled, while the baseline says the gist has it, so the next sync
+	 * pushes the pulled items away as deletions.
+	 *
+	 * Skipped until it is fixed: an edit can land up to the moment the store reloads, and the
+	 * edit carries the whole stale list, so closing this takes the write-back, the persist queue
+	 * and the store reload working together, not another re-read.
+	 */
+	for (const [when, cacheWrite] of [
+		["during the write-back", 2],
+		["after the write-back, before the store reloads", 3],
+	] as const) {
+		test.skip(`keeps an add the user makes ${when}`, async () => {
+			// A pure pull. The cache key is written by the reconcile (1), the manager's write-back
+			// (2) and persistLocalUser (3).
+			setUp([todo(1, "one"), todo(2, "added on the phone")], [todo(1, "one")], [todo(1, "one")]);
+
+			const cacheKey = StorageKeys.globalGistCache(FILE);
+			let cacheWrites = 0;
+			let pendingEdit: Promise<void> = Promise.resolve();
+			afterCacheWrite = (key) => {
+				if (key !== cacheKey || ++cacheWrites !== cacheWrite) {
+					return;
+				}
+				// The store has not reloaded yet, so the persist carries the pre-sync list.
+				pendingEdit = editLocally([todo(1, "one"), todo(3, "typed just now")]);
+			};
+
+			await runUserSync();
+			await pendingEdit;
+
+			const local = new Map(cachedTodos().map((t) => [t.id, t.text]));
+			assert.strictEqual(local.get(3), "typed just now", "the add must survive");
+			assert.strictEqual(local.get(2), "added on the phone", "and so must the pulled change");
+		});
+	}
+
+	/**
 	 * A peer push that arrives when we have nothing of our own to send is a plain pull. It must
 	 * not be treated as a local change and pushed back.
 	 */

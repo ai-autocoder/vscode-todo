@@ -37,6 +37,26 @@ export type SelectionCommand =
 	| "deleteCompleted"
 	| "clearSelection";
 
+/**
+ * A composer add, as {@link TodoService.undeliveredAdds} hands it back. A late arrival is reported
+ * on {@link TodoService.lateDeliveredAdds} with the same object, so the composer can tell which
+ * of the texts it put back has turned out to be stored.
+ */
+export interface ComposerAdd {
+	readonly scope: TodoScope;
+	readonly text: string;
+	/** For a per-file add, the file whose list it was sent to. */
+	readonly filePath?: string;
+}
+
+/** A composer add sent to the host and not seen coming back yet; see {@link TodoService.addTodo}. */
+interface UnconfirmedAdd {
+	add: ComposerAdd;
+	/** Whether the wait ran out and the text was handed back to the composer. */
+	handedBack: boolean;
+	timer: ReturnType<typeof setTimeout>;
+}
+
 @Injectable({
 	providedIn: "root",
 })
@@ -151,6 +171,46 @@ export class TodoService {
 	 * so that a request the host silently refused cannot be claimed by something much later.
 	 */
 	private static readonly localAddTtlMs = 10_000;
+
+	/**
+	 * Composer adds sent and not yet seen in a list from the host, oldest first. Separate from
+	 * {@link _pendingLocalAdd}: that one is for scrolling to the item and only remembers the
+	 * latest add, while every add here has to be accounted for, since the composer has already
+	 * cleared its text.
+	 */
+	private _unconfirmedAdds: Record<TodoScope, UnconfirmedAdd[]> = {
+		[TodoScope.user]: [],
+		[TodoScope.workspace]: [],
+		[TodoScope.currentFile]: [],
+	};
+	/** Whether a list for the scope has arrived, which is what an incoming list is compared to. */
+	private _hasList: Record<TodoScope, boolean> = {
+		[TodoScope.user]: false,
+		[TodoScope.workspace]: false,
+		[TodoScope.currentFile]: false,
+	};
+	private readonly _undeliveredAdds = new Subject<ComposerAdd>();
+	private readonly _lateDeliveredAdds = new Subject<ComposerAdd>();
+	/**
+	 * How long an add may go without coming back before its text is handed back. The echo is
+	 * normally immediate; nothing comes back at all when the webview has lost its host, which a
+	 * VS Code editor tab does when the extension host restarts underneath it.
+	 */
+	private static readonly addConfirmTimeoutMs = 5_000;
+	/**
+	 * How long a handed-back add is still recognised if it arrives after all. An extension host
+	 * that another extension is blocking answers late rather than never, and without this the
+	 * handed-back text would sit in the composer inviting a duplicate.
+	 */
+	private static readonly lateDeliveryWindowMs = 60_000;
+
+	/**
+	 * An add whose text was handed back to the composer because the host never confirmed it,
+	 * so the text can be sent again rather than lost.
+	 */
+	readonly undeliveredAdds = this._undeliveredAdds.asObservable();
+	/** A handed-back add that the host turned out to have stored after all. */
+	readonly lateDeliveredAdds = this._lateDeliveredAdds.asObservable();
 
 	private _activeEditorMap: Record<TodoScope, BehaviorSubject<number | null>> = {
 		[TodoScope.user]: new BehaviorSubject<number | null>(null),
@@ -276,6 +336,16 @@ export class TodoService {
 	}
 
 	private handleReloadWebview(data: Message<MessageActionsToWebview.reloadWebview>) {
+		this.confirmArrivedAdds(TodoScope.user, data.payload.user.todos);
+		this.confirmArrivedAdds(TodoScope.workspace, data.payload.workspace.todos);
+		this.confirmArrivedAdds(
+			TodoScope.currentFile,
+			data.payload.currentFile.todos,
+			data.payload.currentFile.filePath
+		);
+		for (const scope of Object.values(TodoScope)) {
+			this._hasList[scope] = true;
+		}
 		this._config = data.config;
 		this.applyCssFontVars();
 		this._userTodos = data.payload.user.todos;
@@ -308,17 +378,27 @@ export class TodoService {
 	private handleSyncTodoData(payload: TodoSlice | CurrentFileSlice) {
 		switch (payload.scope) {
 			case TodoScope.user:
+				this.confirmArrivedAdds(TodoScope.user, payload.todos);
+				this._hasList.user = true;
 				this._userTodos = payload.todos;
 				this._todoCount.user = payload.numberOfTodos;
 				this.userLastAction.next(payload.lastActionType);
 				break;
 			case TodoScope.workspace:
+				this.confirmArrivedAdds(TodoScope.workspace, payload.todos);
+				this._hasList.workspace = true;
 				this._workspaceTodos = payload.todos;
 				this._todoCount.workspace = payload.numberOfTodos;
 				this.workspaceLastAction.next(payload.lastActionType);
 				break;
 			case TodoScope.currentFile: {
 				const currentFilePayload = payload as CurrentFileSlice;
+				this.confirmArrivedAdds(
+					TodoScope.currentFile,
+					currentFilePayload.todos,
+					currentFilePayload.filePath
+				);
+				this._hasList.currentFile = true;
 				this._currentFileSlice = currentFilePayload;
 				this._todoCount.currentFile = currentFilePayload.numberOfTodos;
 				this._currentFilePathSource.next(currentFilePayload.filePath);
@@ -383,9 +463,82 @@ export class TodoService {
 		return this._gitHubSyncInfoSource.getValue().isWorkspaceOpen;
 	}
 
+	/**
+	 * Sends a composer add to the host and waits for it to come back in a list. One that does not
+	 * come back within {@link addConfirmTimeoutMs} is reported on {@link undeliveredAdds}, so the
+	 * composer can put the text back: it clears the box as soon as it sends, and posting gives no
+	 * error when nothing receives the message. A webview that has lost its host still accepts
+	 * input, so without this an add typed there was silently lost.
+	 */
 	addTodo(...args: Parameters<typeof messagesFromWebview.addTodo>) {
-		this._pendingLocalAdd[args[0]] = { text: args[1].text.trim(), at: Date.now() };
+		const [scope, { text }] = args;
+		this._pendingLocalAdd[scope] = { text: text.trim(), at: Date.now() };
+		const add: ComposerAdd =
+			scope === TodoScope.currentFile
+				? { scope, text: text.trim(), filePath: this._currentFileSlice.filePath }
+				: { scope, text: text.trim() };
+		const entry: UnconfirmedAdd = {
+			add,
+			handedBack: false,
+			timer: setTimeout(() => this.handBack(entry), TodoService.addConfirmTimeoutMs),
+		};
+		this._unconfirmedAdds[scope].push(entry);
 		vscode.postMessage(messagesFromWebview.addTodo(...args));
+	}
+
+	private handBack(entry: UnconfirmedAdd): void {
+		entry.handedBack = true;
+		entry.timer = setTimeout(
+			() => this.forgetUnconfirmedAdd(entry),
+			TodoService.lateDeliveryWindowMs
+		);
+		this._undeliveredAdds.next(entry.add);
+	}
+
+	private forgetUnconfirmedAdd(entry: UnconfirmedAdd): void {
+		const pending = this._unconfirmedAdds[entry.add.scope];
+		const index = pending.indexOf(entry);
+		if (index !== -1) {
+			pending.splice(index, 1);
+		}
+	}
+
+	/**
+	 * Settles the composer adds that `incoming` carries, before it replaces the scope's list: items
+	 * it has and the current list does not, with the text that was sent. Matched by what arrived
+	 * rather than by the action name, for the reason {@link matchesLocalAdd} gives, and by a new
+	 * id, so an existing item that reads the same does not settle it. Each arrival settles one add,
+	 * oldest first.
+	 *
+	 * Only against a list of the same thing. Before the first list for the scope arrives, and for a
+	 * per-file list of another file, every item in it is new, and one that happened to read the
+	 * same would settle an add that was lost.
+	 */
+	private confirmArrivedAdds(scope: TodoScope, incoming: Todo[], incomingFilePath?: string): void {
+		const pending = this._unconfirmedAdds[scope];
+		if (pending.length === 0 || !this._hasList[scope]) {
+			return;
+		}
+		if (scope === TodoScope.currentFile && incomingFilePath !== this._currentFileSlice.filePath) {
+			return;
+		}
+		const known = new Set(this.getTodosInScope(scope).map((todo) => todo.id));
+		for (const todo of incoming) {
+			if (known.has(todo.id)) {
+				continue;
+			}
+			const entry = pending.find(
+				({ add }) => add.text === todo.text.trim() && add.filePath === incomingFilePath
+			);
+			if (!entry) {
+				continue;
+			}
+			clearTimeout(entry.timer);
+			this.forgetUnconfirmedAdd(entry);
+			if (entry.handedBack) {
+				this._lateDeliveredAdds.next(entry.add);
+			}
+		}
 	}
 
 	/**

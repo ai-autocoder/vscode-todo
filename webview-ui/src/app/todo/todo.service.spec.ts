@@ -1,7 +1,7 @@
 import { MessageActionsToWebview } from "../../../../src/panels/message";
-import { TodoScope, TodoSlice } from "../../../../src/todo/todoTypes";
+import { CurrentFileSlice, Todo, TodoScope, TodoSlice } from "../../../../src/todo/todoTypes";
 import { vscode } from "../utilities/vscode";
-import { TodoService } from "./todo.service";
+import { ComposerAdd, TodoService } from "./todo.service";
 
 /**
  * The composer's add is recognised by the text it sent rather than by the action name that
@@ -106,6 +106,221 @@ describe("TodoService local add tracking", () => {
 		} finally {
 			Date.now = realNow;
 		}
+	});
+});
+
+/**
+ * The composer clears its box as soon as it sends, and posting raises nothing when the message
+ * reaches no one, as it does from a VS Code tab whose extension host has restarted. So every add
+ * is held until it comes back in a list, and one that does not is handed back to the composer.
+ */
+describe("TodoService add delivery", () => {
+	let service: TodoService;
+	let onMessage: (event: MessageEvent) => void;
+	let handedBack: ComposerAdd[];
+	let deliveredLate: ComposerAdd[];
+
+	const item = (id: number, text: string): Todo => ({
+		id,
+		text,
+		completed: false,
+		creationDate: "2026-10-05T00:00:00.000Z",
+		isMarkdown: false,
+		isNote: false,
+	});
+
+	const slice = (scope: TodoScope, todos: Todo[]): TodoSlice => ({
+		scope,
+		todos,
+		lastActionType: `${scope}/addTodo`,
+		numberOfTodos: todos.length,
+		numberOfNotes: 0,
+	});
+
+	const fileSlice = (todos: Todo[], filePath = "/work/notes.md"): CurrentFileSlice => ({
+		...slice(TodoScope.currentFile, todos),
+		filePath,
+		isPinned: false,
+	});
+
+	function post(data: unknown): void {
+		onMessage(new MessageEvent("message", { data, source: window }));
+	}
+
+	function hostSends(scope: TodoScope, todos: Todo[], filePath?: string): void {
+		const payload =
+			scope === TodoScope.currentFile ? fileSlice(todos, filePath) : slice(scope, todos);
+		post({ type: MessageActionsToWebview.syncTodoData, payload });
+	}
+
+	/** What a host has to send before an arriving item can be told apart from one already there. */
+	function hostSendsEmptyLists(): void {
+		for (const scope of Object.values(TodoScope)) {
+			hostSends(scope, []);
+		}
+	}
+
+	beforeEach(() => {
+		// Listener captured and called directly, and the clock installed, as in the suite above.
+		const addEventListener = window.addEventListener.bind(window);
+		spyOn(window, "addEventListener").and.callFake(
+			(type: string, listener: unknown, ...rest: unknown[]) => {
+				if (type === "message") {
+					onMessage = listener as (event: MessageEvent) => void;
+				} else {
+					(addEventListener as (...args: unknown[]) => void)(type, listener, ...rest);
+				}
+			}
+		);
+		jasmine.clock().install();
+		spyOn(vscode, "postMessage");
+		service = new TodoService();
+		handedBack = [];
+		deliveredLate = [];
+		service.undeliveredAdds.subscribe((add) => handedBack.push(add));
+		service.lateDeliveredAdds.subscribe((add) => deliveredLate.push(add));
+	});
+
+	afterEach(() => {
+		jasmine.clock().uninstall();
+	});
+
+	it("hands an add back when the host never answers", () => {
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+
+		jasmine.clock().tick(4_999);
+		expect(handedBack).toEqual([]);
+
+		jasmine.clock().tick(1);
+		expect(handedBack).toEqual([{ scope: TodoScope.user, text: "buy milk" }]);
+	});
+
+	it("keeps an add the host sent back", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+
+		hostSends(TodoScope.user, [item(7, "buy milk")]);
+		jasmine.clock().tick(60_000);
+
+		expect(handedBack).toEqual([]);
+	});
+
+	it("keeps an add that comes back in a full reload", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.workspace, { text: "buy milk" });
+		// The reload applies the configured font, which this page shares with every other suite.
+		const style = document.documentElement.style.cssText;
+
+		try {
+			post({
+				type: MessageActionsToWebview.reloadWebview,
+				payload: {
+					user: slice(TodoScope.user, []),
+					workspace: slice(TodoScope.workspace, [item(7, "buy milk")]),
+					currentFile: fileSlice([]),
+					editorFocusAndRecords: { workspaceFilesWithRecords: [], filesDataPaths: {} },
+				},
+				config: {},
+			});
+		} finally {
+			document.documentElement.style.cssText = style;
+		}
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack).toEqual([]);
+	});
+
+	it("keeps a per-file add the host sent back for the same file", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.currentFile, { text: "check the heading" });
+
+		hostSends(TodoScope.currentFile, [item(7, "check the heading")]);
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack).toEqual([]);
+	});
+
+	it("records the file a per-file add was for", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.currentFile, { text: "check the heading" });
+
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack).toEqual([
+			{ scope: TodoScope.currentFile, text: "check the heading", filePath: "/work/notes.md" },
+		]);
+	});
+
+	it("does not settle a per-file add from another file's list", () => {
+		// Switching files sends a list in which every item is new to this webview.
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.currentFile, { text: "check the heading" });
+
+		hostSends(TodoScope.currentFile, [item(1, "check the heading")], "/work/other.md");
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack.map(({ text }) => text)).toEqual(["check the heading"]);
+	});
+
+	it("does not settle an add from the first list, which has nothing to be new against", () => {
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+
+		hostSends(TodoScope.user, [item(1, "buy milk")]);
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack.map(({ text }) => text)).toEqual(["buy milk"]);
+	});
+
+	it("does not take an item that was already there as the add coming back", () => {
+		hostSends(TodoScope.user, [item(1, "buy milk")]);
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+
+		hostSends(TodoScope.user, [item(1, "buy milk")]);
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack).toEqual([{ scope: TodoScope.user, text: "buy milk" }]);
+	});
+
+	it("needs one arrival per add, so a second add of the same text is still owed", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+
+		hostSends(TodoScope.user, [item(7, "buy milk")]);
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack).toEqual([{ scope: TodoScope.user, text: "buy milk" }]);
+	});
+
+	it("does not settle an add from another scope's list", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.workspace, { text: "buy milk" });
+
+		hostSends(TodoScope.user, [item(7, "buy milk")]);
+		jasmine.clock().tick(5_000);
+
+		expect(handedBack).toEqual([{ scope: TodoScope.workspace, text: "buy milk" }]);
+	});
+
+	it("reports a handed-back add that the host stored after all, as the same object", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+		jasmine.clock().tick(5_000);
+
+		hostSends(TodoScope.user, [item(7, "buy milk")]);
+
+		expect(deliveredLate.length).toBe(1);
+		expect(deliveredLate[0]).toBe(handedBack[0]);
+	});
+
+	it("stops waiting for a handed-back add after a minute", () => {
+		hostSendsEmptyLists();
+		service.addTodo(TodoScope.user, { text: "buy milk" });
+		jasmine.clock().tick(5_000 + 60_000);
+
+		hostSends(TodoScope.user, [item(7, "buy milk")]);
+
+		expect(deliveredLate).toEqual([]);
 	});
 });
 

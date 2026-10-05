@@ -173,8 +173,16 @@ vscode-button::part(content) {
 	outline-color: var(--vscode-errorForeground);
 }
 
+/* The side padding matches .new-todo-container's, so the text lines up with the field above. */
 .new-todo-warning {
 	color: var(--vscode-errorForeground);
 	font-size: calc(var(--vscode-editor-font-size) * 0.9);
+	padding: 0 5px 3px;
+}
+
+@media (pointer: coarse) {
+	.new-todo-warning {
+		padding: 0 2px;
+	}
 }
 

@@ -48,6 +48,8 @@ import McpServerHost from "./mcp/McpServerHost";
 import McpLogChannel from "./mcp/McpLogChannel";
 
 export async function activate(context: ExtensionContext) {
+	// Before anything can open one, so every Todo tab open now is a previous host's.
+	const orphanedTodoTabs = HelloWorldPanel.todoTabs();
 	const store = createStore();
 	const storageSyncManager = new StorageSyncManager(context, store);
 	await storageSyncManager.initialize();
@@ -333,6 +335,16 @@ export async function activate(context: ExtensionContext) {
 	);
 
 	deleteCompletedTodos(store);
+
+	context.subscriptions.push(
+		HelloWorldPanel.replaceOrphanedTabs(
+			orphanedTodoTabs,
+			context,
+			store,
+			visibilityCoordinator,
+			mcpServerHost
+		)
+	);
 }
 
 export function deactivate() {

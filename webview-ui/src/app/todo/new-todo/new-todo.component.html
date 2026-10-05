@@ -51,4 +51,7 @@
       [title]="addButtonTitle"
     >Add</vscode-button>
   </div>
+  @if (undeliveredNotice; as notice) {
+    <div class="new-todo-warning" role="alert">{{ notice }}</div>
+  }
 </div>
