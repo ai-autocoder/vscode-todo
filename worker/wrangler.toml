@@ -13,8 +13,9 @@ ALLOWED_ORIGINS = "https://plans-app.pages.dev"
 # forwards requests for your app.
 # CLIENT_ID = "Ov23lixxxxxxxxxxxxxx"
 
-# Keep dashboard-enabled logging in config so it survives `wrangler deploy`.
+# Workers Logs stay off: the proxy keeps no record of requests. Set it here rather than in the
+# dashboard, or the next `wrangler deploy` would turn it back on. To debug a sign-in, stream
+# live requests with `npx wrangler tail`, which stores nothing.
 [observability.logs]
-enabled = true
-head_sampling_rate = 1
-invocation_logs = true
+enabled = false
+invocation_logs = false
