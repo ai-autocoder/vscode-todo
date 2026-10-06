@@ -83,6 +83,61 @@ class AfterWriteAnswers {
 	}
 }
 
+/**
+ * The store a person edits, as a sync sees it: the lists it shows, and the queue that writes
+ * each edit to the gist cache behind the ones before it. `StorageSyncManager` implements it.
+ *
+ * A sync used to write its result into the gist cache and then have the store reload from
+ * there, and an edit made in between was lost one way or the other. An edit's persist carries
+ * the whole list the store showed when it was made, which until the reload is the list from
+ * before the sync. Stored before the write-back, it was overwritten and the reload took it off
+ * the screen. Stored after, it removed what the sync had pulled, while the baseline said the gist
+ * had it, so the next sync pushed the pulled items away as deletions.
+ *
+ * Only the store holds every edit the moment it is made, so the result is folded into what the
+ * store shows, and shown, in one turn: nothing can be edited between the read and the load. The
+ * write that follows is queued at that moment, behind the persist of every edit made before it,
+ * so whatever those persists store, the folded list is stored last.
+ */
+export interface SyncedStore {
+	/**
+	 * Runs `read` once no write to the scope's storage is queued or running, in the same turn as
+	 * it checks, and resolves with its result. Both of the scope's lists read in `read` are then
+	 * up to date with every edit made in this window.
+	 */
+	whenIdle<T>(scope: "user" | "workspace", read: () => T): Promise<T>;
+	/**
+	 * The user list the store shows, or undefined if it is not showing the gist file
+	 * `fileName`: the scope has left GitHub mode, or moved to another file.
+	 */
+	shownUser(fileName: string): GlobalGistData | undefined;
+	/** Workspace counterpart of {@link shownUser}: the workspace slice and the per-file lists. */
+	shownWorkspace(fileName: string): WorkspaceGistData | undefined;
+	/**
+	 * Hands `fold` the user list the store shows and shows what it returns: in the store at once,
+	 * and in the gist cache behind every write already queued. `fold` must not defer anything; it
+	 * runs between the read and the load. Resolves with what was shown, once it is stored, or
+	 * with undefined if the store is not showing `fileName` or `fold` returned undefined.
+	 */
+	showUser(
+		fileName: string,
+		fold: (shown: GlobalGistData) => GlobalGistData | undefined
+	): Promise<GlobalGistData | undefined>;
+	/** Workspace counterpart of {@link showUser}. */
+	showWorkspace(
+		fileName: string,
+		fold: (shown: WorkspaceGistData) => WorkspaceGistData | undefined
+	): Promise<WorkspaceGistData | undefined>;
+}
+
+/** Local state as one read found it; see {@link SyncedStore}. */
+interface LocalRead<T> {
+	/** The gist cache's `data`. */
+	stored: T;
+	/** What the store showed at the same moment, if there is a store showing this file. */
+	shown: T | undefined;
+}
+
 export class SyncManager {
 	private apiClient: GitHubApiClient;
 	private storageManager: SyncStorageManager;
@@ -134,13 +189,14 @@ export class SyncManager {
 	}>();
 	public readonly onStatusChange = this.onStatusChangeEmitter.event;
 
-	// Event emitter for data downloads
-	private onDataDownloadedEmitter = new vscode.EventEmitter<{
-		scope: "user" | "workspace";
-	}>();
-	public readonly onDataDownloaded = this.onDataDownloadedEmitter.event;
-
-	constructor(context: vscode.ExtensionContext) {
+	/**
+	 * @param store where a sync's result is shown. Without one nothing is shown, and the result
+	 *   only reaches the gist cache: for callers with no store, such as tests of the reconcile.
+	 */
+	constructor(
+		context: vscode.ExtensionContext,
+		private readonly store?: SyncedStore
+	) {
 		this.context = context;
 		this.apiClient = new GitHubApiClient(context);
 		this.storageManager = new SyncStorageManager(context);
@@ -314,23 +370,38 @@ export class SyncManager {
 	 * The result is a copy (`SyncStorageManager` never hands out the memento's own object), so
 	 * the snapshot stays what local state was when it was read. An edit during the sync lands in
 	 * storage, not in the snapshot, and the re-read after the round trip finds it.
+	 *
+	 * With a store, the cache is read once every edit already made has been stored, together with
+	 * what the store shows; see {@link SyncedStore.whenIdle}. The cache is read when
+	 * `getGlobalTodos` is called, so both halves come from the same turn.
 	 */
-	private async readLocalUser(fileName: string): Promise<GlobalGistData> {
-		return {
-			userTodos: await this.storageManager.getGlobalTodos(GlobalSyncMode.GitHub, fileName),
-		};
+	private async readLocalUser(fileName: string): Promise<LocalRead<GlobalGistData>> {
+		const read = () => ({
+			stored: this.storageManager.getGlobalTodos(GlobalSyncMode.GitHub, fileName),
+			shown: this.store?.shownUser(fileName),
+		});
+		const { stored, shown } = this.store ? await this.store.whenIdle("user", read) : read();
+		return { stored: { userTodos: await stored }, shown };
 	}
 
 	/**
 	 * Workspace counterpart of {@link readLocalUser}. One read of the cache, so the three fields
 	 * come from the same moment: reading them one at a time let an edit land between the reads.
 	 */
-	private async readLocalWorkspace(fileName: string): Promise<WorkspaceGistData> {
-		const data = (await this.storageManager.getWorkspaceGistCache(fileName))?.data;
+	private async readLocalWorkspace(fileName: string): Promise<LocalRead<WorkspaceGistData>> {
+		const read = () => ({
+			stored: this.storageManager.getWorkspaceGistCache(fileName),
+			shown: this.store?.shownWorkspace(fileName),
+		});
+		const { stored, shown } = this.store ? await this.store.whenIdle("workspace", read) : read();
+		const data = (await stored)?.data;
 		return {
-			workspaceTodos: data?.workspaceTodos || [],
-			filesData: data?.filesData || {},
-			filesDataPaths: data?.filesDataPaths || {},
+			stored: {
+				workspaceTodos: data?.workspaceTodos || [],
+				filesData: data?.filesData || {},
+				filesDataPaths: data?.filesDataPaths || {},
+			},
+			shown,
 		};
 	}
 
@@ -360,7 +431,7 @@ export class SyncManager {
 			const cacheStore = new MementoCacheStore(this.context);
 			const answers = new AfterWriteAnswers();
 			const engine = this.engineFor(gistId, cacheStore, answers);
-			const snapshot = await this.readLocalUser(fileName);
+			const snapshot = (await this.readLocalUser(fileName)).stored;
 
 			const res = await engine.reconcileUser(fileName, snapshot);
 			if (!res.success || !res.data) {
@@ -396,13 +467,18 @@ export class SyncManager {
 			// (see handleTodoChange), so which half an edit falls in is pure timing.
 			const engineWrote = res.data.data;
 			const afterReconcile = await this.readLocalUser(fileName);
-			const firstCurrent = !isEqual(afterReconcile, engineWrote)
-				? afterReconcile
+			const firstCurrent = !isEqual(afterReconcile.stored, engineWrote)
+				? afterReconcile.stored
 				: cacheStore.displacedData<GlobalGistData>(StorageKeys.globalGistCache(fileName)) ??
 					snapshot;
 			const editedDuringSync = !isEqual(firstCurrent, snapshot);
 			let remergeConflicts = 0;
 			let current = firstCurrent;
+			// What the store showed when `current` was read, and when the local state `reconciled`
+			// accounts for was: the base the store's later edits are folded in against. They part
+			// only when the loop below stops at its bound with an edit unfolded. See showUserResult.
+			let shownWithCurrent = afterReconcile.shown;
+			let foldBase = shownWithCurrent;
 			if (editedDuringSync) {
 				// The whole result, not just the data: this second merge resolves conflicts of its
 				// own — a todo the user edited mid-flight that the reconcile was also changing. It
@@ -424,13 +500,13 @@ export class SyncManager {
 				// faster than they answer must not hold the sync open.
 				//
 				// If the bound is reached with an edit still unfolded, the write-back below does put the
-				// merge over it. That needs three conflicting dialogs each with an interleaved edit in a
-				// single sync, and the alternative — not writing — is worse: the engine has already moved
-				// the baseline, so leaving local behind makes the next reconcile read the remote's
-				// contribution as a local deletion and push it away.
+				// merge over it in the cache. The store still shows the edit, though, and showing the
+				// result folds it back in, settled by the policy rather than asked about. Not writing is
+				// no alternative: the engine has already moved the baseline, so leaving local behind makes
+				// the next reconcile read the remote's contribution as a local deletion and push it away.
 				let base = snapshot;
 				// What storage held when `current` was worked out. Only a *new* edit moves it from here.
-				let seenInStorage = afterReconcile;
+				let seenInStorage = afterReconcile.stored;
 				for (let fold = 0; fold < MAX_REMERGE_FOLDS; fold++) {
 					// Per fold, not per sync: this fold may re-raise an id an earlier one settled, and
 					// filtering against that earlier answer would hide a dialog this one dismissed.
@@ -438,21 +514,23 @@ export class SyncManager {
 					const remerge = await engine.reconcileWithLocalEdits(base, reconciled, current);
 					const decided = answers.since(asked);
 					reconciled = remerge.data;
+					foldBase = shownWithCurrent;
 					remergeConflicts += remerge.conflicts.filter(
 						(conflict) => !decided.todos.has(conflict.todoId)
 					).length;
 					const latest = await this.readLocalUser(fileName);
-					if (isEqual(latest, seenInStorage)) {
+					if (isEqual(latest.stored, seenInStorage)) {
 						break;
 					}
 					base = current;
-					current = latest;
-					seenInStorage = latest;
+					current = latest.stored;
+					shownWithCurrent = latest.shown;
+					seenInStorage = latest.stored;
 				}
 				this.triggerDebounceSync("user");
 			}
 
-			// The store has to be reloaded whenever the reconciled list differs from the local
+			// The cache and the store have to take the result whenever it differs from the local
 			// state we know about — a pull, a merge, or a conflict the user resolved.
 			// `changedRemotely` alone is not the condition: resolving a conflict changes local
 			// state on a push too.
@@ -465,7 +543,7 @@ export class SyncManager {
 				);
 			}
 
-			// Re-persist through the engine before announcing anything. `setGlobalTodos` marks the
+			// Re-persist through the engine before showing anything. `setGlobalTodos` marks the
 			// cache dirty, and the mid-flight merge above produced data the engine's own write does
 			// not know about; this restores the cache to "data = what we hold, baseline = what the
 			// engine last saw clean", which is the state the next reconcile has to start from.
@@ -473,15 +551,20 @@ export class SyncManager {
 				await engine.persistLocalUser(fileName, reconciled);
 			}
 
-			// Fired last: the listener reloads the Redux store straight out of this cache, so every
-			// write above has to have landed first.
-			if (changed) {
-				this.onDataDownloadedEmitter.fire({ scope: "user" });
+			const shown = await this.showUserResult(engine, fileName, foldBase, reconciled, changed);
+			const editedInStore = shown !== undefined && !isEqual(shown.data, reconciled);
+			if (editedInStore) {
+				// The store held edits made since the last read, which the gist has not got.
+				this.triggerDebounceSync("user");
 			}
+			remergeConflicts += shown?.conflicts ?? 0;
 
 			this.logConflicts("user", res.data.conflicts.length, res.data.fileConflicts.length);
 			this.reportSilentlyResolved(remergeConflicts);
-			this.updateStatus("user", editedDuringSync ? SyncStatus.Dirty : SyncStatus.Synced);
+			this.updateStatus(
+				"user",
+				editedDuringSync || editedInStore ? SyncStatus.Dirty : SyncStatus.Synced
+			);
 			return { success: true };
 		} catch (error) {
 			this.updateStatus("user", SyncStatus.Error);
@@ -527,7 +610,7 @@ export class SyncManager {
 			const cacheStore = new MementoCacheStore(this.context);
 			const answers = new AfterWriteAnswers();
 			const engine = this.engineFor(gistId, cacheStore, answers);
-			const snapshot = await this.readLocalWorkspace(fileName);
+			const snapshot = (await this.readLocalWorkspace(fileName)).stored;
 
 			const res = await engine.reconcileWorkspace(fileName, snapshot);
 			if (!res.success || !res.data) {
@@ -544,35 +627,40 @@ export class SyncManager {
 			// cache, so a mid-flight edit to one has no other copy anywhere.
 			const engineWrote = res.data.data;
 			const afterReconcile = await this.readLocalWorkspace(fileName);
-			const firstCurrent = !isEqual(afterReconcile, engineWrote)
-				? afterReconcile
+			const firstCurrent = !isEqual(afterReconcile.stored, engineWrote)
+				? afterReconcile.stored
 				: cacheStore.displacedData<WorkspaceGistData>(
 						StorageKeys.workspaceGistCache(fileName)
 					) ?? snapshot;
 			const editedDuringSync = !isEqual(firstCurrent, snapshot);
 			let remergeConflicts = 0;
 			let current = firstCurrent;
+			// See syncUser.
+			let shownWithCurrent = afterReconcile.shown;
+			let foldBase = shownWithCurrent;
 			if (editedDuringSync) {
 				// See syncUser, including why this folds in a loop.
 				let base = snapshot;
 				// See syncUser: storage against storage, never against `current`.
-				let seenInStorage = afterReconcile;
+				let seenInStorage = afterReconcile.stored;
 				for (let fold = 0; fold < MAX_REMERGE_FOLDS; fold++) {
 					// See syncUser: per fold, not per sync.
 					const asked = answers.mark();
 					const remerge = await engine.reconcileWorkspaceWithLocalEdits(base, reconciled, current);
 					const decided = answers.since(asked);
 					reconciled = remerge.data;
+					foldBase = shownWithCurrent;
 					remergeConflicts +=
 						remerge.conflicts.filter((conflict) => !decided.todos.has(conflict.todoId)).length +
 						remerge.fileConflicts.filter((conflict) => !decided.files.has(conflict.filePath)).length;
 					const latest = await this.readLocalWorkspace(fileName);
-					if (isEqual(latest, seenInStorage)) {
+					if (isEqual(latest.stored, seenInStorage)) {
 						break;
 					}
 					base = current;
-					current = latest;
-					seenInStorage = latest;
+					current = latest.stored;
+					shownWithCurrent = latest.shown;
+					seenInStorage = latest.stored;
 				}
 				this.triggerDebounceSync("workspace");
 			}
@@ -580,9 +668,7 @@ export class SyncManager {
 			const changed = !isEqual(reconciled, current);
 			if (changed) {
 				// Written through the three scope-specific setters rather than as one cache blob:
-				// they are what `SyncStorageManager` exposes, and `reloadScopeData` reads the same
-				// three back (from the gist cache, in GitHub mode) to rebuild the store and the
-				// `TodoFilesData` / `TodoFilesDataPaths` mementos.
+				// they are what `SyncStorageManager` exposes.
 				await this.storageManager.setWorkspaceTodos(
 					WorkspaceSyncMode.GitHub,
 					reconciled.workspaceTodos,
@@ -604,13 +690,22 @@ export class SyncManager {
 			if (editedDuringSync || changed) {
 				await engine.persistLocalWorkspace(fileName, reconciled);
 			}
-			if (changed) {
-				this.onDataDownloadedEmitter.fire({ scope: "workspace" });
+
+			// See syncUser. The per-file lists matter most here: the open file's slice persists the
+			// whole list it shows, and that list is the only copy of an edit made to it.
+			const shown = await this.showWorkspaceResult(engine, fileName, foldBase, reconciled, changed);
+			const editedInStore = shown !== undefined && !isEqual(shown.data, reconciled);
+			if (editedInStore) {
+				this.triggerDebounceSync("workspace");
 			}
+			remergeConflicts += shown?.conflicts ?? 0;
 
 			this.logConflicts("workspace", res.data.conflicts.length, res.data.fileConflicts.length);
 			this.reportSilentlyResolved(remergeConflicts);
-			this.updateStatus("workspace", editedDuringSync ? SyncStatus.Dirty : SyncStatus.Synced);
+			this.updateStatus(
+				"workspace",
+				editedDuringSync || editedInStore ? SyncStatus.Dirty : SyncStatus.Synced
+			);
 			return { success: true };
 		} catch (error) {
 			this.updateStatus("workspace", SyncStatus.Error);
@@ -633,6 +728,76 @@ export class SyncManager {
 				this.triggerDebounceSync("workspace");
 			}
 		}
+	}
+
+	/**
+	 * Shows a reconcile's result in the store, with every edit made there since the local state the
+	 * result accounts for was read folded in. Resolves with what was shown, once it is stored, and
+	 * how many conflicts the fold settled; undefined when nothing was shown.
+	 *
+	 * `base` is what the store showed at that read, so what the store shows now differs from it
+	 * only by the edits the result lacks. In this window that is the cache's copy too, since the
+	 * read waited for every edit to be stored. Not for another window's edit to the user list,
+	 * though: windows share the user gist cache, so the cache can hold an edit this store has not
+	 * shown yet, and folding against the cache would read it as a deletion made here. Undefined
+	 * when the store was not showing this file then; the result is shown as it is.
+	 *
+	 * The fold runs between reading the store and loading it, so it settles conflicts by the
+	 * policy rather than ask: an edit made while a dialog was up would carry the list from before
+	 * the fold. See `GistSyncEngine.foldLocalEdits`.
+	 */
+	private async showUserResult(
+		engine: GistSyncEngine,
+		fileName: string,
+		base: GlobalGistData | undefined,
+		reconciled: GlobalGistData,
+		changed: boolean
+	): Promise<{ data: GlobalGistData; conflicts: number } | undefined> {
+		if (!this.store) {
+			return undefined;
+		}
+		let conflicts = 0;
+		const data = await this.store.showUser(fileName, (shown) => {
+			let result = reconciled;
+			if (base && !isEqual(shown, base)) {
+				const fold = engine.foldLocalEdits(base, reconciled, shown);
+				result = fold.data;
+				conflicts = fold.conflicts.length;
+			}
+			// A sync that changed nothing, with a store already showing the result, has nothing
+			// to show.
+			return changed || !isEqual(shown, result) ? result : undefined;
+		});
+		return data && { data, conflicts };
+	}
+
+	/**
+	 * Workspace counterpart of {@link showUserResult}. Only the lists decide whether the store has
+	 * moved on or already shows the result, not the path aliases: activation completes the
+	 * memento's with `ensureFilesDataPaths` where the cache's are as the gist has them, so the two
+	 * can differ with no edit made, and the aliases follow the lists anyway.
+	 */
+	private async showWorkspaceResult(
+		engine: GistSyncEngine,
+		fileName: string,
+		base: WorkspaceGistData | undefined,
+		reconciled: WorkspaceGistData,
+		changed: boolean
+	): Promise<{ data: WorkspaceGistData; conflicts: number } | undefined> {
+		if (!this.store) {
+			return undefined;
+		}
+		let conflicts = 0;
+		const data = await this.store.showWorkspace(fileName, (shown) => {
+			let result = reconciled;
+			if (base && !sameLists(shown, base)) {
+				const fold = engine.foldLocalWorkspaceEdits(base, reconciled, shown);
+				result = fold.data;
+				conflicts = fold.conflicts.length + fold.fileConflicts.length;
+			}
+			return changed || !sameLists(shown, result) ? result : undefined;
+		});
+		return data && { data, conflicts };
 	}
 
 	/**
@@ -903,8 +1068,14 @@ export class SyncManager {
 			clearTimeout(this.workspaceDebounceTimer);
 		}
 		this.onStatusChangeEmitter.dispose();
-		this.onDataDownloadedEmitter.dispose();
 	}
+}
+
+/** Whether two workspace states hold the same lists, path aliases aside. */
+function sameLists(a: WorkspaceGistData, b: WorkspaceGistData): boolean {
+	return (
+		isEqual(a.workspaceTodos, b.workspaceTodos) && isEqual(a.filesData ?? {}, b.filesData ?? {})
+	);
 }
 
 /** Key for {@link SyncManager}'s record of damaged files: a scope alone is not specific enough. */

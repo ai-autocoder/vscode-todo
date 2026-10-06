@@ -25,7 +25,9 @@ import { GitHubAuthManager } from "../../sync/GitHubAuthManager";
 import { ConflictResolutionUI } from "../../sync/ConflictResolutionUI";
 import { GlobalSyncMode, StorageKeys, WorkspaceSyncMode } from "../../sync/syncTypes";
 import { serialize, ConflictDecisions, ConflictPhase, ConflictSet } from "../../core";
+import { userActions } from "../../todo/store";
 import { Todo } from "../../todo/todoTypes";
+import { StoreHarness, storeHarness } from "./storeHarness";
 
 const GIST_ID = "b".repeat(32);
 const FILE = "user-todos.json";
@@ -126,6 +128,18 @@ suite("SyncManager after-write conflict prompt", () => {
 		} as never;
 		manager = new SyncManager(context);
 		(manager as unknown as { apiClient: unknown }).apiClient = gist;
+	}
+
+	/** {@link setUp}, with a store the manager shows its results in. */
+	function setUpWithStore(remote: Todo[], baseAndLocal: Todo[]): StoreHarness {
+		setUp(remote, baseAndLocal);
+		manager.dispose();
+		const harness = storeHarness(context, (store) =>
+			store.dispatch(userActions.loadData({ data: baseAndLocal }))
+		);
+		manager = new SyncManager(context, harness.storage);
+		(manager as unknown as { apiClient: unknown }).apiClient = gist;
+		return harness;
 	}
 
 	/** A local edit through the real storage path, exactly as `persistSlice` does. */
@@ -321,6 +335,41 @@ suite("SyncManager after-write conflict prompt", () => {
 			"an edit made while the dialog was up must survive the write-back"
 		);
 		assert.strictEqual(texts.get(1), "typed here", "and the choice must still apply");
+	});
+
+	/**
+	 * The fold loop stops after three dialogs, so an edit made during the third is never folded
+	 * by it, and the write-back puts the merge over it in the cache. The store still shows it, and
+	 * showing the result folds it back in, against what the store showed when the last fold read
+	 * local state rather than at the read that found the unfolded edit.
+	 */
+	test("keeps an edit made during the last dialog the fold loop allows", async () => {
+		const harness = setUpWithStore([todo(1, "changed on the phone")], [todo(1, "one")]);
+		gist.onRead = (reads) => {
+			if (reads === 1) {
+				harness.store.dispatch(userActions.editTodo({ id: 1, newText: "typed here" }));
+			}
+		};
+		// Every dialog: the user retypes todo 1 and adds one, then picks the phone's version.
+		answer = async (conflicts) => {
+			const n = asked.length;
+			harness.store.dispatch(userActions.editTodo({ id: 1, newText: `typed in dialog ${n}` }));
+			harness.store.dispatch(userActions.addTodo({ text: `added in dialog ${n}` }));
+			return { todos: new Map(conflicts.map((c) => [c.todoId, c.remote])) };
+		};
+
+		await runUserSync();
+		await harness.settle();
+
+		assert.strictEqual(asked.length, 3, "the loop stops at its bound");
+		const expected = ["added in dialog 1", "added in dialog 2", "added in dialog 3"];
+		const stored = cachedTodos().map((t) => t.text);
+		assert.deepStrictEqual(stored.filter((t) => t.startsWith("added")).sort(), expected);
+		const shown = harness.store.getState().user.todos.map((t) => t.text);
+		assert.deepStrictEqual(shown.filter((t) => t.startsWith("added")).sort(), expected);
+		// Settled by the policy, so this device's latest text wins, and that is said out loud.
+		assert.ok(stored.includes("typed in dialog 3"));
+		assert.ok(warnings.some((w) => w.includes("settled automatically")));
 	});
 	/**
 	 * The workspace scope has its own copy of the fold loop, its own `fileConflicts` filtering and

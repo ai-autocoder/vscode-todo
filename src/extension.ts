@@ -57,7 +57,9 @@ export async function activate(context: ExtensionContext) {
 	// Initialize GitHub sync modules
 	const authManager = GitHubAuthManager.getInstance(context);
 	const apiClient = new GitHubApiClient(context);
-	const syncManager = new SyncManager(context);
+	// A sync shows its result through the storage layer, folded into what the store shows and
+	// stored behind the edits made before it: see `SyncedStore`.
+	const syncManager = new SyncManager(context, storageSyncManager);
 	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager, store, storageSyncManager);
 	const mcpServerHost = new McpServerHost(context, store, storageSyncManager);
 	mcpServerHost.initialize();
@@ -93,12 +95,6 @@ export async function activate(context: ExtensionContext) {
 		HelloWorldPanel.currentPanel?.updateMcpStatus(status);
 	});
 	context.subscriptions.push(mcpStatusListener);
-
-	// Listen for data downloads and reload store
-	const dataDownloadListener = syncManager.onDataDownloaded(async (event) => {
-		await reloadScopeData(event.scope, store, storageSyncManager, context);
-	});
-	context.subscriptions.push(dataDownloadListener);
 
 	// A file rename, delete or import changes the per-file lists without editing a slice, so the
 	// store subscriber below never sees it as an edit: push it from here.

@@ -30,7 +30,13 @@ import {
 	upsertFilesDataPathEntry,
 } from "../todo/todoUtils";
 import { SyncStorageManager } from "../sync/SyncStorageManager";
-import { GlobalSyncMode, WorkspaceSyncMode } from "../sync/syncTypes";
+import {
+	GlobalGistData,
+	GlobalSyncMode,
+	WorkspaceGistData,
+	WorkspaceSyncMode,
+} from "../sync/syncTypes";
+import type { SyncedStore } from "../sync/SyncManager";
 
 type WorkspacePersistedData = {
 	workspaceTodos: Todo[];
@@ -90,7 +96,7 @@ function withFileTodos(files: TodoFilesState, fileState: CurrentFileSlice): Todo
 	return { filesData: sorted, filesDataPaths };
 }
 
-export default class StorageSyncManager {
+export default class StorageSyncManager implements SyncedStore {
 	private readonly workspaceDataFileName = "workspaceData.json";
 	private readonly globalDataFileName = "globalData.json";
 	private workspaceDataUri: vscode.Uri | undefined;
@@ -354,6 +360,163 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 				onStored?.();
 			}
 		});
+	}
+
+	// ---------------------------------------------------------------------------
+	// The store side of a GitHub sync; see `SyncedStore` in SyncManager.ts.
+	// ---------------------------------------------------------------------------
+
+	public async whenIdle<T>(storage: PersistStorage, read: () => T): Promise<T> {
+		for (;;) {
+			const tail = this.writeTails[storage];
+			await tail;
+			// Every `exclusive` call replaces the tail, so an unchanged one means nothing was
+			// queued while this waited. `read` runs now, in the same turn as the check.
+			if (tail === this.writeTails[storage]) {
+				return read();
+			}
+		}
+	}
+
+	public shownUser(fileName: string): GlobalGistData | undefined {
+		if (!this.showsGistFile("user", fileName)) {
+			return undefined;
+		}
+		return { userTodos: this.store.getState().user.todos };
+	}
+
+	public shownWorkspace(fileName: string): WorkspaceGistData | undefined {
+		if (!this.showsGistFile("workspace", fileName)) {
+			return undefined;
+		}
+		// Copied: a sync holds this across awaits as the base of its fold, and the memento hands
+		// out the object it holds.
+		const files = JSON.parse(JSON.stringify(this.shownFiles())) as TodoFilesState;
+		return {
+			workspaceTodos: this.store.getState().workspace.todos,
+			filesData: files.filesData,
+			filesDataPaths: files.filesDataPaths,
+		};
+	}
+
+	public showUser(
+		fileName: string,
+		fold: (shown: GlobalGistData) => GlobalGistData | undefined
+	): Promise<GlobalGistData | undefined> {
+		const shown = this.shownUser(fileName);
+		const data = shown && fold(shown);
+		if (!data) {
+			return Promise.resolve(undefined);
+		}
+		const todos = JSON.parse(JSON.stringify(data.userTodos)) as Todo[];
+		this.suppressNextPersistForScope(TodoScope.user);
+		this.store.dispatch(userActions.loadData({ data: todos }));
+		return this.exclusive("user", async () => {
+			const stored = await this.syncStorageManager.getGlobalTodos(GlobalSyncMode.GitHub, fileName);
+			if (!isEqual(stored, todos)) {
+				await this.syncStorageManager.setGlobalTodos(GlobalSyncMode.GitHub, todos, fileName);
+			}
+		}).then(() => data);
+	}
+
+	/**
+	 * Workspace counterpart of {@link showUser}, for the workspace slice, the per-file lists and
+	 * the open file's slice. The per-file lists go through {@link queueFilesChange}, so the memento
+	 * holds them at once and the gist cache in their turn, like any other change to them.
+	 *
+	 * The path aliases are stored as the gist has them, in the memento too, since one change
+	 * writes both. Completed with `ensureFilesDataPaths`, as the editor-focus slice gets them, they
+	 * would differ from the baseline and push after every pull. What completing adds is each
+	 * primary key's own paths, which resolving a file's key matches anyway.
+	 */
+	public showWorkspace(
+		fileName: string,
+		fold: (shown: WorkspaceGistData) => WorkspaceGistData | undefined
+	): Promise<WorkspaceGistData | undefined> {
+		const shown = this.shownWorkspace(fileName);
+		const data = shown && fold(shown);
+		if (!data) {
+			return Promise.resolve(undefined);
+		}
+		const copy = JSON.parse(JSON.stringify(data)) as WorkspaceGistData;
+		const files: TodoFilesState = {
+			filesData: sortByFileName(copy.filesData ?? {}),
+			filesDataPaths: copy.filesDataPaths ?? {},
+		};
+
+		this.suppressNextPersistForScope(TodoScope.workspace);
+		this.store.dispatch(workspaceActions.loadData({ data: copy.workspaceTodos }));
+		const filesStored = this.queueFilesChange(
+			() => ({ filesData: { ...files.filesData }, filesDataPaths: { ...files.filesDataPaths } }),
+			vscode.workspace.getConfiguration("vscodeTodo.sync"),
+			"github"
+		);
+
+		const filesDataPaths = ensureFilesDataPaths(
+			files.filesData,
+			files.filesDataPaths,
+			getWorkspacePath()
+		);
+		this.store.dispatch(
+			editorFocusAndRecordsActions.setWorkspaceFilesWithRecords({
+				workspaceFilesWithRecords: getWorkspaceFilesWithRecords(files.filesData),
+				filesDataPaths,
+			})
+		);
+		const state = this.store.getState();
+		const targetFilePath =
+			state.currentFile.filePath || state.editorFocusAndRecords.editorFocusedFilePath;
+		if (targetFilePath) {
+			const resolved = resolveFilesDataKey({
+				filePath: targetFilePath,
+				filesData: files.filesData,
+				filesDataPaths,
+			});
+			this.suppressNextPersistForScope(TodoScope.currentFile);
+			this.store.dispatch(
+				currentFileActions.loadData({
+					filePath: targetFilePath,
+					data: resolved.key ? files.filesData[resolved.key] ?? [] : [],
+				})
+			);
+		}
+
+		const todosStored = this.exclusive("workspace", async () => {
+			const stored = await this.syncStorageManager.getWorkspaceTodos(
+				WorkspaceSyncMode.GitHub,
+				fileName
+			);
+			if (!isEqual(stored, copy.workspaceTodos)) {
+				await this.syncStorageManager.setWorkspaceTodos(
+					WorkspaceSyncMode.GitHub,
+					copy.workspaceTodos,
+					fileName
+				);
+			}
+		});
+		return Promise.all([filesStored, todosStored]).then(() => data);
+	}
+
+	/**
+	 * Whether the store shows the gist file `fileName` for the scope. It does not once the scope
+	 * has left GitHub mode or moved to another file, and a sync started before either must not
+	 * load its result over the list the store shows instead.
+	 */
+	private showsGistFile(scope: "user" | "workspace", fileName: string): boolean {
+		const config = vscode.workspace.getConfiguration("vscodeTodo.sync");
+		if (scope === "user") {
+			return (
+				this.context.globalState.get<string>("syncMode", "profile-local") === "github" &&
+				config.get<string>("github.userFile", "user-todos.json") === fileName
+			);
+		}
+		const workspaceName = vscode.workspace.name || "default";
+		const shownFile =
+			config.get<string>("github.workspaceFile") || `workspace-${workspaceName}.json`;
+		return (
+			this.context.workspaceState.get<string>("syncMode", "local") === "github" &&
+			shownFile === fileName
+		);
 	}
 
 	/**

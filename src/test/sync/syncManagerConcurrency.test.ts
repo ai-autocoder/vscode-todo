@@ -10,19 +10,32 @@
  *
  * The shared engine writes through `pushVerified` (re-read, re-merge, retry). These tests drive
  * the real `SyncManager` over a fake gist so the wiring is covered too, not just the engine:
- * the cache-store adapter, the local snapshot, the write-back, and the reload event.
+ * the cache-store adapter, the local snapshot, the write-back, and showing the result in the
+ * store. Where the store matters they run the real store and `StorageSyncManager`, with a
+ * subscriber that persists each slice change the way the extension's `store.subscribe` does.
  */
 
 import * as assert from "assert";
+import * as vscode from "vscode";
 import { SyncManager } from "../../sync/SyncManager";
 import { SyncStorageManager } from "../../sync/SyncStorageManager";
 import { GitHubAuthManager } from "../../sync/GitHubAuthManager";
-import { GlobalSyncMode, StorageKeys, SyncStatus } from "../../sync/syncTypes";
+import {
+	GistCache,
+	GlobalSyncMode,
+	StorageKeys,
+	SyncStatus,
+	WorkspaceGistData,
+} from "../../sync/syncTypes";
+import StorageSyncManager from "../../storage/StorageSyncManager";
+import { currentFileActions, userActions, workspaceActions } from "../../todo/store";
 import { serialize } from "../../core";
-import { Todo } from "../../todo/todoTypes";
+import { Todo, TodoFilesData } from "../../todo/todoTypes";
+import { StoreHarness, storeHarness } from "./storeHarness";
 
 const GIST_ID = "a".repeat(32);
 const FILE = "user-todos.json";
+const FILE_PATH = process.platform === "win32" ? "C:\\work\\repo\\a.ts" : "/work/repo/a.ts";
 
 function todo(id: number, text: string): Todo {
 	return {
@@ -90,6 +103,18 @@ function memento(
 	};
 }
 
+/** The file name `SyncManager` derives for the workspace scope in this test instance. */
+function workspaceFileName(): string {
+	const configured = vscode.workspace
+		.getConfiguration("vscodeTodo.sync")
+		.get<string>("github.workspaceFile");
+	return configured || `workspace-${vscode.workspace.name || "default"}.json`;
+}
+
+function texts(todos: Todo[] | undefined): string[] {
+	return (todos ?? []).map((t) => t.text).sort();
+}
+
 suite("SyncManager concurrency", () => {
 	let globalStore: Map<string, unknown>;
 	let manager: SyncManager;
@@ -97,6 +122,8 @@ suite("SyncManager concurrency", () => {
 	let context: never;
 	/** Set by a test to interleave work immediately after a memento write. See `memento`. */
 	let afterCacheWrite: ((key: string, writes: number) => Promise<void> | void) | undefined;
+	/** The store, for a test set up with one; see `setUpWithStore`. */
+	let harness: StoreHarness;
 
 	function resetAuthSingleton(): void {
 		(GitHubAuthManager as unknown as { instance: GitHubAuthManager | undefined }).instance =
@@ -109,6 +136,26 @@ suite("SyncManager concurrency", () => {
 	 * write rather than merely pull.
 	 */
 	function setUp(remote: Todo[], base: Todo[], local: Todo[]): void {
+		setUpManager(remote, base, local, () => undefined);
+	}
+
+	/**
+	 * {@link setUp} with a store the manager shows its results in, showing `shown`: what activation
+	 * loaded from the cache, unless a test says otherwise.
+	 */
+	function setUpWithStore(remote: Todo[], base: Todo[], local: Todo[], shown = local): void {
+		setUpManager(remote, base, local, (ctx) => {
+			harness = storeHarness(ctx, (store) => store.dispatch(userActions.loadData({ data: shown })));
+			return harness.storage;
+		});
+	}
+
+	function setUpManager(
+		remote: Todo[],
+		base: Todo[],
+		local: Todo[],
+		storeFor: (context: never) => StorageSyncManager | undefined
+	): void {
 		resetAuthSingleton();
 		globalStore = new Map<string, unknown>([
 			["syncMode", "github"],
@@ -130,9 +177,9 @@ suite("SyncManager concurrency", () => {
 			workspaceState: memento(new Map([["syncMode", "local"]])),
 			secrets: { get: () => Promise.resolve("token") },
 		} as never;
-		manager = new SyncManager(context);
+		manager = new SyncManager(context, storeFor(context));
 		// The real client is built in the constructor from the context; swapping it keeps every
-		// other code path (cache store, snapshot, write-back, events) exactly as it ships.
+		// other code path (cache store, snapshot, write-back, store) exactly as it ships.
 		(manager as unknown as { apiClient: unknown }).apiClient = gist;
 	}
 
@@ -272,17 +319,16 @@ suite("SyncManager concurrency", () => {
 		);
 	});
 
-	test("the merged result is written back to local storage and announced", async () => {
-		setUp([todo(1, "one")], [todo(1, "one")], [todo(1, "one, edited here")]);
+	test("the merged result is written back to local storage and shown", async () => {
+		setUpWithStore([todo(1, "one")], [todo(1, "one")], [todo(1, "one, edited here")]);
 		gist.onRead = (reads) => {
 			if (reads === 1) {
 				gist.content = serialize({ userTodos: [todo(1, "one"), todo(2, "added on the phone")] });
 			}
 		};
-		let announced = 0;
-		manager.onDataDownloaded(() => announced++);
 
 		await runUserSync();
+		await harness.settle();
 
 		// Without this the peer's todo reaches the gist but never the UI, and the next reconcile
 		// reads its absence from local as a deletion and pushes it away again.
@@ -291,7 +337,20 @@ suite("SyncManager concurrency", () => {
 			[1, 2],
 			"local storage holds both"
 		);
-		assert.strictEqual(announced, 1, "the store is told to reload exactly once");
+		assert.deepStrictEqual(
+			harness.store.getState().user.todos.map((t) => t.id).sort(),
+			[1, 2],
+			"and so does the store"
+		);
+		assert.deepStrictEqual(harness.loads, ["user"], "the store is loaded exactly once");
+	});
+
+	test("a sync that changes nothing leaves the store alone", async () => {
+		setUpWithStore([todo(1, "one")], [todo(1, "one")], [todo(1, "one")]);
+
+		await runUserSync();
+
+		assert.deepStrictEqual(harness.loads, []);
 	});
 
 	/**
@@ -374,46 +433,92 @@ suite("SyncManager concurrency", () => {
 
 	/**
 	 * The last stretch of a sync that pulled something: the manager writes the merged list into
-	 * the cache, `persistLocalUser` writes it again, and the store is reloaded from the cache.
-	 * None of that waits for `StorageSyncManager`'s write queue, and nothing reads the cache again
-	 * after it. An add the user makes meanwhile persists the list the store still shows, which is
-	 * the pre-sync list plus the add. If that lands before `persistLocalUser`, the add is
-	 * overwritten and the reload removes it from the screen. If it lands after, the cache keeps
-	 * the add but loses what was pulled, while the baseline says the gist has it, so the next sync
-	 * pushes the pulled items away as deletions.
+	 * the cache, `persistLocalUser` writes it again, and the store is loaded with the result. An
+	 * add the user makes meanwhile persists the list the store still shows, which is the pre-sync
+	 * list plus the add. The store used to be reloaded from the cache, and none of this waited for
+	 * `StorageSyncManager`'s write queue. If the add's persist landed before `persistLocalUser`,
+	 * the add was overwritten and the reload removed it from the screen. If it landed after, the
+	 * cache kept the add but lost what was pulled, while the baseline said the gist had it, so the
+	 * next sync pushed the pulled items away as deletions.
 	 *
-	 * Skipped until it is fixed: an edit can land up to the moment the store reloads, and the
-	 * edit carries the whole stale list, so closing this takes the write-back, the persist queue
-	 * and the store reload working together, not another re-read.
+	 * The add goes through the real store and persist, since it is the store's stale list the
+	 * persist carries.
 	 */
 	for (const [when, cacheWrite] of [
 		["during the write-back", 2],
 		["after the write-back, before the store reloads", 3],
 	] as const) {
-		test.skip(`keeps an add the user makes ${when}`, async () => {
+		test(`keeps an add the user makes ${when}`, async () => {
 			// A pure pull. The cache key is written by the reconcile (1), the manager's write-back
 			// (2) and persistLocalUser (3).
-			setUp([todo(1, "one"), todo(2, "added on the phone")], [todo(1, "one")], [todo(1, "one")]);
+			setUpWithStore(
+				[todo(1, "one"), todo(2, "added on the phone")],
+				[todo(1, "one")],
+				[todo(1, "one")]
+			);
 
 			const cacheKey = StorageKeys.globalGistCache(FILE);
 			let cacheWrites = 0;
-			let pendingEdit: Promise<void> = Promise.resolve();
 			afterCacheWrite = (key) => {
 				if (key !== cacheKey || ++cacheWrites !== cacheWrite) {
 					return;
 				}
-				// The store has not reloaded yet, so the persist carries the pre-sync list.
-				pendingEdit = editLocally([todo(1, "one"), todo(3, "typed just now")]);
+				harness.store.dispatch(userActions.addTodo({ text: "typed just now" }));
 			};
 
 			await runUserSync();
-			await pendingEdit;
+			await harness.settle();
 
-			const local = new Map(cachedTodos().map((t) => [t.id, t.text]));
-			assert.strictEqual(local.get(3), "typed just now", "the add must survive");
-			assert.strictEqual(local.get(2), "added on the phone", "and so must the pulled change");
+			const expected = ["added on the phone", "one", "typed just now"];
+			assert.deepStrictEqual(texts(cachedTodos()), expected, "the add and the pull are stored");
+			assert.deepStrictEqual(texts(harness.store.getState().user.todos), expected, "and shown");
+			const cache = globalStore.get(StorageKeys.globalGistCache(FILE)) as GistCache<{
+				userTodos: Todo[];
+			}>;
+			assert.deepStrictEqual(
+				texts(cache.lastCleanRemoteData?.userTodos),
+				texts(gist.todos),
+				"the baseline is what the gist holds"
+			);
+			assert.strictEqual(manager.getStatus("user"), SyncStatus.Dirty, "the add is owed");
+
+			// The push the add armed: it must deliver the add and keep the pulled item.
+			await runUserSync();
+			assert.deepStrictEqual(texts(gist.todos), expected);
 		});
 	}
+
+	/**
+	 * Windows share the user gist cache, so it can hold another window's edit this store has not
+	 * shown yet. Folding this store's edits in against the cache would read that edit as a
+	 * deletion made here; the fold's base is what this store showed instead.
+	 */
+	test("does not read another window's edit as a deletion made here", async () => {
+		// Another window added todo 2 and stored it; this window's store still shows [one]. The
+		// phone added todo 3, so the sync both pushes and pulls.
+		setUpWithStore(
+			[todo(1, "one"), todo(3, "added on the phone")],
+			[todo(1, "one")],
+			[todo(1, "one"), todo(2, "from the other window")],
+			[todo(1, "one")]
+		);
+
+		await runUserSync();
+		await harness.settle();
+
+		const expected = ["added on the phone", "from the other window", "one"];
+		assert.deepStrictEqual(texts(gist.todos), expected, "the other window's edit is pushed");
+		assert.deepStrictEqual(texts(cachedTodos()), expected, "and stays stored");
+		assert.deepStrictEqual(
+			texts(harness.store.getState().user.todos),
+			expected,
+			"and this store shows it"
+		);
+		assert.strictEqual(manager.getStatus("user"), SyncStatus.Synced);
+
+		await runUserSync();
+		assert.deepStrictEqual(texts(gist.todos), expected, "the next sync deletes nothing");
+	});
 
 	/**
 	 * A peer push that arrives when we have nothing of our own to send is a plain pull. It must
@@ -488,4 +593,159 @@ suite("SyncManager concurrency", () => {
 		// change to the extension on the following poll.
 		assert.strictEqual(gist.writes[0], serialize({ userTodos: [todo(1, "one, edited here")] }));
 	});
+});
+
+/**
+ * The workspace scope's half of the write-back race above, where the lag is wider: a workspace
+ * persist writes the `TodoData` memento before the gist cache, and the open file's list is a
+ * per-file change, which reaches the `TodoFilesData` memento at once and the cache in its turn.
+ * The per-file list in the cache is also the only copy of an edit made to it.
+ */
+suite("SyncManager concurrency, workspace scope", () => {
+	let workspaceStore: Map<string, unknown>;
+	let manager: SyncManager;
+	let gist: FakeGistFile;
+	let harness: StoreHarness;
+	let afterCacheWrite: ((key: string) => void) | undefined;
+	let fileName: string;
+
+	function workspace(todos: Todo[], fileTodos: Todo[]): WorkspaceGistData {
+		return { workspaceTodos: todos, filesData: { [FILE_PATH]: fileTodos }, filesDataPaths: {} };
+	}
+
+	function resetAuthSingleton(): void {
+		(GitHubAuthManager as unknown as { instance: GitHubAuthManager | undefined }).instance =
+			undefined;
+	}
+
+	/** As the user suite's `setUpWithStore`, with the editor showing `FILE_PATH`. */
+	function setUp(remote: WorkspaceGistData, base: WorkspaceGistData, local: WorkspaceGistData) {
+		resetAuthSingleton();
+		fileName = workspaceFileName();
+		workspaceStore = new Map<string, unknown>([
+			["syncMode", "github"],
+			[
+				StorageKeys.workspaceGistCache(fileName),
+				{
+					data: local,
+					lastCleanRemoteData: base,
+					lastSynced: "2026-01-01T00:00:00.000Z",
+					isDirty: false,
+				},
+			],
+			["TodoFilesData", local.filesData],
+			["TodoFilesDataPaths", {}],
+		]);
+		gist = new FakeGistFile(serialize(remote));
+		afterCacheWrite = undefined;
+		const context = {
+			globalState: memento(new Map([["syncMode", "profile-local"]])),
+			workspaceState: memento(workspaceStore, (key) => afterCacheWrite?.(key)),
+			secrets: { get: () => Promise.resolve("token") },
+		} as never;
+		harness = storeHarness(context, (store) => {
+			store.dispatch(workspaceActions.loadData({ data: local.workspaceTodos }));
+			store.dispatch(
+				currentFileActions.loadData({ filePath: FILE_PATH, data: local.filesData[FILE_PATH] })
+			);
+		});
+		manager = new SyncManager(context, harness.storage);
+		(manager as unknown as { apiClient: unknown }).apiClient = gist;
+	}
+
+	function runWorkspaceSync(): Promise<{ success: boolean }> {
+		return (
+			manager as unknown as { syncWorkspace(gistId: string): Promise<{ success: boolean }> }
+		).syncWorkspace(GIST_ID);
+	}
+
+	function cache(): GistCache<WorkspaceGistData> {
+		return workspaceStore.get(
+			StorageKeys.workspaceGistCache(fileName)
+		) as GistCache<WorkspaceGistData>;
+	}
+
+	function onGist(): WorkspaceGistData {
+		return JSON.parse(gist.content!) as WorkspaceGistData;
+	}
+
+	teardown(() => {
+		manager.dispose();
+		resetAuthSingleton();
+	});
+
+	test("a pull reaches the workspace slice, the per-file lists and the open file", async () => {
+		setUp(
+			workspace([todo(1, "one"), todo(2, "added on the phone")], [todo(10, "ten"), todo(11, "phone")]),
+			workspace([todo(1, "one")], [todo(10, "ten")]),
+			workspace([todo(1, "one")], [todo(10, "ten")])
+		);
+
+		await runWorkspaceSync();
+		await harness.settle();
+
+		const state = harness.store.getState();
+		assert.deepStrictEqual(texts(state.workspace.todos), ["added on the phone", "one"]);
+		assert.deepStrictEqual(texts(state.currentFile.todos), ["phone", "ten"]);
+		const shownFiles = workspaceStore.get("TodoFilesData") as TodoFilesData;
+		assert.deepStrictEqual(texts(shownFiles[FILE_PATH]), ["phone", "ten"]);
+		assert.deepStrictEqual(gist.writes, [], "a pull writes nothing to the gist");
+		assert.strictEqual(manager.getStatus("workspace"), SyncStatus.Synced);
+	});
+
+	/**
+	 * A pure pull writes the cache key in the reconcile (1), the manager's write-back of the
+	 * workspace list (2), the per-file lists (3) and their aliases (4), and persistLocalWorkspace
+	 * (5). An add to the workspace list and one to the open file's list, made at any of those
+	 * moments, carry the lists from before the pull.
+	 */
+	for (const [when, cacheWrite] of [
+		["during the write-back", 3],
+		["after the write-back, before the store reloads", 5],
+	] as const) {
+		test(`keeps a workspace add and an add to the open file made ${when}`, async () => {
+			setUp(
+				workspace(
+					[todo(1, "one"), todo(2, "added on the phone")],
+					[todo(10, "ten"), todo(11, "phone")]
+				),
+				workspace([todo(1, "one")], [todo(10, "ten")]),
+				workspace([todo(1, "one")], [todo(10, "ten")])
+			);
+			const cacheKey = StorageKeys.workspaceGistCache(fileName);
+			let cacheWrites = 0;
+			afterCacheWrite = (key) => {
+				if (key !== cacheKey || ++cacheWrites !== cacheWrite) {
+					return;
+				}
+				harness.store.dispatch(workspaceActions.addTodo({ text: "typed just now" }));
+				harness.store.dispatch(currentFileActions.addTodo({ text: "typed in the file" }));
+			};
+
+			await runWorkspaceSync();
+			await harness.settle();
+
+			const workspaceTodos = ["added on the phone", "one", "typed just now"];
+			const fileTodos = ["phone", "ten", "typed in the file"];
+			const stored = cache();
+			assert.deepStrictEqual(texts(stored.data.workspaceTodos), workspaceTodos, "stored");
+			assert.deepStrictEqual(texts(stored.data.filesData[FILE_PATH]), fileTodos, "stored");
+			const state = harness.store.getState();
+			assert.deepStrictEqual(texts(state.workspace.todos), workspaceTodos, "shown");
+			assert.deepStrictEqual(texts(state.currentFile.todos), fileTodos, "shown");
+			const shownFiles = workspaceStore.get("TodoFilesData") as TodoFilesData;
+			assert.deepStrictEqual(texts(shownFiles[FILE_PATH]), fileTodos, "in the memento");
+			assert.deepStrictEqual(
+				stored.lastCleanRemoteData,
+				onGist(),
+				"the baseline is what the gist holds"
+			);
+			assert.strictEqual(manager.getStatus("workspace"), SyncStatus.Dirty, "the adds are owed");
+
+			// The push the adds armed: it must deliver them and keep the pulled items.
+			await runWorkspaceSync();
+			assert.deepStrictEqual(texts(onGist().workspaceTodos), workspaceTodos);
+			assert.deepStrictEqual(texts(onGist().filesData[FILE_PATH]), fileTodos);
+		});
+	}
 });

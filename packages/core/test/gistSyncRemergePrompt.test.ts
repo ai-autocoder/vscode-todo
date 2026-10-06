@@ -186,3 +186,77 @@ describe("mid-flight re-merge conflicts", () => {
 		expect(data.filesData!["a.ts"][0].text).toBe("their note");
 	});
 });
+
+/**
+ * The same fold for a caller that cannot wait for an answer: the extension folds a finished sync
+ * into its store between reading the store and loading it, since an edit made in between would
+ * carry the list from before the fold. So it settles by the policy, never asks, and is
+ * synchronous.
+ */
+describe("folding local edits without asking", () => {
+	const refuse: ConflictResolver = async () => {
+		throw new Error("the fold must not ask");
+	};
+
+	it("keeps an edit made since the snapshot and what the reconcile brought in", () => {
+		const engine = makeEngine(refuse);
+
+		const { data, conflicts } = engine.foldLocalEdits(
+			{ userTodos: [todo(1, "one")] },
+			{ userTodos: [todo(1, "one"), todo(2, "pulled")] },
+			{ userTodos: [todo(1, "one"), todo(3, "typed here")] }
+		);
+
+		expect(data.userTodos.map((t) => t.text).sort()).toEqual(["one", "pulled", "typed here"]);
+		expect(conflicts).toEqual([]);
+	});
+
+	it("settles a conflict by the policy and reports it", () => {
+		const engine = makeEngine(refuse);
+
+		const result = engine.foldLocalEdits(snapshot, reconciled, currentLocal);
+
+		expect(result).not.toBeInstanceOf(Promise);
+		expect(result.data.userTodos[0].text).toBe("typed mid-flight");
+		expect(result.conflicts.map((c) => c.todoId)).toEqual([1]);
+	});
+
+	it("gives what the re-merge gives when the resolver declines", async () => {
+		const declined = await makeEngine(async () => null).reconcileWithLocalEdits(
+			snapshot,
+			reconciled,
+			currentLocal
+		);
+
+		expect(makeEngine(refuse).foldLocalEdits(snapshot, reconciled, currentLocal)).toEqual(declined);
+	});
+
+	it("folds the workspace todos and the per-file lists, settling a file conflict by the policy", () => {
+		const engine = makeEngine(refuse);
+
+		const { data, conflicts, fileConflicts } = engine.foldLocalWorkspaceEdits(
+			{
+				workspaceTodos: [todo(1, "one")],
+				filesData: { "a.ts": [todo(10, "base note")], "b.ts": [todo(20, "b")] },
+				filesDataPaths: {},
+			},
+			{
+				workspaceTodos: [todo(1, "one"), todo(2, "pulled")],
+				filesData: { "a.ts": [todo(10, "their note")], "b.ts": [todo(20, "b"), todo(21, "pulled")] },
+				filesDataPaths: { "b.ts": { absPaths: [], relPaths: ["b.ts"] } },
+			},
+			{
+				workspaceTodos: [todo(1, "one"), todo(3, "typed here")],
+				filesData: { "a.ts": [todo(10, "my note")], "b.ts": [todo(20, "b"), todo(22, "typed")] },
+				filesDataPaths: {},
+			}
+		);
+
+		expect(data.workspaceTodos.map((t) => t.text).sort()).toEqual(["one", "pulled", "typed here"]);
+		expect(data.filesData!["a.ts"].map((t) => t.text)).toEqual(["my note"]);
+		expect(data.filesData!["b.ts"].map((t) => t.text).sort()).toEqual(["b", "pulled", "typed"]);
+		expect(data.filesDataPaths).toEqual({ "b.ts": { absPaths: [], relPaths: ["b.ts"] } });
+		expect(conflicts).toEqual([]);
+		expect(fileConflicts.map((c) => c.filePath)).toEqual(["a.ts"]);
+	});
+});

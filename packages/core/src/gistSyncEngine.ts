@@ -15,11 +15,13 @@ import {
 	assembleMerged,
 	resolveFileConflict,
 	ConflictSet,
+	MergeResult,
 } from "./threeWayMerge";
 import {
 	GistCache,
 	GlobalGistData,
 	WorkspaceGistData,
+	WorkspaceMergeResult,
 	FileConflictSet,
 	SyncError,
 	SyncErrorType,
@@ -177,6 +179,29 @@ const emptyWorkspace = (): WorkspaceGistData => ({ workspaceTodos: [], filesData
 /** Union of the todo ids across the lists a merge saw; handed to a {@link ConflictResolver}. */
 function idsIn(...lists: Todo[][]): number[] {
 	return [...new Set(lists.flat().map((todo) => todo.id))];
+}
+
+/**
+ * The merge behind {@link GistSyncEngine.reconcileWorkspaceWithLocalEdits} and
+ * {@link GistSyncEngine.foldLocalWorkspaceEdits}: local state that moved on since `snapshot`,
+ * against a reconcile's result, with the snapshot as base.
+ */
+function mergeWorkspaceFold(
+	snapshot: WorkspaceGistData,
+	reconciled: WorkspaceGistData,
+	currentLocal: WorkspaceGistData
+): WorkspaceMergeResult {
+	return threeWayMergeWorkspace(
+		snapshot.workspaceTodos,
+		currentLocal.workspaceTodos,
+		reconciled.workspaceTodos,
+		snapshot.filesData ?? {},
+		currentLocal.filesData ?? {},
+		reconciled.filesData ?? {},
+		snapshot.filesDataPaths ?? {},
+		currentLocal.filesDataPaths ?? {},
+		reconciled.filesDataPaths ?? {}
+	);
 }
 
 /**
@@ -365,6 +390,34 @@ export class GistSyncEngine {
 			[],
 			idsIn(snapshot.userTodos, currentLocal.userTodos, reconciled.userTodos)
 		);
+		return this.assembleUserFold(merge, decisions);
+	}
+
+	/**
+	 * {@link reconcileWithLocalEdits} with every conflict settled by the policy, without asking the
+	 * {@link ConflictResolver}, and synchronously.
+	 *
+	 * For a caller that has to store the result in the same turn as it read the local state. The
+	 * extension folds a finished sync into its store this way: an edit made there carries the
+	 * whole list the store showed when it was made, so one made while a dialog was up, or while
+	 * anything else was awaited, would be stored after the fold with the list from before it, and
+	 * drop what the sync had brought in. The conflicts are returned so the caller can say they were
+	 * settled.
+	 */
+	public foldLocalEdits(
+		snapshot: GlobalGistData,
+		reconciled: GlobalGistData,
+		currentLocal: GlobalGistData
+	): { data: GlobalGistData; conflicts: ConflictSet[] } {
+		return this.assembleUserFold(
+			threeWayMerge(snapshot.userTodos, currentLocal.userTodos, reconciled.userTodos)
+		);
+	}
+
+	private assembleUserFold(
+		merge: MergeResult,
+		decisions?: ConflictDecisions
+	): { data: GlobalGistData; conflicts: ConflictSet[] } {
 		const { picks, extras } = this.resolve(merge.conflicts, decisions);
 		return {
 			data: { userTodos: assembleMerged(merge, picks, extras) },
@@ -382,17 +435,7 @@ export class GistSyncEngine {
 		conflicts: ConflictSet[];
 		fileConflicts: FileConflictSet[];
 	}> {
-		const result = threeWayMergeWorkspace(
-			snapshot.workspaceTodos,
-			currentLocal.workspaceTodos,
-			reconciled.workspaceTodos,
-			snapshot.filesData ?? {},
-			currentLocal.filesData ?? {},
-			reconciled.filesData ?? {},
-			snapshot.filesDataPaths ?? {},
-			currentLocal.filesDataPaths ?? {},
-			reconciled.filesDataPaths ?? {}
-		);
+		const result = mergeWorkspaceFold(snapshot, reconciled, currentLocal);
 		// One prompt for the whole file, as in `reconcileWorkspace`: the workspace todo conflicts
 		// and the per-file ones come out of a single merge, so asking twice would make the user
 		// answer half a decision and then the other half.
@@ -408,6 +451,22 @@ export class GistSyncEngine {
 				...Object.values(reconciled.filesData ?? {})
 			)
 		);
+		return this.assembleWorkspaceFold(result, decisions);
+	}
+
+	/** Workspace counterpart of {@link foldLocalEdits}. */
+	public foldLocalWorkspaceEdits(
+		snapshot: WorkspaceGistData,
+		reconciled: WorkspaceGistData,
+		currentLocal: WorkspaceGistData
+	): { data: WorkspaceGistData; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] } {
+		return this.assembleWorkspaceFold(mergeWorkspaceFold(snapshot, reconciled, currentLocal));
+	}
+
+	private assembleWorkspaceFold(
+		result: WorkspaceMergeResult,
+		decisions?: ConflictDecisions
+	): { data: WorkspaceGistData; conflicts: ConflictSet[]; fileConflicts: FileConflictSet[] } {
 		const { picks, extras } = this.resolve(result.workspaceMerge.conflicts, decisions);
 		const finalFilesData = this.resolveFiles(
 			result.autoMergedFilesData,
