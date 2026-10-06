@@ -28,11 +28,22 @@
 </p>
 
 <p align="center">
+  <strong>Install:</strong>
+  <a href="https://marketplace.visualstudio.com/items?itemName=FrancescoAnzalone.vsc-todo">VS Code Marketplace</a>
+  |
+  <a href="https://open-vsx.org/extension/FrancescoAnzalone/vsc-todo">Open VSX</a> (Cursor, Windsurf, VSCodium)
+</p>
+
+<p align="center">
   <a href="#getting-started">Getting started</a>
   |
   <a href="https://github.com/ai-autocoder/vscode-todo/blob/master/ARCHITECTURE.md">Architecture</a>
   |
   <a href="https://github.com/ai-autocoder/vscode-todo/issues">Report an issue</a>
+</p>
+
+<p align="center">
+  ⭐ If this saves you time, a <a href="https://github.com/ai-autocoder/vscode-todo">star on GitHub</a> helps other developers find it.
 </p>
 
 ## Table of Contents
