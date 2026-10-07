@@ -1,8 +1,9 @@
+@~/.claude/notes/vscode-todo.md
 @AGENTS.md
 
 # VS Code Todo — Claude Code guide
 
-The import above pulls in **AGENTS.md** (project structure, build/test commands, coding
+The second import above pulls in **AGENTS.md** (project structure, build/test commands, coding
 style, commit conventions, security rules, and the VS Code Todo MCP task-tracking
 workflow). This file adds only the architecture map and a couple of non-obvious notes.
 
