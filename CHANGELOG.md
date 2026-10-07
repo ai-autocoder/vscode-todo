@@ -2,11 +2,23 @@
 
 ## [2.3.5]
 
+- Sync: improve reliability when todos are edited while a GitHub sync completes.
+- Extension: reconnect Todo tabs left open across an extension update.
+- Webview: speed up adding items to a long list.
 - Extension: ask once, after regular use, for a rating or a GitHub star.
+- Plans: the sign-in proxy doesn't log requests.
+
+## [2.3.4]
+
+- Sync: improve Profile Sync across machines, including changes Settings Sync delivers during a session.
+- Sync: improve how an import merges with existing todos.
+- Extension: improve how per-file todos follow file renames, deletes and imports.
+- MCP: keep the server responsive while the extension host is busy.
+- Plans: keep this device's lists and pending edits when switching to another gist.
 
 ## [2.3.3]
 
-- Sync: fix overlapping writes to different files sometimes dropping each other.
+- Sync: keep every file's changes when todos in several files are saved at the same time.
 - Security: render Mermaid diagrams in strict mode, so a diagram can no longer add script links or click handlers. Diagrams that relied on click actions no longer run them.
 - Plans: add a Content-Security-Policy to the app, and tighten its caching rules.
 
@@ -27,7 +39,7 @@
 - Add **Plans**, a mobile PWA companion at [plans-app.pages.dev](https://plans-app.pages.dev): the same lists on your phone, installable to the home screen, usable offline, and syncing through the same GitHub Gist as the extension. Sign in with GitHub device flow, choose which gist and which files to sync, review sync conflicts, and import/export from the browser.
 - Sync: run one merge implementation on both peers, so the extension and Plans can no longer disagree about whether a conflict exists.
 - Sync: keep list order through a merge — a new todo no longer lands at the bottom whatever `vscodeTodo.createPosition` says, and drag-and-drop reorders are no longer undone.
-- Sync: fix data loss — per-file todos dropped when a file conflict was settled, edits that landed mid-reconcile, and a damaged gist file syncing as a deletion.
+- Sync: keep both devices' new per-file todos when a file conflict is settled, and keep edits made while a sync is merging. An unreadable gist file is now reported and left untouched instead of syncing as an empty list.
 - Sync: never write over remote content without a merge baseline, including when the check guarding a first write cannot be completed.
 - Sync: compare and write gist data in a stable key order, so identical content no longer reads as modified.
 - Sync: stop "Skip This Conflict" deleting the todo on both devices, and offer Keep Both for an id collision.
