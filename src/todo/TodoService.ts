@@ -187,7 +187,9 @@ export default class TodoService {
 	constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly store: EnhancedStore<StoreState>,
-		private readonly storageSyncManager: StorageSyncManager
+		private readonly storageSyncManager: StorageSyncManager,
+		/** For writes to a file that is not open: those never pass through the store. */
+		private readonly onUserActivity?: () => void
 	) {}
 
 	public updateAccess(readOnly: boolean, allowedScopes: AllowedScope[]): void {
@@ -505,6 +507,7 @@ export default class TodoService {
 					}
 					handlers.mutateFile(target);
 					updated = target;
+					this.onUserActivity?.();
 					return todos;
 				});
 				return { scope, filePath: resolvedPath, todo: updated as Todo };
@@ -690,6 +693,7 @@ export default class TodoService {
 		}
 
 		await this.persistFileTodos(filePath, updatedTodos);
+		this.onUserActivity?.();
 		return { scope: TodoScope.currentFile, filePath, todos: block };
 	}
 
@@ -719,6 +723,7 @@ export default class TodoService {
 		}
 
 		await this.persistFileTodos(filePath, updatedTodos);
+		this.onUserActivity?.();
 		return { scope: TodoScope.currentFile, filePath, todo: newTodo };
 	}
 

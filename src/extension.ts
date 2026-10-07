@@ -46,11 +46,14 @@ import { messagesToWebview } from "./panels/message";
 import { WebviewVisibilityCoordinator } from "./sync/WebviewVisibilityCoordinator";
 import McpServerHost from "./mcp/McpServerHost";
 import McpLogChannel from "./mcp/McpLogChannel";
+import { RatingPrompt } from "./ratingPrompt/RatingPrompt";
 
 export async function activate(context: ExtensionContext) {
 	// Before anything can open one, so every Todo tab open now is a previous host's.
 	const orphanedTodoTabs = HelloWorldPanel.todoTabs();
-	const store = createStore();
+	const ratingPrompt = new RatingPrompt(context.globalState);
+	const recordActivity = () => ratingPrompt.recordActivity();
+	const store = createStore({ onUserActivity: recordActivity });
 	const storageSyncManager = new StorageSyncManager(context, store);
 	await storageSyncManager.initialize();
 
@@ -61,7 +64,7 @@ export async function activate(context: ExtensionContext) {
 	// stored behind the edits made before it: see `SyncedStore`.
 	const syncManager = new SyncManager(context, storageSyncManager);
 	const syncCommands = new SyncCommands(context, authManager, apiClient, syncManager, store, storageSyncManager);
-	const mcpServerHost = new McpServerHost(context, store, storageSyncManager);
+	const mcpServerHost = new McpServerHost(context, store, storageSyncManager, recordActivity);
 	mcpServerHost.initialize();
 
 	// Start GitHub sync polling if enabled
@@ -255,6 +258,12 @@ export async function activate(context: ExtensionContext) {
 	store.dispatch(actionTrackerActions.resetLastSliceName());
 	updateStatusBarItem(store.getState());
 
+	void ratingPrompt.seed([
+		initialUserTodos,
+		initialWorkspaceTodos,
+		...Object.values(initialWorkspaceFilesData ?? {}),
+	]);
+
 	store.subscribe(() => {
 		const state = store.getState();
 
@@ -315,7 +324,8 @@ export async function activate(context: ExtensionContext) {
 		store,
 		context,
 		visibilityCoordinator,
-		mcpServerHost
+		mcpServerHost,
+		ratingPrompt
 	);
 
 	context.subscriptions.push(
@@ -327,7 +337,8 @@ export async function activate(context: ExtensionContext) {
 		onDidDeleteFilesSubscription,
 		vscode.window.registerWebviewViewProvider(TodoViewProvider.viewType, provider),
 		{ dispose: () => syncManager.dispose() },
-		mcpServerHost
+		mcpServerHost,
+		ratingPrompt
 	);
 
 	deleteCompletedTodos(store);

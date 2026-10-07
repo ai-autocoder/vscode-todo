@@ -14,6 +14,7 @@ import { GitHubAuthManager } from "../sync/GitHubAuthManager";
 import { WebviewVisibilityCoordinator } from "../sync/WebviewVisibilityCoordinator";
 import { getGitHubSyncInfo, getSyncStatusInfo } from "../utilities/syncInfo";
 import McpServerHost from "../mcp/McpServerHost";
+import { RatingPrompt } from "../ratingPrompt/RatingPrompt";
 
 export class TodoViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "vsc-todo.todoView";
@@ -26,7 +27,8 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		private readonly _store: EnhancedStore,
 		private readonly _context: vscode.ExtensionContext,
 		visibilityCoordinator?: WebviewVisibilityCoordinator,
-		private readonly _mcpServerHost?: McpServerHost
+		private readonly _mcpServerHost?: McpServerHost,
+		private readonly _ratingPrompt?: RatingPrompt
 	) {
 		TodoViewProvider.currentProvider = this;
 		this._visibilityCoordinator = visibilityCoordinator;
@@ -51,6 +53,9 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 		if (webviewView.visible && this._visibilityCoordinator) {
 			this._visibilityCoordinator.incrementVisibility();
 		}
+		if (webviewView.visible) {
+			this._ratingPrompt?.scheduleCheck(() => webviewView.visible);
+		}
 
 		webviewView.onDidChangeVisibility(() => {
 			if (webviewView.visible) {
@@ -59,6 +64,7 @@ export class TodoViewProvider implements vscode.WebviewViewProvider {
 				}
 				deleteCompletedTodos(this._store);
 				this.reloadWebview();
+				this._ratingPrompt?.scheduleCheck(() => webviewView.visible);
 			} else {
 				if (this._visibilityCoordinator) {
 					this._visibilityCoordinator.decrementVisibility();

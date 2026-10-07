@@ -90,9 +90,10 @@ export default class McpServerHost implements vscode.Disposable {
 	constructor(
 		private readonly context: vscode.ExtensionContext,
 		store: EnhancedStore<StoreState>,
-		storageSyncManager: StorageSyncManager
+		storageSyncManager: StorageSyncManager,
+		onUserActivity?: () => void
 	) {
-		this.todoService = new TodoService(context, store, storageSyncManager);
+		this.todoService = new TodoService(context, store, storageSyncManager, onUserActivity);
 		this.status = this.buildStatus(this.readConfig(), false, null);
 	}
 

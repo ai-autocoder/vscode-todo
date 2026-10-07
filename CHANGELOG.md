@@ -1,5 +1,9 @@
 # Change Log
 
+## [2.3.5]
+
+- Extension: ask once, after regular use, for a rating or a GitHub star.
+
 ## [2.3.3]
 
 - Sync: fix overlapping writes to different files sometimes dropping each other.

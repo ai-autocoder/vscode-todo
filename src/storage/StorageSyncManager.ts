@@ -37,6 +37,7 @@ import {
 	WorkspaceSyncMode,
 } from "../sync/syncTypes";
 import type { SyncedStore } from "../sync/SyncManager";
+import { RATING_PROMPT_SHOWN_KEY } from "../ratingPrompt/RatingPrompt";
 
 type WorkspacePersistedData = {
 	workspaceTodos: Todo[];
@@ -57,6 +58,12 @@ type PersistStorage = "user" | "workspace";
 
 /** The `globalState` keys VS Code Settings Sync carries in Profile Sync mode. */
 const PROFILE_SYNC_KEYS: readonly string[] = ["TodoData"];
+
+/**
+ * The `globalState` keys Settings Sync carries in every mode. `setKeysForSync` replaces the whole
+ * list, so these have to be in each one it sets.
+ */
+const ALWAYS_SYNC_KEYS: readonly string[] = [RATING_PROMPT_SHOWN_KEY];
 
 /**
  * How often Profile Sync mode looks for a user list that Settings Sync delivered. VS Code updates
@@ -199,7 +206,10 @@ private cachedWorkspaceData: WorkspacePersistedData = {
 	private updateKeysForSync(): void {
 		const globalState = this.context.globalState;
 		if (typeof globalState.setKeysForSync === "function") {
-			globalState.setKeysForSync(this.isProfileSync() ? PROFILE_SYNC_KEYS : []);
+			globalState.setKeysForSync([
+				...(this.isProfileSync() ? PROFILE_SYNC_KEYS : []),
+				...ALWAYS_SYNC_KEYS,
+			]);
 		}
 	}
 

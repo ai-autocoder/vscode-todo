@@ -214,6 +214,27 @@ suite("TodoService CRUD", () => {
 		assert.strictEqual(persisted[0].text, "other file task");
 	});
 
+	test("activity: writes to a file that is not open report activity; deletes do not", async () => {
+		let reported = 0;
+		const tracked = new TodoService(
+			context,
+			store as EnhancedStore<StoreState>,
+			createMockStorage(context),
+			() => reported++
+		);
+		tracked.updateAccess(false, ["user", "workspace", "file"]);
+		const options = { filePath: otherFilePath };
+
+		const added = await tracked.addTodo(TodoScope.currentFile, "one", options);
+		await tracked.addTodos(TodoScope.currentFile, [{ text: "two" }, { text: "three" }], options);
+		await tracked.updateTodoText(TodoScope.currentFile, added!.todo.id, "edited", options);
+		await tracked.setCompleted(TodoScope.currentFile, added!.todo.id, true, options);
+		assert.strictEqual(reported, 4);
+
+		await tracked.deleteTodos(TodoScope.currentFile, [added!.todo.id], options);
+		assert.strictEqual(reported, 4);
+	});
+
 	// --- Read ---------------------------------------------------------------
 
 	test("read: listTodos returns items for a scope", async () => {

@@ -7,6 +7,7 @@ import {
 	PayloadAction,
 } from "@reduxjs/toolkit";
 import LogChannel from "../utilities/LogChannel";
+import { isUserActivityAction } from "../ratingPrompt/activityDays";
 import { CreatePosition, getConfig } from "../utilities/config";
 import {
 	ActionTrackerState,
@@ -342,10 +343,14 @@ const rootReducer = combineReducers({
 export type RootState = ReturnType<typeof rootReducer>;
 
 // Configure the store with the combined reducer
-export default function () {
+export default function (options: { onUserActivity?: (actionType: string) => void } = {}) {
 	return configureStore({
 		reducer: rootReducer,
-		middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(trackActionMiddleware),
+		middleware: (getDefaultMiddleware) =>
+			getDefaultMiddleware().concat(
+				trackActionMiddleware,
+				userActivityMiddleware(options.onUserActivity)
+			),
 	});
 }
 
@@ -380,3 +385,23 @@ const trackActionMiddleware: Middleware = (api: MiddlewareAPI) => (next) => (act
 	}
 	return next(action);
 };
+
+/** Reports adds, edits and completions, whether from the webview or the MCP server. */
+const userActivityMiddleware =
+	(onUserActivity: ((actionType: string) => void) | undefined): Middleware =>
+	() =>
+	(next) =>
+	(action) => {
+		const result = next(action);
+		if (
+			onUserActivity &&
+			typeof action === "object" &&
+			action !== null &&
+			"type" in action &&
+			typeof action.type === "string" &&
+			isUserActivityAction(action.type)
+		) {
+			onUserActivity(action.type);
+		}
+		return result;
+	};

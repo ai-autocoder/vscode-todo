@@ -19,6 +19,7 @@ import StorageSyncManager from "../../storage/StorageSyncManager";
 import { SyncCommands } from "../../sync/SyncCommands";
 import createStore, { actionTrackerActions, userActions } from "../../todo/store";
 import { Slices, StoreState, Todo, TodoScope } from "../../todo/todoTypes";
+import { RATING_PROMPT_SHOWN_KEY } from "../../ratingPrompt/RatingPrompt";
 
 function todo(id: number, text: string): Todo {
 	return {
@@ -517,22 +518,32 @@ suite("Profile Sync: the synced user list", () => {
 
 	test("choosing Profile Sync registers the list with Settings Sync at once", async () => {
 		const h = await machine("profile-local", [mine], [mine]);
-		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], [], "Local mode synced it");
+		assert.deepStrictEqual(
+			h.keysForSync[h.keysForSync.length - 1],
+			[RATING_PROMPT_SHOWN_KEY],
+			"Local mode synced it"
+		);
 
 		await h.selectMode("profile-sync");
 
-		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], ["TodoData"]);
+		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], [
+			"TodoData",
+			RATING_PROMPT_SHOWN_KEY,
+		]);
 		assert.deepStrictEqual(h.shown(), ["mine"]);
 	});
 
 	test("leaving Profile Sync unregisters the list and keeps one delivered since the last look", async () => {
 		const h = await machine("profile-sync", [mine], [mine]);
-		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], ["TodoData"]);
+		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], [
+			"TodoData",
+			RATING_PROMPT_SHOWN_KEY,
+		]);
 		h.globalStore.set("TodoData", [mine, theirs]);
 
 		await h.selectMode("profile-local");
 
-		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], []);
+		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], [RATING_PROMPT_SHOWN_KEY]);
 		assert.deepStrictEqual(h.shown(), ["mine", "theirs"]);
 		assert.deepStrictEqual(h.onDisk(), ["mine", "theirs"], "Local mode would load the old file");
 	});
@@ -561,6 +572,9 @@ suite("Profile Sync: the synced user list", () => {
 		}
 
 		assert.strictEqual(h.globalStore.get("syncMode"), "profile-sync");
-		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], ["TodoData"]);
+		assert.deepStrictEqual(h.keysForSync[h.keysForSync.length - 1], [
+			"TodoData",
+			RATING_PROMPT_SHOWN_KEY,
+		]);
 	});
 });
