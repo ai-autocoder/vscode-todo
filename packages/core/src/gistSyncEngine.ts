@@ -701,7 +701,8 @@ export class GistSyncEngine {
 			// the fact. Before the baseline was parsed from the written bytes, it also put an edit
 			// in the baseline that never reached the gist, and the next reconcile read
 			// local == base, remote != base and pulled the edit away. The extension's per-file
-			// persist did exactly that through the live memento object (audit finding C1).
+			// persist did exactly that: it edited in place the memento object the extension had
+			// passed in as `localData`.
 			return await this.reconcileInner(scope, fileName, cloneData(localData), strategy);
 		} catch (error) {
 			// A resolver that declined. Nothing was written and the baseline is untouched, so the

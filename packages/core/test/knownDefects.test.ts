@@ -1,11 +1,11 @@
 /**
- * Defects found by the September 2026 audit, pinned as executable reproductions.
+ * Known defects in the shared core, pinned as executable reproductions.
  *
  * Every `it.fails` here passes today *because* its assertion fails: each one states the correct
  * behaviour and the code does not meet it yet. When a fix lands its test starts failing — flip
- * it to `it` and it becomes the regression test. Each block's comment names the finding, the
+ * it to `it` and it becomes the regression test. Each block's comment names the defect, the
  * code at fault and the user-visible consequence. The other plain `it` cases are either
- * controls, showing the scenario is otherwise healthy, or regression tests for fixed findings;
+ * controls, showing the scenario is otherwise healthy, or regression tests for fixed defects;
  * each block's comment says which.
  */
 
@@ -81,12 +81,12 @@ class FakeGist implements GistFileIO {
 }
 
 // ---------------------------------------------------------------------------------------------
-// CRITICAL (C1, fixed) — the baseline could record content that never reached the gist
+// Sync baseline (fixed) — the baseline could record content that never reached the gist
 // ---------------------------------------------------------------------------------------------
 
-describe("AUDIT: baseline must be what was written, not what the caller's object became", () => {
+describe("baseline must be what was written, not what the caller's object became", () => {
 	/**
-	 * Regression tests for C1. `pushVerified` serialized `data` for the PATCH, awaited it, and
+	 * Regression tests. `pushVerified` serialized `data` for the PATCH, awaited it, and
 	 * only then cloned `data` into the baseline. On the "only local changed" path `data` WAS the
 	 * caller's object. The extension handed in `cache.data.filesData` — the live memento object —
 	 * and `StorageSyncManager`'s per-file persist mutated that object in place
@@ -164,10 +164,10 @@ describe("AUDIT: baseline must be what was written, not what the caller's object
 });
 
 // ---------------------------------------------------------------------------------------------
-// HIGH — an import rewrites todos it did not touch
+// Import — merging and parsing imported todos
 // ---------------------------------------------------------------------------------------------
 
-describe("AUDIT: import normalizes the whole merged list, not just the imported items", () => {
+describe("import normalizes the whole merged list, not just the imported items", () => {
 	/**
 	 * Regression tests for an import rewriting todos it did not name. `processAndMergeTodos` ran
 	 * `initMissingTodoProperties` over every todo after the merge, so existing todos gained
@@ -250,7 +250,7 @@ describe("AUDIT: import normalizes the whole merged list, not just the imported 
 	});
 });
 
-describe("AUDIT: the markdown task matcher is not anchored", () => {
+describe("the markdown task matcher is not anchored", () => {
 	/**
 	 * `\s*\d+. \[[ xX]\] ` has no `^` and an unescaped `.`, so a note that merely contains a
 	 * digit, any character, a space and a checkbox is read as a task and the match is cut out of
@@ -268,10 +268,10 @@ describe("AUDIT: the markdown task matcher is not anchored", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// MEDIUM — merge and client edge cases
+// Merge and client edge cases
 // ---------------------------------------------------------------------------------------------
 
-describe("AUDIT: an emptied per-file list and a removed one are the same thing", () => {
+describe("an emptied per-file list and a removed one are the same thing", () => {
 	/**
 	 * The extension removes a file's key when its last todo goes (StorageSyncManager), the PWA
 	 * keeps the key with `[]`. `mergeFilesData` treats the two as different, so both devices
@@ -283,7 +283,7 @@ describe("AUDIT: an emptied per-file list and a removed one are the same thing",
 	});
 });
 
-describe("AUDIT: a gist with more than 300 files", () => {
+describe("a gist with more than 300 files", () => {
 	afterEach(() => vi.unstubAllGlobals());
 
 	/**
@@ -306,7 +306,7 @@ describe("AUDIT: a gist with more than 300 files", () => {
 	});
 });
 
-describe("AUDIT: device flow with a missing interval", () => {
+describe("device flow with a missing interval", () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
@@ -328,7 +328,7 @@ describe("AUDIT: device flow with a missing interval", () => {
 	});
 });
 
-describe("AUDIT: IndexedDB stores first used together", () => {
+describe("IndexedDB stores first used together", () => {
 	/**
 	 * Two handles that both find their store missing both reopen at version N+1; only the first
 	 * gets the upgrade, the second caches a connection without its store and fails every call.
@@ -346,7 +346,7 @@ describe("AUDIT: IndexedDB stores first used together", () => {
 	});
 });
 
-describe("AUDIT: two peers' identical deletions reach the gist identically", () => {
+describe("two peers' identical deletions reach the gist identically", () => {
 	it("control: serialize is stable for the same content regardless of key order", () => {
 		expect(serialize({ b: 1, a: [{ d: 1, c: 2 }] })).toBe(serialize({ a: [{ c: 2, d: 1 }], b: 1 }));
 	});

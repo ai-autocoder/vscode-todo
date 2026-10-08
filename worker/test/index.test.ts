@@ -210,7 +210,7 @@ describe("CLIENT_ID allowlist", () => {
 	});
 
 	/**
-	 * AUDIT: the allowlist trusts its own parse of the body, and GitHub parses it differently.
+	 * Known bypass: the allowlist trusts its own parse of the body, and GitHub parses it differently.
 	 * `extractClientId` reads JSON only when the Content-Type contains the lower-case string
 	 * `application/json`, and otherwise takes the FIRST `client_id` of a form body. GitHub treats
 	 * MIME types case-insensitively and (Rails) takes the LAST of a repeated form parameter. So
@@ -218,7 +218,7 @@ describe("CLIENT_ID allowlist", () => {
 	 * GitHub as another app's. Low impact — the allowlist is optional hardening, off in
 	 * wrangler.toml — but it does not do what it says. Expected: 403 for both.
 	 */
-	it("AUDIT (known bypass): an upper-case JSON content type skips the check", { todo: "known bypass — see comment" }, async () => {
+	it("known bypass: an upper-case JSON content type skips the check", { todo: "known bypass — see comment" }, async () => {
 		const res = await worker.fetch(
 			request("/login/device/code", {
 				body: JSON.stringify({ client_id: "Iv1.other" }),
@@ -230,7 +230,7 @@ describe("CLIENT_ID allowlist", () => {
 		assert.equal(res.status, 403);
 	});
 
-	it("AUDIT (known bypass): a repeated form parameter is checked on its first value only", { todo: "known bypass — see comment" }, async () => {
+	it("known bypass: a repeated form parameter is checked on its first value only", { todo: "known bypass — see comment" }, async () => {
 		const res = await worker.fetch(
 			request("/login/device/code", {
 				body: "client_id=Iv1.app&client_id=Iv1.other",
@@ -242,7 +242,7 @@ describe("CLIENT_ID allowlist", () => {
 		assert.equal(res.status, 403);
 	});
 
-	it("AUDIT (known gap): a body with no client id at all is forwarded", { todo: "harmless: GitHub rejects it" }, async () => {
+	it("known gap: a body with no client id at all is forwarded", { todo: "harmless: GitHub rejects it" }, async () => {
 		const res = await worker.fetch(request("/login/device/code", { body: JSON.stringify({ scope: "gist" }) }), env);
 
 		assert.equal(res.status, 403);

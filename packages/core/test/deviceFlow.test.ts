@@ -241,11 +241,11 @@ describe("DeviceFlowClient.pollForToken", () => {
 	});
 
 	/**
-	 * AUDIT: one transient failure ends the whole sign-in. The poll neither checks `response.ok`
-	 * nor catches a rejected fetch, so a dropped connection (common on a phone switching to the
-	 * GitHub app to approve) or a non-JSON 5xx page from the proxy rejects with a raw
-	 * TypeError/SyntaxError. The user has already typed the code; they must start over with a new
-	 * one. Expected: keep polling until GitHub itself answers, the deadline passes or the user
+	 * Known defect: one transient failure ends the whole sign-in. The poll neither checks
+	 * `response.ok` nor catches a rejected fetch, so a dropped connection (common on a phone
+	 * switching to the GitHub app to approve) or a non-JSON 5xx page from the proxy rejects with a
+	 * raw TypeError/SyntaxError. The user has already typed the code; they must start over with a
+	 * new one. Expected: keep polling until GitHub itself answers, the deadline passes or the user
 	 * cancels. Flip to `it` once fixed.
 	 */
 	it.fails("keeps polling through a transient network failure", async () => {
@@ -273,8 +273,8 @@ describe("DeviceFlowClient.pollForToken", () => {
 	});
 
 	/**
-	 * AUDIT: the abort signal is honoured only between polls, never passed to `fetch`, so a
-	 * cancel that lands while a poll is in flight still resolves with the token when GitHub
+	 * Known defect: the abort signal is honoured only between polls, never passed to `fetch`,
+	 * so a cancel that lands while a poll is in flight still resolves with the token when GitHub
 	 * approves in that same answer — the caller asked to stop and got signed in anyway.
 	 */
 	it.fails("does not resolve with a token after the caller cancelled mid-request", async () => {

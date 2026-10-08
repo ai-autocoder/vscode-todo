@@ -164,9 +164,9 @@ suite("SyncStorageManager Test Suite", () => {
 	});
 
 	/**
-	 * The mock mementos above store by reference, as VS Code's do. Audit finding C1: the getters
-	 * used to return the stored object, the per-file persist edited it in place, and a sync on
-	 * the network was holding that same object as its snapshot.
+	 * The mock mementos above store by reference, as VS Code's do. The getters used to return
+	 * the stored object, the per-file persist edited it in place, and a sync on the network was
+	 * holding that same object as its snapshot.
 	 */
 	test("Reads and writes are copies, never the memento's own objects", async () => {
 		const fileName = "workspace/ProjectA.json";

@@ -3,8 +3,8 @@
  * `filesDataPaths` union, the per-file decision table, `resolveFileConflict`, insertion-index
  * edge cases, and the summary formatters.
  *
- * The `AUDIT:` cases at the bottom pin known defects with `it.fails` — they pass today because
- * the assertion fails, and start failing (flip them to `it`) once the defect is fixed.
+ * The `Known defect:` cases at the bottom pin known defects with `it.fails` — they pass today
+ * because the assertion fails, and start failing (flip them to `it`) once the defect is fixed.
  */
 
 import { describe, it, expect } from "vitest";
@@ -286,7 +286,7 @@ describe("formatWorkspaceMergeSummary", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// AUDIT findings. Each passes today *because* its assertion fails; flip to `it` once fixed.
+// Known defects. Each passes today *because* its assertion fails; flip to `it` once fixed.
 // ---------------------------------------------------------------------------------------------
 
 class FakeGist implements GistFileIO {
@@ -306,7 +306,7 @@ class FakeGist implements GistFileIO {
 	}
 }
 
-describe("AUDIT: a reorder made only on the other device", () => {
+describe("Known defect: a reorder made only on the other device", () => {
 	/**
 	 * `threeWayMerge` always builds on the local order. That is right when local reordered, and
 	 * a coin-flip when both did — but when only the REMOTE reordered, local's order is just the
@@ -353,7 +353,7 @@ describe("AUDIT: a reorder made only on the other device", () => {
 	});
 });
 
-describe("AUDIT: filesDataPaths never forgets a key", () => {
+describe("Known defect: filesDataPaths never forgets a key", () => {
 	/**
 	 * `mergeFilesDataPaths` ignores its base, so an alias entry one side removed is re-added from
 	 * the other side's unchanged copy, forever. Deleting a file's list removes its `filesData`

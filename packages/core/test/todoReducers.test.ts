@@ -233,10 +233,11 @@ describe("todoMutations: the remaining reducers", () => {
 	});
 
 	/**
-	 * AUDIT: undo cannot restore `completionDate`. Neither the payload type nor the reducer carries
-	 * it, so a completed todo deleted and undone comes back completed with no completion date —
-	 * and the auto-delete sweep (`todoUtils`, which requires `completionDate`) then never removes
-	 * it. The same holds for the extension's copy in src/todo/store.ts. Flip to `it` once fixed.
+	 * Known defect: undo cannot restore `completionDate`. Neither the payload type nor the reducer
+	 * carries it, so a completed todo deleted and undone comes back completed with no completion
+	 * date — and the auto-delete sweep (`todoUtils`, which requires `completionDate`) then never
+	 * removes it. The same holds for the extension's copy in src/todo/store.ts. Flip to `it` once
+	 * fixed.
 	 */
 	it.fails("undoDelete restores a completed todo's completionDate", () => {
 		const s = slice([]);

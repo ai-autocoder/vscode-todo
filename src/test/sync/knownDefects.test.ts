@@ -1,12 +1,11 @@
 /**
- * Defects found by the September 2026 audit on the extension side, reproduced through the real
- * code paths (the `SyncManager`, the real `StorageSyncManager` persist, the real engine) over a
- * fake gist.
+ * Known defects on the extension side, reproduced through the real code paths (the
+ * `SyncManager`, the real `StorageSyncManager` persist, the real engine) over a fake gist.
  *
  * A `testKnownBug` case states the correct behaviour and passes only while the code still fails
  * it. When one starts failing the defect has been fixed: turn it into a plain `test`, and it
  * becomes the regression test. The other plain `test` cases are either controls or regression
- * tests for fixed findings; each one's comment says which.
+ * tests for fixed defects; each one's comment says which.
  */
 
 import * as assert from "assert";
@@ -24,7 +23,7 @@ import { serialize } from "../../core";
 import { CurrentFileSlice, Todo, TodoFilesData, TodoScope, TodoSlice } from "../../todo/todoTypes";
 
 const GIST_ID = "b".repeat(32);
-const FILE_PATH = process.platform === "win32" ? "C:\\audit\\repo\\a.ts" : "/audit/repo/a.ts";
+const FILE_PATH = process.platform === "win32" ? "C:\\repo\\a.ts" : "/repo/a.ts";
 
 /** The file name `SyncManager` derives for the workspace scope in this test instance. */
 function workspaceFileName(): string {
@@ -85,7 +84,7 @@ class FakeWorkspaceGist {
 	}
 }
 
-suite("Audit: per-file edits during a workspace push", () => {
+suite("Per-file edits during a workspace push", () => {
 	let workspaceStore: Map<string, unknown>;
 	let context: vscode.ExtensionContext;
 	let manager: SyncManager;
@@ -156,7 +155,7 @@ suite("Audit: per-file edits during a workspace push", () => {
 	});
 
 	/**
-	 * Regression test for C1 (fixed). `readLocalWorkspace` used to hand the engine
+	 * Regression test. `readLocalWorkspace` used to hand the engine
 	 * `cache.data.filesData` — the live memento object — and the GitHub branch of `persistSlice`
 	 * edited that same object in place (`filesData[key] = todos`). An edit landing while the
 	 * PATCH was in flight therefore mutated the snapshot the engine was pushing: the gist got the
@@ -410,7 +409,7 @@ suite("Overlapping per-file writes", () => {
 	});
 });
 
-suite("Audit: poll interval validation", () => {
+suite("Poll interval validation", () => {
 	function resetAuthSingleton(): void {
 		(GitHubAuthManager as unknown as { instance: GitHubAuthManager | undefined }).instance = undefined;
 	}

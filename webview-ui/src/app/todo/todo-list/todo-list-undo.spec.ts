@@ -15,9 +15,8 @@ import { TodoList } from "./todo-list.component";
  * payload has to carry everything the item had and an index into the list the reducer will
  * splice — the full list, not the filtered view the user happens to be looking at.
  *
- * `itKnownBug` cases state the correct behaviour and pass only while the code still fails it
- * (the September 2026 audit's findings). When one starts failing, the defect is fixed: turn it
- * into a plain `it`.
+ * `itKnownBug` cases state the correct behaviour and pass only while the code still fails it.
+ * When one starts failing, the defect is fixed: turn it into a plain `it`.
  */
 
 /** Throws on mismatch, so a known-bug check can tell "still broken" from "fixed". */

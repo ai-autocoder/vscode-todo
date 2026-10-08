@@ -3,7 +3,7 @@ import { GistGateway } from "../data/gist-gateway";
 import { ViewPreferencesStore } from "./view-preferences.store";
 
 /**
- * Regression cover for the audit finding "Wide View and Show Tags reset on every launch".
+ * Regression cover for Wide View and Show Tags resetting on every launch.
  *
  * Both toggles used to write only to the gateway's in-memory `Config`, which is rebuilt from
  * `DEFAULT_CONFIG` on every construction — so they survived exactly as long as the tab. The

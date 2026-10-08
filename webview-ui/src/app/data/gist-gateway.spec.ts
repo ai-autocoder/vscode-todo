@@ -28,7 +28,7 @@ import {
 } from "../pwa/conflicts/conflict-types";
 
 /**
- * Regression cover for the audit finding "a dead sync looks exactly like a healthy one".
+ * Regression cover for a dead sync looking exactly like a healthy one.
  *
  * Edits are meant to keep landing in IndexedDB whatever the network does, so the only thing
  * between a dead sync and silently marooned data is whether the gateway *says* so. Three paths
@@ -40,10 +40,9 @@ import {
  *   3. a thrown error reached no `SyncResult` branch at all, and every caller runs these through
  *      `void this.enqueue(...)`, which discards the rejection.
  *
- * The audit described only (1), and attributed the 401 to it. Reporting is now deliberately
- * independent of the retry budget: `mutate` refills it on every edit and `refresh` on every
- * focus, so an actively-used app could loop 401 → retry → edit → 401 forever without the
- * counter ever reaching the cap.
+ * Reporting is now deliberately independent of the retry budget: `mutate` refills it on every
+ * edit and `refresh` on every focus, so an actively-used app could loop 401 → retry → edit → 401
+ * forever without the counter ever reaching the cap.
  *
  * `GistGateway`'s constructor builds only plain objects and opens no IndexedDB connection, so it
  * can be driven directly here with a stub standing in for `GistSyncEngine`.
@@ -456,7 +455,7 @@ describe("GistGateway sync failure reporting", () => {
 });
 
 /**
- * Regression cover for the audit finding "enter and reorder animations never play in the PWA".
+ * Regression cover for enter and reorder animations never playing in the PWA.
  *
  * `todoMutations` stores a bare reducer name (`"addTodo"`) and documents that the
  * `"<scope>/<name>"` prefix "is applied by the caller", mirroring the slice-name prefix Redux
