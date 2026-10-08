@@ -6,6 +6,8 @@ import { BehaviorSubject, Subject } from "rxjs";
 import type { GistFileInfo } from "@vsc-todo/core";
 import { DATA_GATEWAY } from "../data/data-gateway";
 import { GistConnectionState, GistGateway } from "../data/gist-gateway";
+import { AboutPanelService } from "../shared/about-panel.service";
+import type { ConflictPromptRequest } from "./conflicts/conflict-types";
 import { PwaShellComponent } from "./pwa-shell.component";
 
 const gistFile = (fullPath: string): GistFileInfo => ({
@@ -253,5 +255,70 @@ describe("PwaShellComponent — a damaged gist file", () => {
 		// "Try again" would re-read the same bytes; "Reconnect" and "Choose a gist" are the wrong
 		// diagnosis and would send the user off to change a setting that is not the problem.
 		expect(buttons().length).toBe(0);
+	});
+});
+
+describe("PwaShellComponent — About panel", () => {
+	let fixture: ComponentFixture<PwaShellComponent>;
+	let connection: BehaviorSubject<GistConnectionState>;
+	let conflictPrompt: BehaviorSubject<ConflictPromptRequest | null>;
+
+	const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+	const aboutPanel = (): Element | null => host().querySelector("app-about-panel");
+
+	beforeEach(async () => {
+		connection = new BehaviorSubject<GistConnectionState>({ phase: "disconnected" });
+		const gateway = fakeGateway(connection, jasmine.createSpy("chooseFiles"));
+		conflictPrompt = (
+			gateway as unknown as { conflictPrompt: BehaviorSubject<ConflictPromptRequest | null> }
+		).conflictPrompt;
+
+		await TestBed.configureTestingModule({
+			declarations: [PwaShellComponent],
+			imports: [CommonModule, FormsModule],
+			providers: [{ provide: DATA_GATEWAY, useValue: gateway }],
+			schemas: [CUSTOM_ELEMENTS_SCHEMA],
+		}).compileComponents();
+
+		fixture = TestBed.createComponent(PwaShellComponent);
+		fixture.detectChanges();
+		await fixture.whenStable();
+	});
+
+	it("should open the About panel when the header asks for it, and close it again", () => {
+		expect(aboutPanel()).toBeNull();
+
+		TestBed.inject(AboutPanelService).open();
+		expect(aboutPanel()).not.toBeNull();
+
+		// The panel is an unknown element here, so its `closed` output is a plain DOM event.
+		aboutPanel()!.dispatchEvent(new CustomEvent("closed"));
+		fixture.detectChanges();
+		expect(aboutPanel()).toBeNull();
+	});
+
+	it("should close the About panel when a conflict prompt needs an answer", () => {
+		TestBed.inject(AboutPanelService).open();
+		expect(aboutPanel()).not.toBeNull();
+
+		conflictPrompt.next({ phase: "reconcile", todos: [], files: [], knownIds: [] });
+		fixture.detectChanges();
+
+		expect(aboutPanel()).toBeNull();
+	});
+
+	it("should not open the About panel beneath a pending conflict prompt", () => {
+		conflictPrompt.next({ phase: "reconcile", todos: [], files: [], knownIds: [] });
+		fixture.detectChanges();
+
+		TestBed.inject(AboutPanelService).open();
+		fixture.detectChanges();
+		expect(aboutPanel()).toBeNull();
+
+		// Answered: About opens again.
+		conflictPrompt.next(null);
+		fixture.detectChanges();
+		TestBed.inject(AboutPanelService).open();
+		expect(aboutPanel()).not.toBeNull();
 	});
 });

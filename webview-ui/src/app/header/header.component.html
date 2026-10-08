@@ -201,6 +201,17 @@
 				<span style="margin-left: 8px;">Clear completed</span>
 			</span>
 		</button>
+
+		@if (isAboutAvailable) {
+			<mat-divider></mat-divider>
+
+			<button mat-menu-item (click)="openAbout()" aria-label="About">
+				<span class="submenu-content">
+					<app-icon name="info"></app-icon>
+					<span style="margin-left: 8px;">About</span>
+				</span>
+			</button>
+		}
 	</mat-menu>
 
 	<!-- Sync menu -->

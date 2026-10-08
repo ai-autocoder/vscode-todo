@@ -71,6 +71,10 @@
 
 <app-root *ngIf="showApp"></app-root>
 
+@if (showAbout) {
+	<app-about-panel (closed)="closeAbout()"></app-about-panel>
+}
+
 <div class="connect-screen" *ngIf="showConnectScreen" [ngSwitch]="state.phase">
 	<div class="card">
 		<h1>Agent Plans</h1>

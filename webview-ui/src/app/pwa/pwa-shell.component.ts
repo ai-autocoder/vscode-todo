@@ -15,6 +15,7 @@ import {
 	SyncFailureState,
 } from "../data/gist-gateway";
 import { dispatchMessageToGateway } from "../data/message-dispatcher";
+import { AboutPanelService } from "../shared/about-panel.service";
 import { vscode } from "../utilities/vscode";
 import type { ConflictPromptRequest, PendingConflictView } from "./conflicts/conflict-types";
 import type { ConflictDecisions } from "@vsc-todo/core";
@@ -123,6 +124,9 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	/** Exposed for the template's radio values. */
 	readonly markdownImportScopes = MarkdownImportScopes;
 
+	/** Whether the About panel is open; requested from the header menu. */
+	showAbout = false;
+
 	/** `protected`, not `private`: the template passes it to <app-conflict-review>. */
 	protected gateway: GistGateway | undefined;
 	private onPresenceChange: (() => void) | undefined;
@@ -132,13 +136,25 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 	private conflictPromptSub: Subscription | undefined;
 	private importExportSub: Subscription | undefined;
 	private syncFailureSub: Subscription | undefined;
+	private aboutSub: Subscription | undefined;
 
 	constructor(
 		@Inject(DATA_GATEWAY) private readonly injectedGateway: DataGateway,
-		private readonly cdRef: ChangeDetectorRef
+		private readonly cdRef: ChangeDetectorRef,
+		private readonly aboutPanel: AboutPanelService
 	) {}
 
 	async ngOnInit(): Promise<void> {
+		this.aboutSub = this.aboutPanel.openRequests.subscribe(() => {
+			// The menu can still be opened over a pending conflict prompt; About would then open
+			// beneath the prompt, out of sight.
+			if (this.conflictPromptRequest) {
+				return;
+			}
+			this.showAbout = true;
+			this.cdRef.detectChanges();
+		});
+
 		const gateway = this.injectedGateway;
 		if (!(gateway instanceof GistGateway)) {
 			// Defensive: the PWA build always provides a GistGateway (data.providers.pwa.ts).
@@ -212,6 +228,11 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 
 		this.conflictPromptSub = gateway.conflictPrompt.subscribe((request) => {
 			this.conflictPromptRequest = request;
+			// The prompt blocks a sync and needs an answer; About is informational, so it gives
+			// way, and requests to open it are ignored until the prompt is answered.
+			if (request) {
+				this.showAbout = false;
+			}
 			// The banner is hidden behind the dialog anyway, but its <body> class also reshapes the
 			// layout underneath, so keep the two in step rather than leaving a gap to come back to.
 			this.syncBannerClass();
@@ -501,7 +522,12 @@ export class PwaShellComponent implements OnInit, OnDestroy {
 		this.gateway?.clearImportExportStatus();
 	}
 
+	closeAbout(): void {
+		this.showAbout = false;
+	}
+
 	ngOnDestroy(): void {
+		this.aboutSub?.unsubscribe();
 		this.connectionSub?.unsubscribe();
 		this.messagesSub?.unsubscribe();
 		this.conflictsSub?.unsubscribe();

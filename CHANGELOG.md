@@ -7,6 +7,7 @@
 - Webview: speed up adding items to a long list.
 - Extension: ask once, after regular use, for a rating or a GitHub star.
 - Plans: the sign-in proxy doesn't log requests.
+- Plans: add an About panel to the menu, with the version, privacy notes and project links.
 
 ## [2.3.4]
 

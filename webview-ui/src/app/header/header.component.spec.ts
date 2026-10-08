@@ -27,6 +27,7 @@ type SyncIndicatorInfoForTest = {
 	ariaLabel: string;
 };
 import { TodoService } from "../todo/todo.service";
+import { AboutPanelService } from "../shared/about-panel.service";
 import { HeaderComponent } from "./header.component";
 import { environment } from "../../environments/environment";
 
@@ -85,9 +86,7 @@ describe("HeaderComponent MCP control", () => {
 	 * The control lives inside a lazily-rendered mat-menu, so open every menu trigger and
 	 * read the overlay container — reading the fixture element alone would pass vacuously.
 	 */
-	function renderedText(): string {
-		fixture.detectChanges();
-		// The settings menu holds the MCP item; open it through its trigger directive.
+	function settingsTrigger(): MatMenuTrigger {
 		const trigger = fixture.debugElement
 			.queryAll(By.directive(MatMenuTrigger))
 			.find((el) => (el.nativeElement as HTMLElement).getAttribute("aria-label") === "Menu")
@@ -95,7 +94,13 @@ describe("HeaderComponent MCP control", () => {
 		if (!trigger) {
 			throw new Error("settings menu trigger not found");
 		}
-		trigger.openMenu();
+		return trigger;
+	}
+
+	function renderedText(): string {
+		fixture.detectChanges();
+		// The settings menu holds the MCP item; open it through its trigger directive.
+		settingsTrigger().openMenu();
 		fixture.detectChanges();
 		const overlays = document.querySelectorAll(".cdk-overlay-container");
 		return Array.from(overlays)
@@ -111,6 +116,48 @@ describe("HeaderComponent MCP control", () => {
 	it("hides the MCP control when there is no host (PWA)", () => {
 		(component as { isMcpSupported: boolean }).isMcpSupported = false;
 		expect(renderedText()).not.toContain("Start MCP Server");
+	});
+
+	/**
+	 * The specs below set the flag directly, so this one pins it to the build target: inverted,
+	 * it would put an About entry in the extension webview that opens nothing.
+	 */
+	it("offers About only in the PWA build", () => {
+		expect(component.isAboutAvailable).toBe(environment.pwa);
+	});
+
+	it("renders the About entry in the PWA, and asks the shell to open the panel", () => {
+		(component as { isAboutAvailable: boolean }).isAboutAvailable = true;
+		// Recorded at the moment of the request: the menu must already be closed, or its focus
+		// restore would pull focus out of the panel the request opens.
+		let menuOpenWhenRequested: boolean | undefined;
+		const open = spyOn(TestBed.inject(AboutPanelService), "open").and.callFake(() => {
+			menuOpenWhenRequested = settingsTrigger().menuOpen;
+		});
+
+		expect(renderedText()).toContain("About");
+		const entry = Array.from(
+			document.querySelectorAll<HTMLButtonElement>(".cdk-overlay-container button")
+		).find((button) => button.getAttribute("aria-label") === "About");
+		entry!.click();
+
+		expect(open).toHaveBeenCalledTimes(1);
+		expect(menuOpenWhenRequested).toBe(false);
+	});
+
+	it("does not open the panel when the menu closes without About being chosen", () => {
+		(component as { isAboutAvailable: boolean }).isAboutAvailable = true;
+		const open = spyOn(TestBed.inject(AboutPanelService), "open");
+
+		renderedText();
+		settingsTrigger().closeMenu();
+
+		expect(open).not.toHaveBeenCalled();
+	});
+
+	it("leaves the About entry out of the extension webview", () => {
+		(component as { isAboutAvailable: boolean }).isAboutAvailable = false;
+		expect(renderedText()).not.toContain("About");
 	});
 });
 

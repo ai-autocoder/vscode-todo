@@ -1,0 +1,48 @@
+<div
+	class="about-backdrop"
+	(pointerdown)="onBackdropPointerDown($event)"
+	(click)="onBackdropClick($event)"
+>
+	<!--
+		tabindex="-1" on the section keeps focus inside the panel when its text is clicked, so the
+		Escape handler below still receives the key.
+	-->
+	<section
+		class="about-panel"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="about-title"
+		tabindex="-1"
+		cdkTrapFocus
+		cdkTrapFocusAutoCapture
+		(keydown.escape)="onEscape($event)"
+	>
+		<header>
+			<h2 id="about-title" tabindex="-1" cdkFocusInitial>{{ info.appName }}</h2>
+			<p class="version">Version {{ info.version }}</p>
+		</header>
+
+		<p>
+			Plans, todo lists and notes, synced with the
+			<a [href]="info.extensionUrl" target="_blank" rel="noopener">VS Code Todo</a> extension
+			through a GitHub Gist.
+		</p>
+
+		<p class="privacy">
+			Your lists sync directly between this device and your GitHub gist. No analytics.
+		</p>
+
+		<ul class="links">
+			<li>
+				By <a [href]="info.authorUrl" target="_blank" rel="noopener">{{ info.author }}</a>
+			</li>
+			<li><a [href]="info.sourceUrl" target="_blank" rel="noopener">Source on GitHub</a></li>
+			<li><a [href]="info.issuesUrl" target="_blank" rel="noopener">Report an issue</a></li>
+			<li><a [href]="info.licenseUrl" target="_blank" rel="noopener">MIT licence</a></li>
+		</ul>
+
+		<div class="actions">
+			<button class="primary" (click)="close()">Close</button>
+		</div>
+	</section>
+</div>

@@ -1,5 +1,6 @@
 import { Component, ElementRef, Input, OnInit, ViewChild, inject } from "@angular/core";
 import { TodoService } from "../todo/todo.service";
+import { AboutPanelService } from "../shared/about-panel.service";
 import { environment } from "../../environments/environment";
 import { ExportFormats, ImportFormats, TodoScope } from "../../../../src/todo/todoTypes";
 import { BehaviorSubject, combineLatest, map, Observable } from "rxjs";
@@ -65,6 +66,7 @@ type McpControlInfo = {
 })
 export class HeaderComponent implements OnInit {
 	private readonly todoService = inject(TodoService);
+	private readonly aboutPanel = inject(AboutPanelService);
 
 	ExportFormats = ExportFormats;
 	ImportFormats = ImportFormats;
@@ -95,6 +97,13 @@ export class HeaderComponent implements OnInit {
 	 * only one exists, and the two dead entries silently did nothing when clicked.
 	 */
 	readonly isSyncModeSelectable = !environment.pwa;
+	/**
+	 * The About panel belongs to the PWA shell. The extension already shows the same details on
+	 * its own Extensions page, so the webview does not get the entry.
+	 */
+	readonly isAboutAvailable = environment.pwa;
+	/** Set by the About entry; acted on once the settings menu has closed. */
+	private aboutRequested = false;
 
 	private wideViewDelayHandle: number | null = null;
 	private currentScopeSource = new BehaviorSubject<TodoScope>(TodoScope.user);
@@ -186,6 +195,15 @@ export class HeaderComponent implements OnInit {
 		this.todoService.setShowTagsEnabled(isEnabled);
 	}
 
+	/**
+	 * Waits for the menu to close before asking for the panel. Closing returns focus to the menu
+	 * button, so a panel opened from the click itself would lose its focus to the button straight
+	 * away; opened afterwards, it takes focus and hands it back to the button when it closes.
+	 */
+	openAbout() {
+		this.aboutRequested = true;
+	}
+
 	deleteAll() {
 		this.todoService.deleteAll(this.currentScope);
 	}
@@ -254,6 +272,10 @@ export class HeaderComponent implements OnInit {
 
 	onSettingsMenuClosed() {
 		this.isSettingsMenuOpen = false;
+		if (this.aboutRequested) {
+			this.aboutRequested = false;
+			this.aboutPanel.open();
+		}
 	}
 
 	onSyncMenuOpened() {
