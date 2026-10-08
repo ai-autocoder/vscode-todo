@@ -2,10 +2,21 @@
 	Blocking, by design: the reconcile is parked on the engine's resolver hook while this is up,
 	so there is deliberately no backdrop-click or Escape dismissal. The only ways out are Apply
 	and Cancel, and both are explicit.
+
+	Focus is trapped inside for the same reason: everything behind is covered, so Tab must not
+	reach it. It starts on the heading, not on a choice that Enter would press, and goes back to
+	where it was once the prompt closes.
 -->
-<div class="prompt" role="dialog" aria-modal="true" aria-labelledby="conflict-prompt-title">
+<div
+	class="prompt"
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby="conflict-prompt-title"
+	cdkTrapFocus
+	cdkTrapFocusAutoCapture
+>
 	<header class="prompt-header">
-		<h1 id="conflict-prompt-title">
+		<h1 id="conflict-prompt-title" tabindex="-1" cdkFocusInitial>
 			{{ total }} {{ total === 1 ? "conflict" : "conflicts" }} to resolve
 		</h1>
 		<p class="subtitle">

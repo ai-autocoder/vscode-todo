@@ -28,6 +28,11 @@ h1 {
 	color: var(--vscode-settings-headerForeground);
 }
 
+/* Focused when the prompt opens, never by Tab, so no ring around the title. */
+h1:focus {
+	outline: none;
+}
+
 .subtitle,
 .note,
 .pending,

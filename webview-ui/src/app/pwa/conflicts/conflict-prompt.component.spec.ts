@@ -5,6 +5,7 @@ import {
 	type FileConflictSet,
 	type Todo,
 } from "@vsc-todo/core";
+import { A11yModule } from "@angular/cdk/a11y";
 import { TestBed, type ComponentFixture } from "@angular/core/testing";
 import { ConflictPromptComponent } from "./conflict-prompt.component";
 
@@ -939,5 +940,79 @@ describe("ConflictPromptComponent file card rendering", () => {
 		render(editedCleanly());
 
 		expect(pendingText()).toContain("this device's list is kept");
+	});
+});
+
+/**
+ * The prompt covers the whole app and a sync is waiting on it, so keyboard focus has to be in it
+ * and stay there, and go back where it came from once it is answered.
+ */
+describe("ConflictPromptComponent focus", () => {
+	const todo = (id: number, text: string): Todo => ({
+		id,
+		text,
+		completed: false,
+		creationDate: "2026-01-01T00:00:00.000Z",
+		isMarkdown: false,
+		isNote: false,
+	});
+
+	let fixture: ComponentFixture<ConflictPromptComponent>;
+	/** Stands in for whatever had focus in the app when the sync found the conflict. */
+	let opener: HTMLButtonElement;
+
+	const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+	beforeEach(async () => {
+		opener = document.createElement("button");
+		document.body.appendChild(opener);
+		opener.focus();
+
+		await TestBed.configureTestingModule({
+			declarations: [ConflictPromptComponent],
+			imports: [A11yModule],
+		}).compileComponents();
+
+		fixture = TestBed.createComponent(ConflictPromptComponent);
+		fixture.componentInstance.request = {
+			todos: [
+				{
+					todoId: 1,
+					base: todo(1, "base"),
+					local: todo(1, "local"),
+					remote: todo(1, "remote"),
+					conflictType: "edit-edit",
+				},
+			],
+			files: [],
+			knownIds: [1],
+			phase: "reconcile",
+		};
+		fixture.detectChanges();
+		// The focus trap moves focus after the first render.
+		await fixture.whenStable();
+	});
+
+	afterEach(() => {
+		opener.remove();
+	});
+
+	it("moves focus to the heading, not onto a choice Enter would press", () => {
+		expect(document.activeElement).toBe(host().querySelector("h1"));
+	});
+
+	it("keeps Tab inside the prompt", () => {
+		const anchors = host().querySelectorAll<HTMLElement>(".cdk-focus-trap-anchor");
+		expect(anchors.length).toBe(2);
+
+		anchors[1].focus();
+		expect(host().querySelector(".prompt")!.contains(document.activeElement)).toBeTrue();
+		anchors[0].focus();
+		expect(host().querySelector(".prompt")!.contains(document.activeElement)).toBeTrue();
+	});
+
+	it("hands focus back once the prompt closes", () => {
+		fixture.destroy();
+		expect(document.activeElement).toBe(opener);
 	});
 });
